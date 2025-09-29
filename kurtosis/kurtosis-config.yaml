@@ -64,7 +64,7 @@ network_params:
 # Additional services for monitoring and testing
 additional_services:
   - forkmon
-  - tx_spammer
+  - spamoor
 
 # Don't wait for finalization to speed up testing
 wait_for_finalization: false
