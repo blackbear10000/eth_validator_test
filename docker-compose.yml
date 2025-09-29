@@ -1,8 +1,7 @@
-version: '3.8'
 
 services:
   consul:
-    image: consul:1.15
+    image: consul:1.18
     container_name: consul
     ports:
       - "8500:8500"
@@ -67,7 +66,7 @@ services:
       "
 
   web3signer:
-    image: consensys/web3signer:23.1.1
+    image: consensys/web3signer:25.3.0
     container_name: web3signer
     ports:
       - "9000:9000"
