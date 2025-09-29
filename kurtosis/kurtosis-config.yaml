@@ -43,6 +43,13 @@ network_params:
   max_per_epoch_activation_churn_limit: 8
   min_validator_withdrawability_delay: 256
   shard_committee_period: 256
+  
+  # Fix for newer clients - disable problematic features
+  data_column_sidecar_subnet_count: 0
+  samples_per_slot: 1
+  custody_requirement: false
+  max_blobs_per_block_electra: 0
+  target_blobs_per_block_electra: 0
 
 # Additional services for monitoring and testing
 additional_services:
