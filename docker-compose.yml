@@ -58,7 +58,6 @@ services:
         vault auth enable userpass &&
         vault write auth/userpass/users/admin password=admin policies=admin &&
         vault policy write admin /vault/init/admin-policy.hcl &&
-        vault secrets enable -path=secret kv-v2 &&
         wait
       "
 
