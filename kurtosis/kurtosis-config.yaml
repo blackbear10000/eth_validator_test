@@ -25,7 +25,6 @@ network_params:
   genesis_delay: 120
   capella_fork_epoch: 0
   deneb_fork_epoch: 0
-  electra_fork_epoch: 0
 
   # Validator configuration
   num_validator_keys_per_node: 64
@@ -44,12 +43,14 @@ network_params:
   min_validator_withdrawability_delay: 256
   shard_committee_period: 256
   
-  # Fix for newer clients - disable problematic features
-  data_column_sidecar_subnet_count: 0
+  # Fix for newer clients - use proper values
+  data_column_sidecar_subnet_count: 1
   samples_per_slot: 1
   custody_requirement: 0
-  max_blobs_per_block_electra: 0
-  target_blobs_per_block_electra: 0
+  max_blobs_per_block_electra: 6
+  target_blobs_per_block_electra: 3
+  max_request_blob_sidecars_electra: 768
+  base_fee_update_fraction_electra: 64
 
 # Additional services for monitoring and testing
 additional_services:
