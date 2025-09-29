@@ -1,21 +1,9 @@
 # Kurtosis Ethereum Package Configuration
 # This configuration spins up a fast devnet for validator lifecycle testing
 
-package_id: github.com/ethpandaops/ethereum-package
-
 participants:
   - el_type: geth
     el_image: ethereum/client-go:v1.13.5
-    cl_type: prysm
-    cl_image: prysmaticlabs/prysm-beacon-chain:v4.1.1
-    vc_type: prysm
-    vc_image: prysmaticlabs/prysm-validator:v4.1.1
-    cl_extra_params: ["--accept-terms-of-use", "--enable-debug-rpc-endpoints"]
-    vc_extra_params: ["--accept-terms-of-use", "--enable-web3signer=true", "--validators-external-signer-url=http://host.docker.internal:9000"]
-    el_extra_params: ["--http.api=eth,net,web3,debug,admin,txpool"]
-
-  - el_type: reth
-    el_image: ghcr.io/paradigmxyz/reth:v0.1.0-alpha.10
     cl_type: lighthouse
     cl_image: sigp/lighthouse:v4.5.0
     vc_type: lighthouse
@@ -25,31 +13,21 @@ participants:
 
   - el_type: geth
     el_image: ethereum/client-go:v1.13.5
-    cl_type: lighthouse
-    cl_image: sigp/lighthouse:v4.5.0
-    vc_type: lighthouse
-    vc_image: sigp/lighthouse:v4.5.0
-    vc_extra_params: ["--enable-web3signer-slashing-protection", "--web3-signer-url=http://host.docker.internal:9000"]
-    el_extra_params: ["--http.api=eth,net,web3,debug,admin,txpool"]
-
-  - el_type: reth
-    el_image: ghcr.io/paradigmxyz/reth:v0.1.0-alpha.10
-    cl_type: prysm
-    cl_image: prysmaticlabs/prysm-beacon-chain:v4.1.1
-    vc_type: prysm
-    vc_image: prysmaticlabs/prysm-validator:v4.1.1
-    cl_extra_params: ["--accept-terms-of-use", "--enable-debug-rpc-endpoints"]
-    vc_extra_params: ["--accept-terms-of-use", "--enable-web3signer=true", "--validators-external-signer-url=http://host.docker.internal:9000"]
+    cl_type: teku
+    cl_image: consensys/teku:v23.12.0
+    vc_type: teku
+    vc_image: consensys/teku:v23.12.0
+    vc_extra_params: ["--validators-external-signer-public-keys=http://host.docker.internal:9000/api/v1/eth2/publicKeys", "--validators-external-signer-url=http://host.docker.internal:9000"]
     el_extra_params: ["--http.api=eth,net,web3,debug,admin,txpool"]
 
 network_params:
-  seconds_per_slot: 6
-  genesis_delay: 30
-  capella_fork_epoch: 2
-  deneb_fork_epoch: 4
+  seconds_per_slot: 12
+  genesis_delay: 120
+  capella_fork_epoch: 5
+  deneb_fork_epoch: 10
 
   # Validator configuration
-  num_validator_keys_per_node: 16
+  num_validator_keys_per_node: 64
   churn_limit_quotient: 32
   ejection_balance: 16000000000
 
@@ -63,7 +41,6 @@ network_params:
 # Additional services for monitoring and testing
 additional_services:
   - forkmon
-  - spamoor
 
 # Don't wait for finalization to speed up testing
 wait_for_finalization: false
