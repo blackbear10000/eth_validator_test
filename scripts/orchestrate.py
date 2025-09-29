@@ -408,9 +408,9 @@ class TestOrchestrator:
         try:
             print("Cleaning up Kurtosis system containers...")
             # Stop all containers with "kurtosis" in the name
-            self.run_command(["bash", "-c", "docker stop $(docker ps -a --filter name=kurtosis --format '{{.Names}}') 2>/dev/null || true"], check=False)
+            self.run_command(["bash", "-c", "docker stop $(docker ps -a --filter name=kurtosis --format '{{.Names}}') 2>/dev/null || true"])
             # Remove all containers with "kurtosis" in the name
-            self.run_command(["bash", "-c", "docker rm $(docker ps -a --filter name=kurtosis --format '{{.Names}}') 2>/dev/null || true"], check=False)
+            self.run_command(["bash", "-c", "docker rm $(docker ps -a --filter name=kurtosis --format '{{.Names}}') 2>/dev/null || true"])
         except subprocess.CalledProcessError:
             print("Kurtosis system container cleanup may have failed")
 
