@@ -14,9 +14,9 @@ participants:
   - el_type: geth
     el_image: ethereum/client-go:v1.16.3
     cl_type: teku
-    cl_image: consensys/teku:v25.9.3
+    cl_image: consensys/teku:25.9.3
     vc_type: teku
-    vc_image: consensys/teku:v25.9.3
+    vc_image: consensys/teku:25.9.3
     vc_extra_params: ["--validators-external-signer-public-keys=http://host.docker.internal:9000/api/v1/eth2/publicKeys", "--validators-external-signer-url=http://host.docker.internal:9000"]
     el_extra_params: ["--http.api=eth,net,web3,debug,admin,txpool"]
 
