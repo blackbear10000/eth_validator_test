@@ -4,42 +4,42 @@
 package_id: github.com/ethpandaops/ethereum-package
 
 participants:
-  - el_client_type: geth
-    el_client_image: ethereum/client-go:v1.13.5
-    cl_client_type: prysm
-    cl_client_image: prysmaticlabs/prysm-beacon-chain:v4.1.1
-    validator_client_type: prysm
-    validator_client_image: prysmaticlabs/prysm-validator:v4.1.1
-    beacon_extra_params: ["--accept-terms-of-use", "--enable-debug-rpc-endpoints"]
-    validator_extra_params: ["--accept-terms-of-use", "--enable-web3signer=true", "--validators-external-signer-url=http://host.docker.internal:9000"]
+  - el_type: geth
+    el_image: ethereum/client-go:v1.13.5
+    cl_type: prysm
+    cl_image: prysmaticlabs/prysm-beacon-chain:v4.1.1
+    vc_type: prysm
+    vc_image: prysmaticlabs/prysm-validator:v4.1.1
+    cl_extra_params: ["--accept-terms-of-use", "--enable-debug-rpc-endpoints"]
+    vc_extra_params: ["--accept-terms-of-use", "--enable-web3signer=true", "--validators-external-signer-url=http://host.docker.internal:9000"]
     el_extra_params: ["--http.api=eth,net,web3,debug,admin,txpool"]
 
-  - el_client_type: reth
-    el_client_image: ghcr.io/paradigmxyz/reth:v0.1.0-alpha.10
-    cl_client_type: lighthouse
-    cl_client_image: sigp/lighthouse:v4.5.0
-    validator_client_type: lighthouse
-    validator_client_image: sigp/lighthouse:v4.5.0
-    validator_extra_params: ["--enable-web3signer-slashing-protection", "--web3-signer-url=http://host.docker.internal:9000"]
+  - el_type: reth
+    el_image: ghcr.io/paradigmxyz/reth:v0.1.0-alpha.10
+    cl_type: lighthouse
+    cl_image: sigp/lighthouse:v4.5.0
+    vc_type: lighthouse
+    vc_image: sigp/lighthouse:v4.5.0
+    vc_extra_params: ["--enable-web3signer-slashing-protection", "--web3-signer-url=http://host.docker.internal:9000"]
     el_extra_params: ["--http.api=eth,net,web3,debug,admin,txpool"]
 
-  - el_client_type: geth
-    el_client_image: ethereum/client-go:v1.13.5
-    cl_client_type: lighthouse
-    cl_client_image: sigp/lighthouse:v4.5.0
-    validator_client_type: lighthouse
-    validator_client_image: sigp/lighthouse:v4.5.0
-    validator_extra_params: ["--enable-web3signer-slashing-protection", "--web3-signer-url=http://host.docker.internal:9000"]
+  - el_type: geth
+    el_image: ethereum/client-go:v1.13.5
+    cl_type: lighthouse
+    cl_image: sigp/lighthouse:v4.5.0
+    vc_type: lighthouse
+    vc_image: sigp/lighthouse:v4.5.0
+    vc_extra_params: ["--enable-web3signer-slashing-protection", "--web3-signer-url=http://host.docker.internal:9000"]
     el_extra_params: ["--http.api=eth,net,web3,debug,admin,txpool"]
 
-  - el_client_type: reth
-    el_client_image: ghcr.io/paradigmxyz/reth:v0.1.0-alpha.10
-    cl_client_type: prysm
-    cl_client_image: prysmaticlabs/prysm-beacon-chain:v4.1.1
-    validator_client_type: prysm
-    validator_client_image: prysmaticlabs/prysm-validator:v4.1.1
-    beacon_extra_params: ["--accept-terms-of-use", "--enable-debug-rpc-endpoints"]
-    validator_extra_params: ["--accept-terms-of-use", "--enable-web3signer=true", "--validators-external-signer-url=http://host.docker.internal:9000"]
+  - el_type: reth
+    el_image: ghcr.io/paradigmxyz/reth:v0.1.0-alpha.10
+    cl_type: prysm
+    cl_image: prysmaticlabs/prysm-beacon-chain:v4.1.1
+    vc_type: prysm
+    vc_image: prysmaticlabs/prysm-validator:v4.1.1
+    cl_extra_params: ["--accept-terms-of-use", "--enable-debug-rpc-endpoints"]
+    vc_extra_params: ["--accept-terms-of-use", "--enable-web3signer=true", "--validators-external-signer-url=http://host.docker.internal:9000"]
     el_extra_params: ["--http.api=eth,net,web3,debug,admin,txpool"]
 
 network_params:
