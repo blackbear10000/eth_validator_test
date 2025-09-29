@@ -23,8 +23,9 @@ participants:
 network_params:
   seconds_per_slot: 12
   genesis_delay: 120
-  capella_fork_epoch: 5
-  deneb_fork_epoch: 10
+  capella_fork_epoch: 0
+  deneb_fork_epoch: 0
+  electra_fork_epoch: 0
 
   # Validator configuration
   num_validator_keys_per_node: 64
@@ -37,6 +38,11 @@ network_params:
   # Network ID
   network_id: "3151908"
   deposit_contract_address: "0x4242424242424242424242424242424242424242"
+  
+  # Additional parameters for newer clients
+  max_per_epoch_activation_churn_limit: 8
+  min_validator_withdrawability_delay: 256
+  shard_committee_period: 256
 
 # Additional services for monitoring and testing
 additional_services:
