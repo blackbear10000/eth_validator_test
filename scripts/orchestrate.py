@@ -391,18 +391,28 @@ class TestOrchestrator:
         """Clean up all test infrastructure"""
         print("=== Cleanup: Stopping All Services ===")
 
-        # Stop Kurtosis
+        # Stop Kurtosis enclaves
         try:
             self.run_command(["kurtosis", "enclave", "stop", "eth-devnet"])
             self.run_command(["kurtosis", "enclave", "rm", "eth-devnet"])
         except subprocess.CalledProcessError:
-            print("Kurtosis cleanup may have failed")
+            print("Kurtosis enclave cleanup may have failed")
 
         # Stop Docker services
         try:
             self.run_command(["docker-compose", "down", "-v"], cwd="..")
         except subprocess.CalledProcessError:
             print("Docker cleanup may have failed")
+
+        # Clean up all Kurtosis system containers (using generic filters)
+        try:
+            print("Cleaning up Kurtosis system containers...")
+            # Stop all containers with "kurtosis" in the name
+            self.run_command(["bash", "-c", "docker stop $(docker ps -a --filter name=kurtosis --format '{{.Names}}') 2>/dev/null || true"], check=False)
+            # Remove all containers with "kurtosis" in the name
+            self.run_command(["bash", "-c", "docker rm $(docker ps -a --filter name=kurtosis --format '{{.Names}}') 2>/dev/null || true"], check=False)
+        except subprocess.CalledProcessError:
+            print("Kurtosis system container cleanup may have failed")
 
         # Cleanup processes
         self.cleanup_processes()
