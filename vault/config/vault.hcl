@@ -1,9 +1,8 @@
 ui = true
 disable_mlock = true
 
-storage "consul" {
-  address = "consul:8500"
-  path    = "vault/"
+storage "file" {
+  path = "/vault/data"
 }
 
 listener "tcp" {

@@ -41,9 +41,9 @@ services:
       - ./vault/init:/vault/init
     networks:
       - eth_validator_network
-    depends_on:
-      consul:
-        condition: service_healthy
+    # depends_on:
+    #   consul:
+    #     condition: service_healthy
     healthcheck:
       test: ["CMD", "vault", "status"]
       interval: 10s
