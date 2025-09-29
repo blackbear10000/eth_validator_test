@@ -47,7 +47,7 @@ network_params:
   # Fix for newer clients - disable problematic features
   data_column_sidecar_subnet_count: 0
   samples_per_slot: 1
-  custody_requirement: false
+  custody_requirement: 0
   max_blobs_per_block_electra: 0
   target_blobs_per_block_electra: 0
 
