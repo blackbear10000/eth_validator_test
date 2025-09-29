@@ -3,20 +3,20 @@
 
 participants:
   - el_type: geth
-    el_image: ethereum/client-go:v1.13.5
+    el_image: ethereum/client-go:v1.16.3
     cl_type: lighthouse
-    cl_image: sigp/lighthouse:v4.5.0
+    cl_image: sigp/lighthouse:v7.1.0
     vc_type: lighthouse
-    vc_image: sigp/lighthouse:v4.5.0
+    vc_image: sigp/lighthouse:v7.1.0
     vc_extra_params: ["--enable-web3signer-slashing-protection", "--web3-signer-url=http://host.docker.internal:9000"]
     el_extra_params: ["--http.api=eth,net,web3,debug,admin,txpool"]
 
   - el_type: geth
-    el_image: ethereum/client-go:v1.13.5
+    el_image: ethereum/client-go:v1.16.3
     cl_type: teku
-    cl_image: consensys/teku:v23.12.0
+    cl_image: consensys/teku:v25.9.3
     vc_type: teku
-    vc_image: consensys/teku:v23.12.0
+    vc_image: consensys/teku:v25.9.3
     vc_extra_params: ["--validators-external-signer-public-keys=http://host.docker.internal:9000/api/v1/eth2/publicKeys", "--validators-external-signer-url=http://host.docker.internal:9000"]
     el_extra_params: ["--http.api=eth,net,web3,debug,admin,txpool"]
 
