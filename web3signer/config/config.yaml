@@ -1,0 +1,28 @@
+key-manager-api:
+  enabled: true
+
+http:
+  host: "0.0.0.0"
+  port: 9000
+  cors-allowed-origins: ["*"]
+
+metrics:
+  enabled: true
+  host: "0.0.0.0"
+  port: 9001
+
+key-stores:
+  - type: "hashicorp-vault"
+    vault-url: "http://vault:8200"
+    vault-auth-method: "userpass"
+    vault-username: "admin"
+    vault-password: "admin"
+    vault-secrets-path: "secret"
+    vault-secrets-engine-version: 2
+
+logging:
+  level: "INFO"
+  format: "JSON"
+
+tls:
+  enabled: false
