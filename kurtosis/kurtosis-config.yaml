@@ -25,6 +25,7 @@ network_params:
   genesis_delay: 120
   capella_fork_epoch: 0
   deneb_fork_epoch: 0
+  electra_fork_epoch: 0
 
   # Validator configuration
   num_validator_keys_per_node: 64
