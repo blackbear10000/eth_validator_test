@@ -20,6 +20,7 @@ sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 from key_manager import KeyManager
 from deposit_manager import DepositManager
 from validator_lifecycle import ValidatorLifecycle
+from external_validator_client import ExternalValidatorClientManager
 
 
 class ExternalValidatorManager:
@@ -39,6 +40,7 @@ class ExternalValidatorManager:
         self.key_manager = KeyManager()
         self.deposit_manager = DepositManager()
         self.validator_lifecycle = ValidatorLifecycle()
+        self.client_manager = ExternalValidatorClientManager(config_file)
         
         # External validator tracking
         self.external_validators = []
@@ -201,6 +203,24 @@ class ExternalValidatorManager:
         
         return success
     
+    def start_external_validator_clients(self) -> bool:
+        """Start external validator clients connected to Web3Signer"""
+        print("=== Starting External Validator Clients ===")
+        
+        if not self.external_validators:
+            print("❌ No external validators found. Generate keys first.")
+            return False
+        
+        # Start validator clients
+        success = self.client_manager.start_validator_clients(self.external_validators)
+        
+        if success:
+            print("✅ External validator clients started")
+        else:
+            print("❌ Failed to start external validator clients")
+        
+        return success
+    
     def wait_for_external_activation(self) -> bool:
         """Wait for external validators to become active"""
         print("=== Waiting for External Validator Activation ===")
@@ -209,13 +229,21 @@ class ExternalValidatorManager:
             print("❌ No external validators to monitor")
             return False
         
+        # First wait for validators to be active on the network
         timeout = self.config.get("timeout_activation", 1800)
         success = self.validator_lifecycle.wait_for_activation(
             self.external_validators, timeout=timeout
         )
         
         if success:
-            print("✅ External validators are active")
+            print("✅ External validators are active on the network")
+            
+            # Then wait for validator clients to recognize them as active
+            client_success = self.client_manager.wait_for_validators_active(timeout=300)
+            if client_success:
+                print("✅ External validator clients are active")
+            else:
+                print("⚠️ External validators are active but clients may not be fully synced")
         else:
             print("❌ External validators failed to activate")
         
@@ -304,6 +332,9 @@ class ExternalValidatorManager:
         """Clean up external validator resources"""
         print("=== Cleaning Up External Validator Resources ===")
         
+        # Stop validator clients
+        self.client_manager.stop_all_clients()
+        
         # Remove external keys
         external_keys_dir = Path("external_keys")
         if external_keys_dir.exists():
@@ -325,6 +356,13 @@ class ExternalValidatorManager:
                 key_file.unlink()
             print("✅ Cleared Web3Signer keys")
         
+        # Remove validator client data
+        validator_data_dir = Path("external_validator_data")
+        if validator_data_dir.exists():
+            import shutil
+            shutil.rmtree(validator_data_dir)
+            print("✅ Removed validator client data")
+        
         self.external_validators = []
         print("✅ External validator cleanup completed")
 
@@ -334,7 +372,7 @@ def main():
     parser = argparse.ArgumentParser(description="External Validator Manager")
     parser.add_argument("command", choices=[
         "check-services", "generate-keys", "create-deposits", "submit-deposits",
-        "wait-activation", "monitor", "test-exit", "test-withdrawal", 
+        "start-clients", "wait-activation", "monitor", "test-exit", "test-withdrawal", 
         "status", "cleanup", "full-test"
     ], help="Command to execute")
     parser.add_argument("--count", type=int, help="Number of validators")
@@ -360,6 +398,9 @@ def main():
             deposit_file = manager.create_external_deposits()
             if deposit_file:
                 manager.submit_external_deposits(deposit_file)
+        
+        elif args.command == "start-clients":
+            manager.start_external_validator_clients()
         
         elif args.command == "wait-activation":
             manager.wait_for_external_activation()
@@ -395,6 +436,9 @@ def main():
             deposit_file = manager.create_external_deposits()
             if deposit_file:
                 manager.submit_external_deposits(deposit_file)
+            
+            # Start external validator clients
+            manager.start_external_validator_clients()
             
             # Wait for activation
             manager.wait_for_external_activation()

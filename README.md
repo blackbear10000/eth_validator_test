@@ -16,12 +16,29 @@ This system validates the full Ethereum validator lifecycle with a **hybrid arch
 ### Hybrid Validator Architecture
 - **Kurtosis Built-in Validators**: 2 EL/CL pairs (Geth+Lighthouse, Geth+Teku) with built-in validators
 - **External Web3Signer Validators**: Additional validators managed via Web3Signer for testing
+  - **Validator Clients**: Independent Lighthouse/Teku validator clients
+  - **Remote Signing**: Validator clients connect to Web3Signer for signing operations
+  - **Beacon API**: Validator clients connect to Kurtosis beacon nodes
 
 ### Infrastructure Stack
 - **Consul** (port 8500): Persistent storage backend for Vault
 - **Vault** (port 8200): Secure key storage with KV v2 engine
 - **Web3Signer** (port 9000): Remote signing service for external validators
 - **Kurtosis Devnet**: Accelerated testnet with 4s slots for fast testing
+
+### External Validator Flow
+```
+1. Generate Keys → Store in Vault → Export to Web3Signer
+2. Create Deposits → Submit to Network → Wait for Activation
+3. Start Validator Client → Connect to Web3Signer + Beacon API
+4. Monitor Performance → Test Exit → Test Withdrawal
+```
+
+### Key Injection Process
+- **Vault**: Stores BLS private keys securely
+- **Web3Signer**: Loads keys from Vault, provides signing API
+- **Validator Client**: Connects to Web3Signer for signing operations
+- **Beacon API**: Provides network state and validator duties
 
 ## 🚀 Quick Start
 
@@ -61,6 +78,9 @@ python3 external_validator_manager.py generate-keys --count 5
 
 # Create and submit deposits
 python3 external_validator_manager.py submit-deposits
+
+# Start external validator clients (connects to Web3Signer)
+python3 external_validator_manager.py start-clients
 
 # Wait for activation
 python3 external_validator_manager.py wait-activation
@@ -121,6 +141,9 @@ python3 scripts/external_validator_manager.py create-deposits
 
 # Submit deposits
 python3 scripts/external_validator_manager.py submit-deposits
+
+# Start validator clients
+python3 scripts/external_validator_manager.py start-clients
 
 # Wait for activation
 python3 scripts/external_validator_manager.py wait-activation
