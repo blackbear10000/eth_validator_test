@@ -49,10 +49,12 @@ network_params:
   deposit_contract_address: "0x4242424242424242424242424242424242424242"
   
   # ===== Fork 配置 =====
-  # 启用所有 fork 从 genesis 开始
+  # 分叉：只到 Deneb，全部 genesis 启；先不启 Electra
+  altair_fork_epoch: 0
+  bellatrix_fork_epoch: 0
   capella_fork_epoch: 0
   deneb_fork_epoch: 0
-  electra_fork_epoch: 256
+  # electra_fork_epoch:  # ← 移除
 
   # 预置资金账户（用来批量发送 deposit 交易）
   prefunded_accounts: '{
@@ -60,7 +62,7 @@ network_params:
   }'
 
   # 给 EL 启动更宽窗口（避免 CL 先跑起来）
-  genesis_delay: 90
+  genesis_delay: 180
 
 # 监控与工具（均为包支持的合法服务名）
 additional_services:
