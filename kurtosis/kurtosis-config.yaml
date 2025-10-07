@@ -52,7 +52,7 @@ network_params:
   # 启用所有 fork 从 genesis 开始
   capella_fork_epoch: 0
   deneb_fork_epoch: 0
-  electra_fork_epoch: 0
+  electra_fork_epoch: 256
 
   # 预置资金账户（用来批量发送 deposit 交易）
   prefunded_accounts: '{
