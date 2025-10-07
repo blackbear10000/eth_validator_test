@@ -1,6 +1,4 @@
-# Kurtosis Ethereum Package Configuration (Linux-ready)
-# Goal: fast validator lifecycle (activate/exit) + external Web3Signer testing
-
+# Linux-ready devnet: fast validator lifecycle + external Web3Signer
 participants:
   - el_type: geth
     el_image: ethereum/client-go:v1.16.3
@@ -33,23 +31,27 @@ participants:
 network_params:
   preset: minimal
   seconds_per_slot: 4
-  genesis_delay: 30
+  genesis_delay: 60
 
+  # Fork schedule — avoid Electra at epoch 0 to prevent CL init edge-cases
+  altair_fork_epoch: 0
+  bellatrix_fork_epoch: 0
   capella_fork_epoch: 0
   deneb_fork_epoch: 0
-  electra_fork_epoch: 0
+  electra_fork_epoch: 2
 
+  # Validators
   num_validator_keys_per_node: 64
   ejection_balance: 16000000000
 
+  # Deterministic IDs
   network_id: "3151908"
   deposit_contract_address: "0x4242424242424242424242424242424242424242"
 
 additional_services:
-  - prometheus
-  - grafana
+  - prometheus_grafana
   - forkmon
-  - broadcaster     # ← 替代 tx_spammer 的合法流量/交易服务
+  - broadcaster
   - dora
 
 wait_for_finalization: false
