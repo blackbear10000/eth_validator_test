@@ -1,6 +1,7 @@
-# Kurtosis Ethereum Package Configuration
-# This configuration spins up a fast devnet for validator lifecycle testing
+# Kurtosis Ethereum Package Configuration (Linux-ready)
+# Goal: fast validator lifecycle (activate/exit) + external Web3Signer testing
 
+# --- Participants: two EL/CL/VC combos (pin versions for reproducibility)
 participants:
   - el_type: geth
     el_image: ethereum/client-go:v1.16.3
@@ -8,7 +9,13 @@ participants:
     cl_image: sigp/lighthouse:v7.1.0
     vc_type: lighthouse
     vc_image: sigp/lighthouse:v7.1.0
-    vc_extra_params: ["--enable-web3signer-slashing-protection", "--web3-signer-url=http://host.docker.internal:9000"]
+    # Lighthouse VC: use external signer (Web3Signer on host Docker gateway)
+    vc_extra_params:
+      [
+        "--validators-external-signer=http://172.17.0.1:9000",
+        "--suggested-fee-recipient=0x0000000000000000000000000000000000000001"
+      ]
+    # Open useful EL APIs for local debugging (do NOT expose to the public Internet)
     el_extra_params: ["--http.api=eth,net,web3,debug,admin,txpool"]
 
   - el_type: geth
@@ -17,51 +24,48 @@ participants:
     cl_image: consensys/teku:25.9.3
     vc_type: teku
     vc_image: consensys/teku:25.9.3
-    vc_extra_params: ["--validators-external-signer-public-keys=http://host.docker.internal:9000/api/v1/eth2/publicKeys", "--validators-external-signer-url=http://host.docker.internal:9000"]
+    # Teku VC: external signer + SP + fee recipient
+    vc_extra_params:
+      [
+        "--validators-external-signer-url=http://172.17.0.1:9000",
+        "--validators-external-signer-public-keys=http://172.17.0.1:9000/api/v1/eth2/publicKeys",
+        "--validators-external-signer-slashing-protection-enabled=true",
+        "--validators-proposer-default-fee-recipient=0x0000000000000000000000000000000000000001"
+      ]
     el_extra_params: ["--http.api=eth,net,web3,debug,admin,txpool"]
 
+# --- Network params: fast timing + minimal preset; forks at genesis for full-path testing
 network_params:
-  seconds_per_slot: 12
-  genesis_delay: 120
+  preset: minimal
+  seconds_per_slot: 4
+  genesis_delay: 30
+
+  # Forks at genesis (adjust if you prefer staggered forks for regression-by-epoch)
   capella_fork_epoch: 0
   deneb_fork_epoch: 0
   electra_fork_epoch: 0
 
-  # Validator configuration
-  num_validator_keys_per_node: 64
-  churn_limit_quotient: 32
-  ejection_balance: 16000000000
+  # Validators
+  num_validator_keys_per_node: 64         # total = 2 * 64 = 128; raise if you want a busier queue
+  ejection_balance: 16000000000           # 16 ETH (gwei), keep for ejection behavior testing
 
-  # Use minimal preset for faster consensus
-  preset: minimal
-
-  # Network ID
+  # Keep IDs constant for reproducibility
   network_id: "3151908"
   deposit_contract_address: "0x4242424242424242424242424242424242424242"
-  
-  # Additional parameters for newer clients
-  max_per_epoch_activation_churn_limit: 8
-  min_validator_withdrawability_delay: 256
-  shard_committee_period: 256
-  
-  # Fix for newer clients - use proper values
-  data_column_sidecar_subnet_count: 1
-  samples_per_slot: 1
-  custody_requirement: 0
-  max_blobs_per_block_electra: 6
-  target_blobs_per_block_electra: 3
-  max_request_blob_sidecars_electra: 768
-  base_fee_update_fraction_electra: 64
 
-# Additional services for monitoring and testing
+# --- Tooling: visibility & load to drive attestations/blocks
 additional_services:
+  - prometheus
+  - grafana
   - forkmon
+  - tx_spammer
+  - dora
 
-# Don't wait for finalization to speed up testing
+# Do not block on finalization during bring-up (faster startup loops)
 wait_for_finalization: false
 
-# Global settings
+# Global logging
 global_log_level: info
 
-# MEV configuration (disabled for simplicity)
+# MEV/PBS off for simplicity (enable later if needed)
 mev_type: null
