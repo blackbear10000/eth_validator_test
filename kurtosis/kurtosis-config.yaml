@@ -1,4 +1,6 @@
-# Linux-ready devnet: fast validator lifecycle + external Web3Signer
+# Kurtosis Ethereum Package Configuration (no external Web3Signer)
+# Goal: fast validator lifecycle (activate/exit) with latest clients, stable bring-up
+
 participants:
   - el_type: geth
     el_image: ethereum/client-go:v1.16.3
@@ -6,9 +8,9 @@ participants:
     cl_image: sigp/lighthouse:v7.1.0
     vc_type: lighthouse
     vc_image: sigp/lighthouse:v7.1.0
+    # No external-signer flags; package will provision local keystores for VC
     vc_extra_params:
       [
-        "--validators-external-signer=http://172.17.0.1:9000",
         "--suggested-fee-recipient=0x0000000000000000000000000000000000000001"
       ]
     el_extra_params: ["--http.api=eth,net,web3,debug,admin,txpool"]
@@ -21,28 +23,26 @@ participants:
     vc_image: consensys/teku:25.9.3
     vc_extra_params:
       [
-        "--validators-external-signer-url=http://172.17.0.1:9000",
-        "--validators-external-signer-public-keys=http://172.17.0.1:9000/api/v1/eth2/publicKeys",
-        "--validators-external-signer-slashing-protection-enabled=true",
         "--validators-proposer-default-fee-recipient=0x0000000000000000000000000000000000000001"
       ]
     el_extra_params: ["--http.api=eth,net,web3,debug,admin,txpool"]
 
 network_params:
+  # Fast timings
   preset: minimal
   seconds_per_slot: 4
-  genesis_delay: 60
+  genesis_delay: 120
 
-  # Fork schedule — avoid Electra at epoch 0 to prevent CL init edge-cases
+  # Forks: enable up to Deneb at genesis; push Electra to aligned epoch (safer)
   altair_fork_epoch: 0
   bellatrix_fork_epoch: 0
   capella_fork_epoch: 0
   deneb_fork_epoch: 0
-  electra_fork_epoch: 2
+  electra_fork_epoch: 256
 
   # Validators
-  num_validator_keys_per_node: 64
-  ejection_balance: 16000000000
+  num_validator_keys_per_node: 64   # total = 128
+  ejection_balance: 16000000000     # 16 ETH (gwei)
 
   # Deterministic IDs
   network_id: "3151908"
