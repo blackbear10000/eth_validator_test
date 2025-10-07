@@ -1,58 +1,61 @@
-# Kurtosis Ethereum Package Configuration (no external Web3Signer)
-# Goal: fast validator lifecycle (activate/exit) with latest clients, stable bring-up
+# Kurtosis Ethereum Package Configuration
+# This configuration spins up a fast devnet with built-in validators
+# External Web3Signer will be used for additional validator management
 
 participants:
+  # --- Combo 1: Geth × Lighthouse (Built-in validators) ---
   - el_type: geth
     el_image: ethereum/client-go:v1.16.3
     cl_type: lighthouse
     cl_image: sigp/lighthouse:v7.1.0
     vc_type: lighthouse
     vc_image: sigp/lighthouse:v7.1.0
-    # No external-signer flags; package will provision local keystores for VC
-    vc_extra_params:
-      [
-        "--suggested-fee-recipient=0x0000000000000000000000000000000000000001"
-      ]
     el_extra_params: ["--http.api=eth,net,web3,debug,admin,txpool"]
 
+  # --- Combo 2: Geth × Teku (Built-in validators) ---
   - el_type: geth
     el_image: ethereum/client-go:v1.16.3
     cl_type: teku
     cl_image: consensys/teku:25.9.3
     vc_type: teku
     vc_image: consensys/teku:25.9.3
-    vc_extra_params:
-      [
-        "--validators-proposer-default-fee-recipient=0x0000000000000000000000000000000000000001"
-      ]
     el_extra_params: ["--http.api=eth,net,web3,debug,admin,txpool"]
 
 network_params:
-  # Fast timings
-  preset: minimal
+  # ===== 时间尺度（缩短等待但不跳过）=====
+  # slot 缩短，epoch = 32 × 4s = 128s；把 64-epoch 投票期压到 ~2 分钟量级
   seconds_per_slot: 4
-  genesis_delay: 120
+  # 缩短 ETH1 跟随距离（主网是 2048）；设 16（甚至 1 也行）
+  eth1_follow_distance: 16
 
-  # Forks: enable up to Deneb at genesis; push Electra to aligned epoch (safer)
-  altair_fork_epoch: 0
-  bellatrix_fork_epoch: 0
-  capella_fork_epoch: 0
-  deneb_fork_epoch: 0
-  electra_fork_epoch: 256
+  # ===== 激活队列（更快清队列）=====
+  # 主网等价：65536；这里降到 32，让每个 epoch 激活更多
+  churn_limit_quotient: 32
+  max_per_epoch_activation_churn_limit: 64
 
-  # Validators
-  num_validator_keys_per_node: 64   # total = 128
-  ejection_balance: 16000000000     # 16 ETH (gwei)
+  # ===== 创世与验证者基数 =====
+  # 只给每台 VC 少量 genesis 验证者用于引导；大规模用 deposit 后续注册
+  num_validator_keys_per_node: 8
+  # 便于提款观察：直接用 0x01，退出后自动提款到 EL 地址
+  withdrawal_type: "0x01"
 
-  # Deterministic IDs
-  network_id: "3151908"
-  deposit_contract_address: "0x4242424242424242424242424242424242424242"
+  # 预置资金账户（用来批量发送 deposit 交易）
+  prefunded_accounts: '{
+    "0xDeaDbeefDeaDbeefDeaDbeefDeaDbeefDeaDBeEF": {"balance":"10000ETH"}
+  }'
 
+  # 给 EL 启动更宽窗口（避免 CL 先跑起来）
+  genesis_delay: 90
+
+# 监控与工具（均为包支持的合法服务名）
 additional_services:
   - prometheus_grafana
   - forkmon
-  - broadcaster
   - dora
+  - blockscout         # 看 EL 交易/合约
+  - tx_fuzz            # 产生交易负载；也可换 broadcaster/custom_flood/spamoor
+  - blobscan           # 如需观察 4844 blob
+  - tempo              # tracing（Grafana Tempo）
 
 wait_for_finalization: false
 global_log_level: info

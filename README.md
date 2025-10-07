@@ -4,25 +4,24 @@ A comprehensive testing framework for Ethereum validator lifecycle management us
 
 ## 🎯 Overview
 
-This system validates the full Ethereum validator lifecycle:
-- **Key Generation**: BLS validator keys using secure mnemonic derivation
-- **Key Storage**: HashiCorp Vault with Consul backend for persistence
-- **Remote Signing**: Web3Signer integration for validator operations
-- **Network Setup**: Accelerated devnet using Kurtosis with 4 EL/CL pairs
-- **Deposit Flow**: Batch deposit generation and submission
-- **Lifecycle Management**: Activation, monitoring, voluntary exit, and withdrawal
+This system validates the full Ethereum validator lifecycle with a **hybrid architecture**:
+- **Kurtosis Devnet**: Built-in validators for network stability
+- **External Validators**: Web3Signer-managed validators for lifecycle testing
+- **Key Management**: HashiCorp Vault for secure key storage
+- **Remote Signing**: Web3Signer for external validator operations
+- **Lifecycle Testing**: Complete validator onboarding/exit workflows
 
 ## 🏗️ Architecture
 
-### Remote Signing Stack
-- **Consul** (port 8500): Persistent storage backend
-- **Vault** (port 8200): Secure key storage with KV v2 engine
-- **Web3Signer** (port 9000): Remote signing service with Key Manager API
+### Hybrid Validator Architecture
+- **Kurtosis Built-in Validators**: 2 EL/CL pairs (Geth+Lighthouse, Geth+Teku) with built-in validators
+- **External Web3Signer Validators**: Additional validators managed via Web3Signer for testing
 
-### Ethereum Devnet (Kurtosis)
-- **4 EL/CL pairs**: geth+prysm, reth+lighthouse, geth+lighthouse, reth+prysm
-- **Accelerated parameters**: 6s slots, 8 slot epochs for fast testing
-- **Dynamic port mapping**: Isolated network with external access
+### Infrastructure Stack
+- **Consul** (port 8500): Persistent storage backend for Vault
+- **Vault** (port 8200): Secure key storage with KV v2 engine
+- **Web3Signer** (port 9000): Remote signing service for external validators
+- **Kurtosis Devnet**: Accelerated testnet with 4s slots for fast testing
 
 ## 🚀 Quick Start
 
@@ -32,41 +31,48 @@ This system validates the full Ethereum validator lifecycle:
 - Python 3.8+
 - Git (for downloading eth2-deposit-cli)
 
-**Note**: The system uses a simplified key generation approach for testing. For production use, the official `eth2-deposit-cli` is automatically downloaded from GitHub when available.
+### Two-Phase Workflow
 
-### One-Command Test
+#### Phase 1: Infrastructure Setup
 ```bash
-./start.sh full-test
+# Start infrastructure (Vault, Web3Signer, Kurtosis devnet)
+./start.sh quick-start
 ```
 
-### Step-by-Step Setup
+#### Phase 2: External Validator Testing
 ```bash
-# 1. Start infrastructure
+# Run complete external validator lifecycle test
+./start.sh external-test
+```
+
+### Step-by-Step External Validator Management
+```bash
+# 1. Start infrastructure first
 ./start.sh quick-start
 
-# 2. Run individual phases
+# 2. Run external validator phases
 cd scripts && source venv/bin/activate
 
-# Generate and store keys
-python3 orchestrate.py generate-keys
+# Check service status
+python3 external_validator_manager.py check-services
 
-# Create deposit data
-python3 orchestrate.py create-deposits
+# Generate external validator keys
+python3 external_validator_manager.py generate-keys --count 5
 
-# Wait for validator activation
-python3 orchestrate.py wait-activation
+# Create and submit deposits
+python3 external_validator_manager.py submit-deposits
 
-# Monitor validator performance
-python3 orchestrate.py monitor
+# Wait for activation
+python3 external_validator_manager.py wait-activation
+
+# Monitor performance
+python3 external_validator_manager.py monitor
 
 # Test voluntary exit
-python3 orchestrate.py test-exit
+python3 external_validator_manager.py test-exit
 
 # Test withdrawal process
-python3 orchestrate.py test-withdrawal
-
-# Generate final report
-python3 orchestrate.py generate-report
+python3 external_validator_manager.py test-withdrawal
 ```
 
 ### Cleanup
@@ -82,12 +88,58 @@ python3 orchestrate.py generate-report
 ```
 
 Commands:
-- `full-test` - Complete validator lifecycle test
-- `quick-start` - Infrastructure setup only
+- `quick-start` - Start infrastructure (Vault, Web3Signer, Kurtosis)
+- `external-test` - Run external validator lifecycle test
+- `full-test` - Alias for external-test
 - `status` - Show service status
 - `logs` - Show service logs
 - `cleanup` - Stop all services
 - `help` - Show help
+
+### Infrastructure Management
+```bash
+# Start infrastructure
+python3 scripts/orchestrate.py start-infra
+
+# Check status
+python3 scripts/orchestrate.py status
+
+# Cleanup
+python3 scripts/orchestrate.py cleanup
+```
+
+### External Validator Management
+```bash
+# Check services
+python3 scripts/external_validator_manager.py check-services
+
+# Generate keys
+python3 scripts/external_validator_manager.py generate-keys --count 5
+
+# Create deposits
+python3 scripts/external_validator_manager.py create-deposits
+
+# Submit deposits
+python3 scripts/external_validator_manager.py submit-deposits
+
+# Wait for activation
+python3 scripts/external_validator_manager.py wait-activation
+
+# Monitor validators
+python3 scripts/external_validator_manager.py monitor
+
+# Test exit
+python3 scripts/external_validator_manager.py test-exit
+
+# Test withdrawal
+python3 scripts/external_validator_manager.py test-withdrawal
+
+# Full test
+python3 scripts/external_validator_manager.py full-test
+
+# Cleanup
+python3 scripts/external_validator_manager.py cleanup
+```
 
 ### Individual Tools
 
@@ -120,20 +172,31 @@ python3 scripts/validator_lifecycle.py wait-withdrawal --pubkeys 0xabc...
 
 ## 🔧 Configuration
 
-Edit `test_config.json`:
+### Infrastructure Configuration
+Edit `test_config.json` for external validator settings:
 
 ```json
 {
-  "validator_count": 10,
-  "withdrawal_address": "0x1234567890123456789012345678901234567890",
+  "external_validator_count": 5,
+  "withdrawal_address": "0x0000000000000000000000000000000000000001",
   "timeout_activation": 1800,
   "timeout_exit": 1800,
-  "monitoring_duration": 600,
-  "network_params": {
-    "slots_per_epoch": 8,
-    "seconds_per_slot": 6
-  }
+  "monitoring_duration": 600
 }
+```
+
+### Kurtosis Configuration
+Edit `kurtosis/kurtosis-config.yaml` for devnet settings:
+
+```yaml
+network_params:
+  seconds_per_slot: 4
+  eth1_follow_distance: 16
+  churn_limit_quotient: 32
+  max_per_epoch_activation_churn_limit: 64
+  num_validator_keys_per_node: 8
+  withdrawal_type: "0x01"
+  genesis_delay: 90
 ```
 
 ## 📊 Monitoring & Debugging
@@ -143,20 +206,35 @@ Edit `test_config.json`:
 - **Vault UI**: http://localhost:8200 (token: `dev-root-token`)
 - **Web3Signer API**: http://localhost:9000
 - **Beacon API**: http://localhost:5052 (varies by Kurtosis mapping)
+- **Prometheus**: http://localhost:3000 (if enabled)
+- **Grafana**: http://localhost:3001 (if enabled)
 
 ### Check Service Status
 ```bash
+# Infrastructure status
+./start.sh status
+
+# Docker services
 docker ps
+
+# Kurtosis enclaves
 kurtosis enclave ls
+
+# Service health checks
 curl http://localhost:8200/v1/sys/health
 curl http://localhost:9000/upcheck
 ```
 
 ### View Logs
 ```bash
+# Infrastructure logs
+./start.sh logs
+
+# Individual service logs
 docker-compose logs -f vault
 docker-compose logs -f web3signer
-kurtosis service logs eth-devnet cl-1-lighthouse-prysm
+kurtosis service logs eth-devnet cl-1-lighthouse-geth
+kurtosis service logs eth-devnet cl-2-teku-geth
 ```
 
 ### Troubleshooting
@@ -212,41 +290,43 @@ The system attempts to use the official CLI when available, falling back to simp
 ## 🧪 Validation Checklist
 
 The system validates:
-- ✅ Vault securely stores/retrieves BLS keys
-- ✅ Web3Signer loads keys via Key Manager API
-- ✅ Validator clients connect to Web3Signer for signing
-- ✅ Deposit data generation and validation
-- ✅ Validator lifecycle: pending → active → exited → withdrawn
-- ✅ Accelerated network parameters for fast testing
+- ✅ **Kurtosis Devnet**: Built-in validators provide network stability
+- ✅ **Vault Integration**: Securely stores/retrieves BLS keys for external validators
+- ✅ **Web3Signer Integration**: Loads keys via Key Manager API
+- ✅ **External Validator Lifecycle**: pending → active → exited → withdrawn
+- ✅ **Deposit Flow**: Generation, submission, and activation
+- ✅ **Remote Signing**: External validators sign via Web3Signer
+- ✅ **Accelerated Testing**: 4s slots for fast validation cycles
 
 ## 📁 Project Structure
 
 ```
-eth_validator/
-├── docker-compose.yml           # Remote signing stack
-├── start.sh                     # Main entry point
-├── test_config.json            # Test configuration
+eth_validator_test/
+├── docker-compose.yml                    # Remote signing stack
+├── start.sh                              # Main entry point
+├── test_config.json                     # Test configuration
 ├── kurtosis/
-│   ├── kurtosis-config.yaml    # Devnet configuration
-│   └── network-params.yaml     # Network parameters
+│   └── kurtosis-config.yaml             # Devnet configuration (built-in validators)
 ├── vault/
-│   ├── config/vault.hcl        # Vault configuration
-│   └── init/admin-policy.hcl   # Vault policies
+│   ├── config/vault.hcl                 # Vault configuration
+│   └── init/admin-policy.hcl            # Vault policies
 ├── web3signer/
-│   └── config/config.yaml      # Web3Signer configuration
+│   ├── config/config.yaml               # Web3Signer configuration
+│   └── keys/                            # External validator keys
 └── scripts/
-    ├── generate_keys.py        # Key generation
-    ├── key_manager.py          # Key management
-    ├── deposit_manager.py      # Deposit handling
-    ├── validator_lifecycle.py  # Lifecycle management
-    ├── vault_setup.py          # Vault initialization
-    ├── orchestrate.py          # Test orchestration
-    └── requirements.txt        # Python dependencies
+    ├── orchestrate.py                   # Infrastructure orchestration
+    ├── external_validator_manager.py    # External validator lifecycle
+    ├── generate_keys.py                 # Key generation
+    ├── key_manager.py                   # Key management
+    ├── deposit_manager.py               # Deposit handling
+    ├── validator_lifecycle.py           # Lifecycle management
+    ├── vault_setup.py                   # Vault initialization
+    └── requirements.txt                 # Python dependencies
 ```
 
 ## 🤝 Contributing
 
-1. Test changes with `./start.sh full-test`
+1. Test changes with `./start.sh external-test`
 2. Ensure all validation checklist items pass
 3. Update documentation for new features
 4. Follow existing code patterns and error handling

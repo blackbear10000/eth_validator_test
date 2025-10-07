@@ -86,16 +86,22 @@ COMMAND=${1:-full-test}
 
 case $COMMAND in
     "full-test")
-        echo -e "${BLUE}Running full validator lifecycle test...${NC}"
+        echo -e "${BLUE}Running full external validator lifecycle test...${NC}"
         cd scripts
         source venv/bin/activate
-        python3 orchestrate.py full-test
+        python3 external_validator_manager.py full-test
         ;;
     "quick-start")
         echo -e "${BLUE}Quick start - infrastructure only...${NC}"
         cd scripts
         source venv/bin/activate
         python3 orchestrate.py start-infra
+        ;;
+    "external-test")
+        echo -e "${BLUE}Running external validator test...${NC}"
+        cd scripts
+        source venv/bin/activate
+        python3 external_validator_manager.py full-test
         ;;
     "cleanup")
         echo -e "${YELLOW}Cleaning up all services...${NC}"
@@ -105,11 +111,9 @@ case $COMMAND in
         ;;
     "status")
         echo -e "${BLUE}Checking service status...${NC}"
-        echo -e "${YELLOW}Docker containers:${NC}"
-        docker ps --format "table {{.Names}}\t{{.Status}}\t{{.Ports}}"
-        echo
-        echo -e "${YELLOW}Kurtosis enclaves:${NC}"
-        kurtosis enclave ls || echo "No Kurtosis enclaves running"
+        cd scripts
+        source venv/bin/activate
+        python3 orchestrate.py status
         ;;
     "logs")
         echo -e "${BLUE}Showing service logs...${NC}"
@@ -119,22 +123,30 @@ case $COMMAND in
     "help")
         echo -e "${BLUE}ETH Validator Testing Commands:${NC}"
         echo ""
-        echo -e "${GREEN}./start.sh full-test${NC}    - Run complete validator lifecycle test"
-        echo -e "${GREEN}./start.sh quick-start${NC}  - Start infrastructure only"
-        echo -e "${GREEN}./start.sh cleanup${NC}      - Stop and remove all services"
-        echo -e "${GREEN}./start.sh status${NC}       - Show status of running services"
-        echo -e "${GREEN}./start.sh logs${NC}         - Show service logs"
-        echo -e "${GREEN}./start.sh help${NC}         - Show this help"
+        echo -e "${GREEN}./start.sh quick-start${NC}     - Start infrastructure (Vault, Web3Signer, Kurtosis)"
+        echo -e "${GREEN}./start.sh external-test${NC}   - Run external validator lifecycle test"
+        echo -e "${GREEN}./start.sh full-test${NC}       - Alias for external-test"
+        echo -e "${GREEN}./start.sh cleanup${NC}         - Stop and remove all services"
+        echo -e "${GREEN}./start.sh status${NC}          - Show status of running services"
+        echo -e "${GREEN}./start.sh logs${NC}            - Show service logs"
+        echo -e "${GREEN}./start.sh help${NC}            - Show this help"
         echo ""
-        echo -e "${YELLOW}Individual phases:${NC}"
+        echo -e "${YELLOW}External validator management:${NC}"
         echo "cd scripts && source venv/bin/activate"
-        echo "python3 orchestrate.py generate-keys"
-        echo "python3 orchestrate.py create-deposits"
-        echo "python3 orchestrate.py wait-activation"
-        echo "python3 orchestrate.py monitor"
-        echo "python3 orchestrate.py test-exit"
-        echo "python3 orchestrate.py test-withdrawal"
-        echo "python3 orchestrate.py generate-report"
+        echo "python3 external_validator_manager.py check-services"
+        echo "python3 external_validator_manager.py generate-keys"
+        echo "python3 external_validator_manager.py create-deposits"
+        echo "python3 external_validator_manager.py submit-deposits"
+        echo "python3 external_validator_manager.py wait-activation"
+        echo "python3 external_validator_manager.py monitor"
+        echo "python3 external_validator_manager.py test-exit"
+        echo "python3 external_validator_manager.py test-withdrawal"
+        echo ""
+        echo -e "${YELLOW}Architecture:${NC}"
+        echo "• Kurtosis devnet: Built-in validators (no Web3Signer)"
+        echo "• External validators: Managed via Web3Signer"
+        echo "• Vault: Key storage for external validators"
+        echo "• Web3Signer: Remote signing for external validators"
         ;;
     *)
         echo -e "${RED}Unknown command: $COMMAND${NC}"
