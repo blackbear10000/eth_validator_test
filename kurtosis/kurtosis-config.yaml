@@ -70,7 +70,6 @@ additional_services:
   - blockscout         # 看 EL 交易/合约
   - tx_fuzz            # 产生交易负载；也可换 broadcaster/custom_flood/spamoor
   - blobscan           # 如需观察 4844 blob
-  - tempo              # tracing（Grafana Tempo）
 
 wait_for_finalization: false
 global_log_level: info
