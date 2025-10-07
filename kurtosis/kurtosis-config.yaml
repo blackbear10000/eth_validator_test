@@ -34,10 +34,25 @@ network_params:
   max_per_epoch_activation_churn_limit: 64
 
   # ===== 创世与验证者基数 =====
-  # 只给每台 VC 少量 genesis 验证者用于引导；大规模用 deposit 后续注册
-  num_validator_keys_per_node: 8
+  # 每台 VC 需要足够的 genesis 验证者以满足最小要求（64个）
+  # 2 个节点 × 32 个验证者/节点 = 64 个验证者
+  num_validator_keys_per_node: 32
   # 便于提款观察：直接用 0x01，退出后自动提款到 EL 地址
   withdrawal_type: "0x01"
+
+  # ===== 网络配置 =====
+  # 使用 minimal preset 以加快共识
+  preset: minimal
+  # 网络 ID
+  network_id: "3151908"
+  # 存款合约地址
+  deposit_contract_address: "0x4242424242424242424242424242424242424242"
+  
+  # ===== Fork 配置 =====
+  # 启用所有 fork 从 genesis 开始
+  capella_fork_epoch: 0
+  deneb_fork_epoch: 0
+  electra_fork_epoch: 0
 
   # 预置资金账户（用来批量发送 deposit 交易）
   prefunded_accounts: '{
