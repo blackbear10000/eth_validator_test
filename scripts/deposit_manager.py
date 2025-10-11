@@ -385,7 +385,11 @@ class DepositManager:
 
         # Sign and send transaction
         signed_txn = self.web3.eth.account.sign_transaction(transaction, private_key)
-        tx_hash = self.web3.eth.send_raw_transaction(signed_txn.rawTransaction)
+        # Handle both old and new Web3.py versions
+        raw_tx = getattr(signed_txn, 'raw_transaction', getattr(signed_txn, 'rawTransaction', None))
+        if raw_tx is None:
+            raise AttributeError("Cannot find raw transaction data")
+        tx_hash = self.web3.eth.send_raw_transaction(raw_tx)
 
         # Wait for receipt
         receipt = self.web3.eth.wait_for_transaction_receipt(tx_hash)
@@ -439,7 +443,11 @@ class DepositManager:
 
             # Sign and send
             signed_txn = self.web3.eth.account.sign_transaction(transaction, private_key)
-            tx_hash = self.web3.eth.send_raw_transaction(signed_txn.rawTransaction)
+            # Handle both old and new Web3.py versions
+            raw_tx = getattr(signed_txn, 'raw_transaction', getattr(signed_txn, 'rawTransaction', None))
+            if raw_tx is None:
+                raise AttributeError("Cannot find raw transaction data")
+            tx_hash = self.web3.eth.send_raw_transaction(raw_tx)
 
             print(f"Submitted batch {i//batch_size + 1} with {len(batch)} deposits: {tx_hash.hex()}")
             tx_hashes.append(tx_hash.hex())
@@ -619,7 +627,11 @@ class DepositManager:
                 # Sign and send transaction
                 try:
                     signed_txn = w3.eth.account.sign_transaction(transaction, private_key)
-                    tx_hash = w3.eth.send_raw_transaction(signed_txn.rawTransaction)
+                    # Handle both old and new Web3.py versions
+                    raw_tx = getattr(signed_txn, 'raw_transaction', getattr(signed_txn, 'rawTransaction', None))
+                    if raw_tx is None:
+                        raise AttributeError("Cannot find raw transaction data")
+                    tx_hash = w3.eth.send_raw_transaction(raw_tx)
                     
                     print(f"✅ Deposit {i+1} submitted: {tx_hash.hex()}")
                     tx_hashes.append(tx_hash.hex())
