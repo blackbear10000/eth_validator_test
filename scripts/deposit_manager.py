@@ -491,6 +491,9 @@ class DepositManager:
     def _submit_to_kurtosis_testnet(self, deposit_data: List[Dict[str, Any]], config: dict) -> bool:
         """Submit deposits to Kurtosis testnet"""
         try:
+            # Import Web3 at the beginning of the method
+            from web3 import Web3
+            
             kurtosis_config = config["kurtosis_testnet"]
             web3_url = kurtosis_config["web3_url"]
             from_address = kurtosis_config["from_address"]
@@ -508,7 +511,6 @@ class DepositManager:
             print(f"📝 Deposit contract: {deposit_contract_address}")
             
             # Connect to Web3
-            from web3 import Web3
             w3 = Web3(Web3.HTTPProvider(web3_url))
             
             if not w3.is_connected():
@@ -546,7 +548,7 @@ class DepositManager:
             
             # Create contract instance
             contract = w3.eth.contract(
-                address=Web3.to_checksum_address(deposit_contract_address),
+                address=deposit_contract_address,
                 abi=deposit_contract_abi
             )
             
