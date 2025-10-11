@@ -60,6 +60,11 @@ network_params:
   # 给 EL 充足时间就绪，避免 CL 先行导致初始化失败
   genesis_delay: 180
 
+
+wait_for_finalization: false
+global_log_level: info
+mev_type: null
+
 additional_services:
   - prometheus_grafana
   - forkmon
@@ -68,6 +73,25 @@ additional_services:
   - tx_fuzz
   - blobscan
 
-wait_for_finalization: false
-global_log_level: info
-mev_type: null
+# ↓↓↓ 新增：为前端/索引器注入 ENV ↓↓↓
+additional_services_config:
+  blockscout:
+    env_vars:
+      # 让 Blockscout 明确连到“第一个 geth”的 RPC（名字按 inspect 列表微调）
+      ETHEREUM_JSONRPC_HTTP_URL:  "http://el-1-geth-prysm:8545"
+      ETHEREUM_JSONRPC_WS_URL:    "ws://el-1-geth-prysm:8546"
+      ETHEREUM_JSONRPC_TRACE_URL: "http://el-1-geth-prysm:8545"
+      # （可选）起始区块，防止从错误高度开始。genesis=0 就写 0
+      FIRST_BLOCK: "0"
+      TRACE_FIRST_BLOCK: "0"
+      # （可选）链 ID/显示信息
+      CHAIN_ID: "3151908"
+      NETWORK: "devnet"
+      COIN: "ETH"
+
+  blobscan:
+    env_vars:
+      # 改掉 127.0.0.1，指向包里启动的 redis 服务名（用 inspect 看实际名；常见 blobscan-redis）
+      REDIS_URL:  "redis://blobscan-redis:6379"
+      REDIS_HOST: "blobscan-redis"
+      REDIS_PORT: "6379"
