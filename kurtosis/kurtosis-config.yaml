@@ -2,24 +2,29 @@
 # Goal: fast devnet with built-in validators; later you can add external Web3Signer
 
 participants:
-  # 1) Geth × Prysm  —— 需要 trace 给 Blockscout
+  # 1) Geth × Prysm —— 作为归档 + 调试/追踪节点（便于接 Blockscout）
   - el_type: geth
     cl_type: prysm
     vc_type: prysm
-    el_extra_params: ["--http.api=admin,engine,net,eth,web3,debug,txpool,trace"]
+    el_extra_params:
+      - "--http.api=admin,engine,net,eth,web3,debug,txpool"   # 移除 trace
+      - "--gcmode=archive"                                    # 如需 Blockscout/全量追踪
+      # - "--syncmode=full"                                   # 视需要；devnet 通常无所谓
 
-  # 2) Reth × Lighthouse —— 不要 el_extra_params（避免重复）
+  # 2) Reth × Lighthouse —— 常规
   - el_type: reth
     cl_type: lighthouse
     vc_type: lighthouse
+    # 不加 geth 专参
 
-  # 3) Geth × Lighthouse —— 同上，只给 geth 加一次 http.api
+  # 3) Geth × Lighthouse —— 常规 HTTP API
   - el_type: geth
     cl_type: lighthouse
     vc_type: lighthouse
-    el_extra_params: ["--http.api=admin,engine,net,eth,web3,debug,txpool,trace"]
+    el_extra_params:
+      - "--http.api=admin,engine,net,eth,web3,debug,txpool"
 
-  # 4) Reth × Prysm —— 同样不要 el_extra_params
+  # 4) Reth × Prysm —— 常规
   - el_type: reth
     cl_type: prysm
     vc_type: prysm
@@ -45,12 +50,12 @@ network_params:
   network_id: "3151908"
   deposit_contract_address: "0x4242424242424242424242424242424242424242"
 
-  # ===== Fork 配置（只到 Deneb；先不启 Electra）=====
+  # ===== Fork 配置 =====
   altair_fork_epoch: 0
   bellatrix_fork_epoch: 0
   capella_fork_epoch: 0
   deneb_fork_epoch: 0
-  # electra_fork_epoch:   # ← 不配置，等网络稳定后再按需开启（建议 256/512）
+  electra_fork_epoch: 0
 
   # ===== 资金准备（用于后续批量 deposit 测试）=====
   prefunded_accounts: '{
@@ -58,7 +63,7 @@ network_params:
   }'
 
   # 给 EL 充足时间就绪，避免 CL 先行导致初始化失败
-  genesis_delay: 180
+  genesis_delay: 60
 
 
 wait_for_finalization: false
@@ -69,29 +74,3 @@ additional_services:
   - prometheus_grafana
   - forkmon
   - dora
-  - blockscout
-  - tx_fuzz
-  - blobscan
-
-# ↓↓↓ 新增：为前端/索引器注入 ENV ↓↓↓
-additional_services_config:
-  blockscout:
-    env_vars:
-      # 让 Blockscout 明确连到“第一个 geth”的 RPC（名字按 inspect 列表微调）
-      ETHEREUM_JSONRPC_HTTP_URL:  "http://el-1-geth-prysm:8545"
-      ETHEREUM_JSONRPC_WS_URL:    "ws://el-1-geth-prysm:8546"
-      ETHEREUM_JSONRPC_TRACE_URL: "http://el-1-geth-prysm:8545"
-      # （可选）起始区块，防止从错误高度开始。genesis=0 就写 0
-      FIRST_BLOCK: "0"
-      TRACE_FIRST_BLOCK: "0"
-      # （可选）链 ID/显示信息
-      CHAIN_ID: "3151908"
-      NETWORK: "devnet"
-      COIN: "ETH"
-
-  blobscan:
-    env_vars:
-      # 改掉 127.0.0.1，指向包里启动的 redis 服务名（用 inspect 看实际名；常见 blobscan-redis）
-      REDIS_URL:  "redis://blobscan-redis:6379"
-      REDIS_HOST: "blobscan-redis"
-      REDIS_PORT: "6379"
