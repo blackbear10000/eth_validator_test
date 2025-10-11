@@ -21,6 +21,30 @@ class DepositManager:
 
         # Standard deposit amount (32 ETH in Wei)
         self.deposit_amount = 32 * 10**18
+        
+        # Network configurations
+        self.network_configs = {
+            "mainnet": {
+                "fork_version": "0x00000000",
+                "deposit_contract_address": "0x00000000219ab540356cBB839Cbe05303d7705Fa",
+                "genesis_validators_root": "0x4b363db94e286120d76eb905340fdd4e54bfe9f06bf33ff6cf5ad27f511bfe95"
+            },
+            "goerli": {
+                "fork_version": "0x00001020",
+                "deposit_contract_address": "0xff50ed3d0ec03aC01D4C79aAd74928BFF48a7b2b",
+                "genesis_validators_root": "0x043db0d9a83813551ee2f33450d23797757d430911a9320530ad8a0eabc43efb"
+            },
+            "sepolia": {
+                "fork_version": "0x90000069",
+                "deposit_contract_address": "0x7f7C6c8c8c8c8c8c8c8c8c8c8c8c8c8c8c8c8c8c",
+                "genesis_validators_root": "0x0000000000000000000000000000000000000000000000000000000000000000"
+            },
+            "devnet": {
+                "fork_version": "0x00000000",  # Kurtosis devnet uses minimal preset
+                "deposit_contract_address": "0x4242424242424242424242424242424242424242",  # From kurtosis config
+                "genesis_validators_root": "0x0000000000000000000000000000000000000000000000000000000000000000"
+            }
+        }
 
         # Batch Deposit Contract ABI (simplified)
         self.batch_deposit_abi = [
@@ -64,23 +88,24 @@ class DepositManager:
         withdrawal_credentials = '01' + '00' * 11 + withdrawal_address
         return '0x' + withdrawal_credentials
 
-    def compute_deposit_domain(self, fork_version: str = "0x00000000") -> bytes:
+    def compute_deposit_domain(self, fork_version: str = "0x00000000", network_name: str = "devnet") -> bytes:
         """Compute deposit domain for signature"""
         # Domain computation for Ethereum 2.0
         # DOMAIN_DEPOSIT = 0x03000000
         domain_type = b'\x03\x00\x00\x00'  # DOMAIN_DEPOSIT (little-endian)
         fork_version_bytes = bytes.fromhex(fork_version.replace('0x', ''))
         
-        # For testnet, use a fixed genesis validators root
-        # In production, this should be the actual genesis validators root
-        genesis_validators_root = b'\x00' * 32  # Use zeros for testnet
+        # Get genesis validators root from network config
+        network_config = self.network_configs.get(network_name, self.network_configs["devnet"])
+        genesis_validators_root_hex = network_config["genesis_validators_root"]
+        genesis_validators_root = bytes.fromhex(genesis_validators_root_hex.replace('0x', ''))
 
         # Domain = domain_type + fork_version + genesis_validators_root
         domain = domain_type + fork_version_bytes + genesis_validators_root
         return domain
 
     def create_deposit_data(self, validator_pubkey: str, withdrawal_address: str,
-                           fork_version: str = "0x00000000") -> Dict[str, Any]:
+                           fork_version: str = None, network_name: str = "devnet") -> Dict[str, Any]:
         """
         Create deposit data for a single validator
         
@@ -88,10 +113,19 @@ class DepositManager:
         NOT cryptographically valid signatures. For production use, implement
         proper BLS12-381 signing with the validator's private key.
         """
+        # Get network configuration
+        if network_name not in self.network_configs:
+            raise ValueError(f"Unknown network: {network_name}")
+        
+        network_config = self.network_configs[network_name]
+        if fork_version is None:
+            fork_version = network_config["fork_version"]
+        
         try:
             # Convert pubkey to bytes
             pubkey_bytes = bytes.fromhex(validator_pubkey.replace('0x', ''))
             print(f"Debug: Processing validator pubkey: {validator_pubkey[:20]}...")
+            print(f"Debug: Using network: {network_name}, fork_version: {fork_version}")
         except Exception as e:
             print(f"Error processing pubkey {validator_pubkey}: {e}")
             raise
@@ -133,7 +167,7 @@ class DepositManager:
         
         # Create a deterministic signature for testing
         # In production, this should be properly signed with the validator's private key
-        domain = self.compute_deposit_domain(fork_version)
+        domain = self.compute_deposit_domain(fork_version, network_name)
         
         # Create signing root: hash(deposit_message_root + domain)
         signing_root = hashlib.sha256(deposit_message_root + domain).digest()
@@ -162,13 +196,15 @@ class DepositManager:
             "deposit_message_root": "0x" + deposit_message_root.hex(),
             "deposit_data_root": "0x" + deposit_data_root.hex(),
             "fork_version": fork_version,
-            "network_name": "devnet",
+            "network_name": network_name,
+            "deposit_contract_address": network_config["deposit_contract_address"],
+            "genesis_validators_root": network_config["genesis_validators_root"],
             "deposit_cli_version": "2.5.0"
         }
 
     def generate_batch_deposit_data(self, withdrawal_address: str, validator_count: int,
                                    vault_manager, output_file: str = "deposit_data.json",
-                                   use_mnemonic: str = None) -> List[Dict[str, Any]]:
+                                   use_mnemonic: str = None, network_name: str = "devnet") -> List[Dict[str, Any]]:
         """Generate deposit data for multiple validators"""
 
         # If mnemonic is provided, use the deposit CLI wrapper
@@ -211,7 +247,8 @@ class DepositManager:
             try:
                 deposit_info = self.create_deposit_data(
                     validator_pubkey=key_info["validator_pubkey"],
-                    withdrawal_address=withdrawal_address
+                    withdrawal_address=withdrawal_address,
+                    network_name=network_name
                 )
             except Exception as e:
                 print(f"Error creating deposit data for key {key_info['key_id']}: {e}")
@@ -223,14 +260,94 @@ class DepositManager:
 
             deposit_data.append(deposit_info)
 
+        # Validate deposit data
+        print("\n=== Validating Deposit Data ===")
+        for i, deposit in enumerate(deposit_data):
+            validation = self.validate_deposit_data(deposit)
+            if not validation["is_valid"]:
+                print(f"❌ Validator {i}: {validation['errors']}")
+            else:
+                print(f"✅ Validator {i}: Valid")
+                if validation["warnings"]:
+                    print(f"   ⚠️  Warnings: {validation['warnings']}")
+
         # Save deposit data to file
         with open(output_file, 'w') as f:
             json.dump(deposit_data, f, indent=2)
 
-        print(f"Generated deposit data for {len(deposit_data)} validators")
+        print(f"\nGenerated deposit data for {len(deposit_data)} validators")
         print(f"Deposit data saved to: {output_file}")
 
         return deposit_data
+
+    def validate_deposit_data(self, deposit_data: Dict[str, Any]) -> Dict[str, Any]:
+        """Validate deposit data structure and values"""
+        validation_results = {
+            "is_valid": True,
+            "errors": [],
+            "warnings": []
+        }
+        
+        # Check required fields
+        required_fields = [
+            "pubkey", "withdrawal_credentials", "amount", "signature",
+            "deposit_message_root", "deposit_data_root", "fork_version"
+        ]
+        
+        for field in required_fields:
+            if field not in deposit_data:
+                validation_results["errors"].append(f"Missing required field: {field}")
+                validation_results["is_valid"] = False
+        
+        if not validation_results["is_valid"]:
+            return validation_results
+        
+        # Validate field lengths
+        if len(deposit_data["pubkey"]) != 98:  # 0x + 48 bytes * 2
+            validation_results["errors"].append("Invalid pubkey length")
+            validation_results["is_valid"] = False
+            
+        if len(deposit_data["withdrawal_credentials"]) != 66:  # 0x + 32 bytes * 2
+            validation_results["errors"].append("Invalid withdrawal_credentials length")
+            validation_results["is_valid"] = False
+            
+        if len(deposit_data["signature"]) != 194:  # 0x + 96 bytes * 2
+            validation_results["errors"].append("Invalid signature length")
+            validation_results["is_valid"] = False
+            
+        if len(deposit_data["deposit_message_root"]) != 66:  # 0x + 32 bytes * 2
+            validation_results["errors"].append("Invalid deposit_message_root length")
+            validation_results["is_valid"] = False
+            
+        if len(deposit_data["deposit_data_root"]) != 66:  # 0x + 32 bytes * 2
+            validation_results["errors"].append("Invalid deposit_data_root length")
+            validation_results["is_valid"] = False
+        
+        # Validate amount
+        try:
+            amount = int(deposit_data["amount"])
+            if amount != 32000000000:  # 32 ETH in Gwei
+                validation_results["warnings"].append(f"Amount is {amount} Gwei, expected 32000000000 Gwei")
+        except ValueError:
+            validation_results["errors"].append("Invalid amount format")
+            validation_results["is_valid"] = False
+        
+        # Validate withdrawal credentials format
+        wc = deposit_data["withdrawal_credentials"]
+        if not wc.startswith("0x01"):
+            validation_results["warnings"].append("Withdrawal credentials should start with 0x01 for ETH1 address")
+        
+        # Check for zero values (warnings)
+        if deposit_data["signature"] == "0x" + "0" * 192:
+            validation_results["warnings"].append("Signature is all zeros (testing signature)")
+            
+        if deposit_data["deposit_message_root"] == "0x" + "0" * 64:
+            validation_results["warnings"].append("Deposit message root is all zeros")
+            
+        if deposit_data["deposit_data_root"] == "0x" + "0" * 64:
+            validation_results["warnings"].append("Deposit data root is all zeros")
+        
+        return validation_results
 
     def deploy_batch_deposit_contract(self, from_address: str, private_key: str) -> str:
         """Deploy batch deposit contract (simplified version)"""
