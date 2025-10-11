@@ -272,7 +272,7 @@ Edit `test_config.json` for external validator settings:
     "enabled": true,
     "web3_url": "http://localhost:8545",
     "deposit_contract_address": "0x4242424242424242424242424242424242424242",
-    "from_address": "0xDeaDbeefDeaDbeefDeaDbeefDeaDbeefDeaDBeEF",
+    "from_address": "0xDeaDbeefdEAdbeefdEadbEEFdeadbeEFdEaDbeeF",
     "private_key": "0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80",
     "gas_price": "20000000000",
     "gas_limit": "1000000"
@@ -286,7 +286,7 @@ The system now supports real deposit submission to Kurtosis testnets:
 
 #### Features
 - **Real Network Submission**: Submit deposits to actual Kurtosis testnet
-- **Pre-funded Account**: Uses `0xDeaDbeefDeaDbeefDeaDbeefDeaDbeefDeaDBeEF` with 10000 ETH
+- **Pre-funded Account**: Uses `0xDeaDbeefdEAdbeefdEadbEEFdeadbeEFdEaDbeeF` with 10000 ETH
 - **Automatic Validation**: Validates deposits before submission
 - **Transaction Tracking**: Shows transaction hashes and confirmation status
 
@@ -298,7 +298,7 @@ Enable Kurtosis testnet submission in `test_config.json`:
     "enabled": true,
     "web3_url": "http://localhost:8545",
     "deposit_contract_address": "0x4242424242424242424242424242424242424242",
-    "from_address": "0xDeaDbeefDeaDbeefDeaDbeefDeaDbeefDeaDBeEF",
+    "from_address": "0xDeaDbeefdEAdbeefdEadbEEFdeadbeEFdEaDbeeF",
     "private_key": "0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80",
     "gas_price": "20000000000",
     "gas_limit": "1000000"

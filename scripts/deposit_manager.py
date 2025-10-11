@@ -499,6 +499,10 @@ class DepositManager:
             gas_price = int(kurtosis_config["gas_price"])
             gas_limit = int(kurtosis_config["gas_limit"])
             
+            # Ensure addresses have correct EIP-55 checksum
+            from_address = Web3.to_checksum_address(from_address)
+            deposit_contract_address = Web3.to_checksum_address(deposit_contract_address)
+            
             print(f"🌐 Connecting to Kurtosis testnet: {web3_url}")
             print(f"📝 From address: {from_address}")
             print(f"📝 Deposit contract: {deposit_contract_address}")
