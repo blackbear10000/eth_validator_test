@@ -10,6 +10,7 @@ This system validates the full Ethereum validator lifecycle with a **hybrid arch
 - **Key Management**: HashiCorp Vault for secure key storage
 - **Remote Signing**: Web3Signer for external validator operations
 - **Lifecycle Testing**: Complete validator onboarding/exit workflows
+- **Official Implementation**: Uses `ethstaker-deposit-cli` for BLS12-381 key generation and deposit data creation
 
 ## 🏗️ Architecture
 
@@ -54,7 +55,22 @@ The system automatically handles validator loading:
 - Docker & Docker Compose
 - [Kurtosis CLI](https://docs.kurtosis.com/install)
 - Python 3.8+
-- Git (for downloading eth2-deposit-cli)
+- Git (for ethstaker-deposit-cli integration)
+
+### 🆕 Latest Updates (ethstaker-deposit-cli Integration)
+
+The system now uses the **official Ethereum Foundation implementation**:
+- ✅ **Real BLS12-381**: Official elliptic curve operations (no more simplified implementations)
+- ✅ **Official SSZ**: Standard serialization for deposit data
+- ✅ **Production Ready**: Cryptographically valid signatures and deposit data
+- ✅ **Multi-Network**: Supports mainnet, testnets, and devnet configurations
+- ✅ **Clean Architecture**: Removed all test key folders, streamlined project structure
+
+### Key Changes
+1. **Official Implementation**: All key generation and deposit data creation now uses `ethstaker-deposit-cli`
+2. **Simplified Workflow**: No more fallback implementations or compatibility issues
+3. **Clean Project Structure**: Removed temporary test folders and files
+4. **Production Standards**: Generated data is ready for real Ethereum networks
 
 ### Two-Phase Workflow
 
@@ -202,7 +218,11 @@ python3 scripts/external_validator_manager.py cleanup
 
 #### Key Generation
 ```bash
+# Generate keys using official ethstaker-deposit-cli
 python3 scripts/generate_keys.py --count 10 --output-dir ./keys
+
+# Or use external validator manager (includes Vault integration)
+python3 scripts/external_validator_manager.py generate-keys --count 10
 ```
 
 #### Key Management
@@ -243,9 +263,21 @@ python3 scripts/key_manager.py status
 
 #### Deposit Management
 ```bash
-python3 scripts/deposit_manager.py generate \
-  --withdrawal-address 0x1234... \
-  --validator-count 10
+# Generate deposit data using official ethstaker-deposit-cli
+python3 scripts/deposit_manager.py \
+  --keys-file ./keys/keys_data.json \
+  --withdrawal-address 0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266 \
+  --network devnet \
+  --output-file deposits.json
+
+# Submit deposits to Kurtosis testnet
+python3 scripts/deposit_manager.py \
+  --keys-file ./keys/keys_data.json \
+  --withdrawal-address 0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266 \
+  --network devnet \
+  --output-file deposits.json \
+  --submit \
+  --config-file test_config.json
 ```
 
 #### Validator Lifecycle
@@ -394,7 +426,8 @@ python3 scripts/web3signer_key_manager.py export
 
 # Check Web3Signer status
 python3 scripts/web3signer_key_manager.py status
-```
+
+# Direct Web3Signer health checks
 curl http://localhost:9000/upcheck
 curl http://localhost:9000/healthcheck/slashing-protection
 ```
@@ -425,11 +458,12 @@ pip install --upgrade pip
 pip install -r requirements.txt
 ```
 
-#### eth2-deposit-cli Issues
-If the official CLI fails to download:
-- The system will automatically fall back to simplified key generation
-- For production use, manually install from: https://github.com/ethereum/staking-deposit-cli
-- Ensure Git is available for automatic download
+#### ethstaker-deposit-cli Integration
+The system now uses the official `ethstaker-deposit-cli` repository:
+- **Automatic Integration**: The repository is included in the project
+- **Official Implementation**: Uses real BLS12-381 cryptographic operations
+- **Production Ready**: Generates cryptographically valid deposit data
+- **No Fallback**: No simplified implementation, only official standards
 
 #### Docker Issues
 ```bash
@@ -485,11 +519,10 @@ python3 scripts/web3signer_key_manager.py remove --all
 ```
 
 #### BLS12-381 Key Length Issues
-If you encounter "Invalid pubkey length" errors:
+The system now generates proper 48-byte BLS12-381 keys using `ethstaker-deposit-cli`:
 ```bash
-# The system now generates 48-byte BLS12-381 keys by default
-# If you have old 32-byte keys, regenerate them:
-python3 scripts/web3signer_key_manager.py remove --all
+# All keys are now generated with official BLS12-381 implementation
+# No more "Invalid pubkey length" errors
 python3 scripts/external_validator_manager.py generate-keys --count 5
 ```
 
@@ -506,8 +539,8 @@ python3 scripts/key_manager.py destroy-deleted --quiet
 
 **Problem**: "Invalid pubkey length" errors
 ```bash
-# Solution: Regenerate keys with proper BLS12-381 length
-python3 scripts/web3signer_key_manager.py remove --all
+# Solution: All keys are now generated with official BLS12-381 implementation
+# This error should no longer occur with ethstaker-deposit-cli integration
 python3 scripts/external_validator_manager.py generate-keys --count 5
 ```
 
@@ -524,24 +557,22 @@ python3 scripts/external_validator_manager.py load-validators
 - **Key Backup**: Always backup generated mnemonics offline
 - **Network Isolation**: Services run in isolated Docker networks
 - **Vault Dev Mode**: In-memory storage with dev root token
-- **Key Generation**: Uses simplified BLS key derivation for testing; production should use official `eth2-deposit-cli`
+- **Key Generation**: Uses official `ethstaker-deposit-cli` for BLS12-381 key generation and deposit data creation
 
-### Key Generation Approaches
+### Key Generation Implementation
 
-#### Simplified (Default)
-- Built-in Python implementation for testing
-- Generates 48-byte BLS12-381 compatible keys
-- Uses deterministic hash-based key derivation for testing
-- Suitable for devnet testing and workflow validation
-- ⚠️ **NOT suitable for mainnet use**
+#### Official ethstaker-deposit-cli (Current)
+- **Repository**: Integrated from [ethereum/staking-deposit-cli](https://github.com/ethereum/staking-deposit-cli)
+- **Implementation**: Full BLS12-381 cryptographic operations
+- **Standards**: EIP-2335 compliant keystores and SSZ serialization
+- **Security**: Production-ready with official Ethereum Foundation implementation
+- **Features**: 
+  - Real BLS12-381 elliptic curve operations
+  - Official SSZ deposit data serialization
+  - Cryptographically valid signatures
+  - Multi-network support (mainnet, testnets, devnet)
 
-#### Official CLI (Recommended for Production)
-- Automatically downloaded from [ethereum/staking-deposit-cli](https://github.com/ethereum/staking-deposit-cli)
-- Full BLS12-381 cryptographic implementation
-- EIP-2335 compliant keystores
-- Mainnet-ready security standards
-
-The system attempts to use the official CLI when available, falling back to simplified implementation for testing.
+The system now exclusively uses the official implementation for all key generation and deposit data creation.
 
 ### Vault Key Management
 
@@ -573,7 +604,8 @@ The system validates:
 - ✅ **Flexible Workflows**: Multiple workflow patterns for different use cases
 - ✅ **Key Management**: Full CRUD operations for validator keys
 - ✅ **Vault Key Cleanup**: Handles deleted keys and provides cleanup tools
-- ✅ **BLS12-381 Compliance**: Generates proper 48-byte validator keys
+- ✅ **BLS12-381 Compliance**: Generates proper 48-byte validator keys using official ethstaker-deposit-cli
+- ✅ **Official Implementation**: Uses Ethereum Foundation's official BLS12-381 and SSZ implementations
 
 ## 📁 Project Structure
 
@@ -582,6 +614,7 @@ eth_validator_test/
 ├── docker-compose.yml                    # Remote signing stack
 ├── start.sh                              # Main entry point
 ├── test_config.json                     # Test configuration
+├── ethstaker-deposit-cli/               # Official Ethereum deposit CLI
 ├── kurtosis/
 │   └── kurtosis-config.yaml             # Devnet configuration (built-in validators)
 ├── vault/
@@ -594,10 +627,10 @@ eth_validator_test/
 └── scripts/
     ├── orchestrate.py                   # Infrastructure orchestration
     ├── external_validator_manager.py    # External validator lifecycle
-    ├── generate_keys.py                 # Key generation
+    ├── generate_keys.py                 # Key generation (ethstaker-deposit-cli)
     ├── key_manager.py                   # Key management
     ├── web3signer_key_manager.py        # Web3Signer key CRUD operations
-    ├── deposit_manager.py               # Deposit handling
+    ├── deposit_manager.py               # Deposit handling (ethstaker-deposit-cli)
     ├── validator_lifecycle.py           # Lifecycle management
     ├── vault_setup.py                   # Vault initialization
     └── requirements.txt                 # Python dependencies
