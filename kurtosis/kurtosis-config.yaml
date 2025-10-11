@@ -59,7 +59,7 @@ network_params:
 
   # ===== 资金准备（用于后续批量 deposit 测试）=====
   prefunded_accounts: '{
-    "0xDeaDbeefDeaDbeefDeaDbeefDeaDbeefDeaDBeEF": {"balance":"10000ETH"}
+    "0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266": {"balance":"10000ETH"}
   }'
 
   # 给 EL 充足时间就绪，避免 CL 先行导致初始化失败
