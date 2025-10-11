@@ -594,6 +594,24 @@ class DepositManager:
                 print(f"⚠️  Warning: Could not call contract function: {e}")
                 print("📝 Proceeding with deposit submission...")
             
+            # Check network status
+            try:
+                current_block = w3.eth.block_number
+                print(f"📊 Network status:")
+                print(f"   - Current block: {current_block}")
+                print(f"   - Chain ID: {w3.eth.chain_id}")
+                print(f"   - Gas price: {w3.eth.gas_price} wei ({w3.from_wei(w3.eth.gas_price, 'gwei')} gwei)")
+                
+                # Check if network is syncing
+                syncing = w3.eth.syncing
+                if syncing:
+                    print(f"   - Network syncing: {syncing}")
+                else:
+                    print(f"   - Network fully synced")
+                    
+            except Exception as e:
+                print(f"⚠️  Could not get network status: {e}")
+            
             # Submit deposits one by one
             tx_hashes = []
             for i, deposit in enumerate(deposit_data):
@@ -607,6 +625,15 @@ class DepositManager:
                 
                 # Build transaction
                 try:
+                    nonce = w3.eth.get_transaction_count(from_address)
+                    print(f"📋 Building transaction for deposit {i+1}:")
+                    print(f"   - From: {from_address}")
+                    print(f"   - To: {deposit_contract_address}")
+                    print(f"   - Value: 32 ETH")
+                    print(f"   - Gas: {gas_limit}")
+                    print(f"   - Gas Price: {gas_price} wei ({w3.from_wei(gas_price, 'gwei')} gwei)")
+                    print(f"   - Nonce: {nonce}")
+                    
                     transaction = contract.functions.deposit(
                         pubkey,
                         withdrawal_credentials,
@@ -617,7 +644,7 @@ class DepositManager:
                         'value': w3.to_wei(32, 'ether'),  # 32 ETH per deposit
                         'gas': gas_limit,
                         'gasPrice': gas_price,
-                        'nonce': w3.eth.get_transaction_count(from_address)
+                        'nonce': nonce
                     })
                     print(f"✅ Transaction built for deposit {i+1}")
                 except Exception as e:
@@ -636,12 +663,52 @@ class DepositManager:
                     print(f"✅ Deposit {i+1} submitted: {tx_hash.hex()}")
                     tx_hashes.append(tx_hash.hex())
                     
-                    # Wait for transaction to be mined
-                    receipt = w3.eth.wait_for_transaction_receipt(tx_hash)
-                    if receipt.status == 1:
-                        print(f"✅ Deposit {i+1} confirmed in block {receipt.blockNumber}")
-                    else:
-                        print(f"❌ Deposit {i+1} failed")
+                    # Wait for transaction to be mined with detailed debugging
+                    print(f"⏳ Waiting for transaction confirmation...")
+                    try:
+                        receipt = w3.eth.wait_for_transaction_receipt(tx_hash, timeout=120)
+                        print(f"📋 Transaction receipt received:")
+                        print(f"   - Block Number: {receipt.blockNumber}")
+                        print(f"   - Block Hash: {receipt.blockHash.hex()}")
+                        print(f"   - Gas Used: {receipt.gasUsed}")
+                        print(f"   - Status: {receipt.status}")
+                        print(f"   - Transaction Index: {receipt.transactionIndex}")
+                        
+                        if receipt.status == 1:
+                            print(f"✅ Deposit {i+1} confirmed in block {receipt.blockNumber}")
+                        else:
+                            print(f"❌ Deposit {i+1} failed with status {receipt.status}")
+                            # Try to get more details about the failure
+                            try:
+                                tx = w3.eth.get_transaction(tx_hash)
+                                print(f"📋 Transaction details:")
+                                print(f"   - From: {tx['from']}")
+                                print(f"   - To: {tx['to']}")
+                                print(f"   - Value: {tx['value']}")
+                                print(f"   - Gas: {tx['gas']}")
+                                print(f"   - Gas Price: {tx['gasPrice']}")
+                                print(f"   - Nonce: {tx['nonce']}")
+                            except Exception as e:
+                                print(f"⚠️  Could not get transaction details: {e}")
+                            return False
+                            
+                    except Exception as e:
+                        print(f"❌ Error waiting for transaction receipt: {e}")
+                        # Try to get transaction status
+                        try:
+                            tx = w3.eth.get_transaction(tx_hash)
+                            print(f"📋 Transaction status:")
+                            print(f"   - Hash: {tx['hash'].hex()}")
+                            print(f"   - Block Number: {tx.get('blockNumber', 'Pending')}")
+                            print(f"   - Block Hash: {tx.get('blockHash', 'Pending')}")
+                            print(f"   - From: {tx['from']}")
+                            print(f"   - To: {tx['to']}")
+                            print(f"   - Value: {tx['value']}")
+                            print(f"   - Gas: {tx['gas']}")
+                            print(f"   - Gas Price: {tx['gasPrice']}")
+                            print(f"   - Nonce: {tx['nonce']}")
+                        except Exception as tx_e:
+                            print(f"⚠️  Could not get transaction status: {tx_e}")
                         return False
                         
                 except Exception as e:
