@@ -35,6 +35,13 @@ This system validates the full Ethereum validator lifecycle with a **hybrid arch
 4. Monitor Performance → Test Exit → Test Withdrawal
 ```
 
+### Smart Validator Loading
+The system automatically handles validator loading:
+- **Auto-loading**: Commands automatically load validators from Vault if not in memory
+- **No manual step needed**: You can directly run `create-deposits` without `load-validators`
+- **Manual loading**: Use `load-validators` only for debugging or explicit control
+- **Flexible workflow**: Can start from any step (generate-keys or create-deposits)
+
 ### Key Injection Process
 - **Vault**: Stores BLS private keys securely
 - **Web3Signer**: Loads keys from Vault, provides signing API
@@ -77,7 +84,7 @@ python3 external_validator_manager.py check-services
 # Generate external validator keys
 python3 external_validator_manager.py generate-keys --count 5
 
-# Create and submit deposits
+# Create and submit deposits (auto-loads from Vault if needed)
 python3 external_validator_manager.py submit-deposits
 
 # Start external validator clients (connects to Web3Signer)
@@ -94,6 +101,30 @@ python3 external_validator_manager.py test-exit
 
 # Test withdrawal process
 python3 external_validator_manager.py test-withdrawal
+```
+
+### Flexible Workflow Options
+
+The system supports multiple workflow patterns:
+
+#### Option 1: Complete Flow (Recommended)
+```bash
+# Generate keys and create deposits in one go
+python3 external_validator_manager.py generate-keys --count 5
+python3 external_validator_manager.py create-deposits
+```
+
+#### Option 2: Resume from Existing Keys
+```bash
+# Create deposits directly (auto-loads from Vault)
+python3 external_validator_manager.py create-deposits
+```
+
+#### Option 3: Debug/Manual Control
+```bash
+# Manually load validators (for debugging or explicit control)
+python3 external_validator_manager.py load-validators
+python3 external_validator_manager.py create-deposits
 ```
 
 ### Cleanup
@@ -137,8 +168,10 @@ python3 scripts/external_validator_manager.py check-services
 # Generate keys
 python3 scripts/external_validator_manager.py generate-keys --count 5
 
-# Create deposits
+# Create deposits (auto-loads from Vault if needed)
 python3 scripts/external_validator_manager.py create-deposits
+
+# Note: load-validators is optional - only needed for debugging
 
 # Submit deposits
 python3 scripts/external_validator_manager.py submit-deposits
@@ -261,6 +294,9 @@ python3 scripts/key_manager.py list
 
 # List keys using Web3Signer Key Manager
 python3 scripts/web3signer_key_manager.py list
+
+# Load validators from Vault (for debugging only)
+python3 scripts/external_validator_manager.py load-validators
 ```
 
 #### Web3Signer Key Operations
@@ -270,6 +306,12 @@ python3 scripts/web3signer_key_manager.py add --keystore ./path/to/keystore.json
 
 # Remove a key
 python3 scripts/web3signer_key_manager.py remove --key-id "validator_0000_20241211_12345678"
+
+# Remove keys by pattern
+python3 scripts/web3signer_key_manager.py remove --pattern "validator_0000"
+
+# Remove all keys (with confirmation)
+python3 scripts/web3signer_key_manager.py remove --all
 
 # Update key status
 python3 scripts/web3signer_key_manager.py update --key-id "validator_0000_20241211_12345678" --status inactive
@@ -373,6 +415,9 @@ The system validates:
 - ✅ **Deposit Flow**: Generation, submission, and activation
 - ✅ **Remote Signing**: External validators sign via Web3Signer
 - ✅ **Accelerated Testing**: 4s slots for fast validation cycles
+- ✅ **Smart Key Loading**: Auto-loads validators from Vault when needed
+- ✅ **Flexible Workflows**: Multiple workflow patterns for different use cases
+- ✅ **Key Management**: Full CRUD operations for validator keys
 
 ## 📁 Project Structure
 

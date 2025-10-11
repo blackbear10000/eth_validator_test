@@ -195,6 +195,44 @@ class ExternalValidatorManager:
         print(f"✅ Generated {len(self.external_validators)} external validator keys")
         return self.external_validators
     
+    def load_external_validators_from_vault(self) -> bool:
+        """Load existing external validators from Vault"""
+        print("=== Loading External Validators from Vault ===")
+        
+        try:
+            vault_keys = self.key_manager.list_keys_in_vault()
+            if not vault_keys:
+                print("❌ No keys found in Vault")
+                return False
+            
+            public_keys = []
+            for key_id in vault_keys:
+                key_data = self.key_manager.retrieve_key_from_vault(key_id)
+                if key_data and "metadata" in key_data:
+                    metadata = key_data["metadata"]
+                    validator_pubkey = metadata.get("validator_pubkey")
+                    if validator_pubkey:
+                        public_keys.append(validator_pubkey)
+            
+            if public_keys:
+                self.external_validators = public_keys
+                print(f"✅ Loaded {len(self.external_validators)} external validators from Vault")
+                return True
+            else:
+                print("❌ No valid validator keys found in Vault")
+                return False
+                
+        except Exception as e:
+            print(f"❌ Error loading validators from Vault: {e}")
+            return False
+    
+    def ensure_external_validators_loaded(self) -> bool:
+        """Ensure external validators are loaded, either from memory or Vault"""
+        if not self.external_validators:
+            print("⚠️  No external validators in memory. Loading from Vault...")
+            return self.load_external_validators_from_vault()
+        return True
+    
     def list_stored_keys(self) -> None:
         """List all stored keys in Vault and local files"""
         print("=== Stored Keys Information ===")
@@ -270,7 +308,7 @@ class ExternalValidatorManager:
         """Create deposit data for external validators"""
         print("=== Creating External Validator Deposits ===")
         
-        if not self.external_validators:
+        if not self.ensure_external_validators_loaded():
             print("❌ No external validators found. Generate keys first.")
             return None
         
@@ -311,7 +349,7 @@ class ExternalValidatorManager:
         """Start external validator clients connected to Web3Signer"""
         print("=== Starting External Validator Clients ===")
         
-        if not self.external_validators:
+        if not self.ensure_external_validators_loaded():
             print("❌ No external validators found. Generate keys first.")
             return False
         
@@ -329,7 +367,7 @@ class ExternalValidatorManager:
         """Wait for external validators to become active"""
         print("=== Waiting for External Validator Activation ===")
         
-        if not self.external_validators:
+        if not self.ensure_external_validators_loaded():
             print("❌ No external validators to monitor")
             return False
         
@@ -360,7 +398,7 @@ class ExternalValidatorManager:
         
         print(f"=== Monitoring External Validators for {duration}s ===")
         
-        if not self.external_validators:
+        if not self.ensure_external_validators_loaded():
             print("❌ No external validators to monitor")
             return {}
         
@@ -375,7 +413,7 @@ class ExternalValidatorManager:
         """Test voluntary exit for external validators"""
         print(f"=== Testing Voluntary Exit for {validator_count} External Validators ===")
         
-        if not self.external_validators:
+        if not self.ensure_external_validators_loaded():
             print("❌ No external validators available for exit")
             return False
         
@@ -408,7 +446,7 @@ class ExternalValidatorManager:
         """Test withdrawal process for external validators"""
         print("=== Testing External Validator Withdrawal ===")
         
-        if not self.external_validators:
+        if not self.ensure_external_validators_loaded():
             print("❌ No external validators available for withdrawal")
             return False
         
@@ -427,7 +465,7 @@ class ExternalValidatorManager:
     
     def get_external_validator_status(self) -> Dict:
         """Get status of external validators"""
-        if not self.external_validators:
+        if not self.ensure_external_validators_loaded():
             return {}
         
         return self.validator_lifecycle.get_validator_status(self.external_validators)
@@ -475,7 +513,7 @@ def main():
     """Main function for external validator management"""
     parser = argparse.ArgumentParser(description="External Validator Manager")
     parser.add_argument("command", choices=[
-        "check-services", "generate-keys", "list-keys", "create-deposits", "submit-deposits",
+        "check-services", "generate-keys", "list-keys", "load-validators", "create-deposits", "submit-deposits",
         "start-clients", "wait-activation", "monitor", "test-exit", "test-withdrawal", 
         "status", "cleanup", "full-test"
     ], help="Command to execute")
@@ -497,6 +535,9 @@ def main():
         
         elif args.command == "list-keys":
             manager.list_stored_keys()
+        
+        elif args.command == "load-validators":
+            manager.load_external_validators_from_vault()
         
         elif args.command == "create-deposits":
             manager.create_external_deposits()
