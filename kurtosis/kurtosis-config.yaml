@@ -2,25 +2,41 @@
 # Goal: fast devnet with built-in validators; later you can add external Web3Signer
 
 participants:
-  # --- Combo 1: Geth × Prysm ---
+  # 1) Geth × Prysm
   - el_type: geth
     cl_type: prysm
     vc_type: prysm
+    el_extra_params:
+      ["--http.api=eth,net,web3,debug,trace,admin,txpool"]
 
-  # --- Combo 2: Reth × Lighthouse ---
+  # 2) Reth × Lighthouse
   - el_type: reth
     cl_type: lighthouse
     vc_type: lighthouse
+    el_extra_params:
+      [
+        # Reth 同样需要开放这些 API 给 Blockscout 索引
+        "--http.api=eth,net,web3,debug,trace,admin,txpool",
+        # Reth 的 metrics 需显式开启（Prometheus 才能采到）
+        "--metrics", "0.0.0.0:9001"
+      ]
 
-  # --- Combo 3: Geth × Lighthouse ---
+  # 3) Geth × Lighthouse
   - el_type: geth
     cl_type: lighthouse
     vc_type: lighthouse
+    el_extra_params:
+      ["--http.api=eth,net,web3,debug,trace,admin,txpool"]
 
-  # --- Combo 4: Reth × Prysm ---
+  # 4) Reth × Prysm
   - el_type: reth
     cl_type: prysm
     vc_type: prysm
+    el_extra_params:
+      [
+        "--http.api=eth,net,web3,debug,trace,admin,txpool",
+        "--metrics", "0.0.0.0:9001"
+      ]
 
 # ⬆️ 不固定镜像：省略 el_image/cl_image/vc_image，让包使用其测试过的默认镜像组合
 # ⬆️ 不加 el_extra_params：避免把 geth 专属参数误用到 reth
