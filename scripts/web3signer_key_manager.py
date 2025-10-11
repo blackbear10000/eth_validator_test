@@ -125,6 +125,63 @@ class Web3SignerKeyManager:
             print(f"❌ Error removing key: {e}")
             return False
     
+    def remove_keys_by_pattern(self, pattern: str) -> int:
+        """Remove multiple keys matching a pattern"""
+        print(f"=== Removing Keys Matching Pattern: {pattern} ===")
+        
+        vault_keys = self.key_manager.list_keys_in_vault()
+        matching_keys = [key for key in vault_keys if pattern in key]
+        
+        if not matching_keys:
+            print(f"No keys found matching pattern: {pattern}")
+            return 0
+        
+        print(f"Found {len(matching_keys)} keys matching pattern:")
+        for key in matching_keys:
+            print(f"  - {key}")
+        
+        # Confirm deletion
+        confirm = input(f"\nAre you sure you want to delete {len(matching_keys)} keys? (yes/no): ")
+        if confirm.lower() != 'yes':
+            print("Deletion cancelled")
+            return 0
+        
+        removed_count = 0
+        for key_id in matching_keys:
+            if self.remove_key(key_id):
+                removed_count += 1
+        
+        print(f"✅ Removed {removed_count} keys")
+        return removed_count
+    
+    def clear_all_keys(self) -> int:
+        """Remove all validator keys from Vault"""
+        print("=== Clearing All Validator Keys ===")
+        
+        vault_keys = self.key_manager.list_keys_in_vault()
+        
+        if not vault_keys:
+            print("No keys found in Vault")
+            return 0
+        
+        print(f"Found {len(vault_keys)} keys in Vault:")
+        for key in vault_keys:
+            print(f"  - {key}")
+        
+        # Confirm deletion
+        confirm = input(f"\n⚠️  WARNING: Are you sure you want to delete ALL {len(vault_keys)} keys? (yes/no): ")
+        if confirm.lower() != 'yes':
+            print("Deletion cancelled")
+            return 0
+        
+        removed_count = 0
+        for key_id in vault_keys:
+            if self.remove_key(key_id):
+                removed_count += 1
+        
+        print(f"✅ Removed {removed_count} keys")
+        return removed_count
+    
     def update_key_status(self, key_id: str, status: str) -> bool:
         """Update the status of a validator key"""
         print(f"=== Updating Key {key_id} Status to {status} ===")
@@ -193,8 +250,11 @@ def main():
     add_parser.add_argument("--index", type=int, help="Validator index")
     
     # Remove command
-    remove_parser = subparsers.add_parser("remove", help="Remove a validator key")
-    remove_parser.add_argument("--key-id", required=True, help="Key ID to remove")
+    remove_parser = subparsers.add_parser("remove", help="Remove validator key(s)")
+    remove_group = remove_parser.add_mutually_exclusive_group(required=True)
+    remove_group.add_argument("--key-id", help="Specific key ID to remove")
+    remove_group.add_argument("--pattern", help="Pattern to match multiple keys (e.g., 'validator_0000')")
+    remove_group.add_argument("--all", action="store_true", help="Remove all validator keys")
     
     # Update command
     update_parser = subparsers.add_parser("update", help="Update key status")
@@ -222,7 +282,12 @@ def main():
         manager.add_key(args.keystore, args.password, args.index)
     
     elif args.command == "remove":
-        manager.remove_key(args.key_id)
+        if args.key_id:
+            manager.remove_key(args.key_id)
+        elif args.pattern:
+            manager.remove_keys_by_pattern(args.pattern)
+        elif args.all:
+            manager.clear_all_keys()
     
     elif args.command == "update":
         manager.update_key_status(args.key_id, args.status)
