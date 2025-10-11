@@ -538,13 +538,13 @@ class DepositManager:
                 print(f"❌ Insufficient balance: need {required_eth} ETH, have {balance_eth} ETH")
                 return False
             
-            # Deposit contract ABI (complete)
+            # Deposit contract ABI (correct for Ethereum 2.0)
             deposit_contract_abi = [
                 {
                     "inputs": [
-                        {"name": "pubkey", "type": "bytes"},
-                        {"name": "withdrawal_credentials", "type": "bytes"},
-                        {"name": "signature", "type": "bytes"},
+                        {"name": "pubkey", "type": "bytes48"},
+                        {"name": "withdrawal_credentials", "type": "bytes32"},
+                        {"name": "signature", "type": "bytes96"},
                         {"name": "deposit_data_root", "type": "bytes32"}
                     ],
                     "name": "deposit",
@@ -622,6 +622,27 @@ class DepositManager:
                 withdrawal_credentials = bytes.fromhex(deposit["withdrawal_credentials"][2:])
                 signature = bytes.fromhex(deposit["signature"][2:])
                 deposit_data_root = bytes.fromhex(deposit["deposit_data_root"][2:])
+                
+                # Debug: Print data lengths
+                print(f"📋 Deposit data lengths:")
+                print(f"   - Pubkey: {len(pubkey)} bytes")
+                print(f"   - Withdrawal credentials: {len(withdrawal_credentials)} bytes")
+                print(f"   - Signature: {len(signature)} bytes")
+                print(f"   - Deposit data root: {len(deposit_data_root)} bytes")
+                
+                # Validate data lengths
+                if len(pubkey) != 48:
+                    print(f"❌ Invalid pubkey length: {len(pubkey)} bytes (expected 48)")
+                    return False
+                if len(withdrawal_credentials) != 32:
+                    print(f"❌ Invalid withdrawal credentials length: {len(withdrawal_credentials)} bytes (expected 32)")
+                    return False
+                if len(signature) != 96:
+                    print(f"❌ Invalid signature length: {len(signature)} bytes (expected 96)")
+                    return False
+                if len(deposit_data_root) != 32:
+                    print(f"❌ Invalid deposit data root length: {len(deposit_data_root)} bytes (expected 32)")
+                    return False
                 
                 # Build transaction
                 try:
