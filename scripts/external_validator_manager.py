@@ -337,7 +337,7 @@ class ExternalValidatorManager:
             return False
         
         # Submit deposits
-        success = self.deposit_manager.submit_deposits(deposit_file)
+        success = self.deposit_manager.submit_deposits(deposit_file, self.config)
         
         if success:
             print("✅ External validator deposits submitted")

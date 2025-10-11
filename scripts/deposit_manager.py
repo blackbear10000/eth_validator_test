@@ -446,8 +446,8 @@ class DepositManager:
 
         return tx_hashes
 
-    def submit_deposits(self, deposit_file: str) -> bool:
-        """Submit deposits from a deposit file (simplified version for testing)"""
+    def submit_deposits(self, deposit_file: str, config: dict = None) -> bool:
+        """Submit deposits from a deposit file to the network"""
         try:
             # Load deposit data from file
             with open(deposit_file, 'r') as f:
@@ -459,8 +459,7 @@ class DepositManager:
             
             print(f"📄 Loaded {len(deposit_data)} deposits from {deposit_file}")
             
-            # For testing purposes, we'll just validate the deposits
-            # In a real implementation, you would submit these to the network
+            # Validate deposits first
             valid_count = 0
             for i, deposit in enumerate(deposit_data):
                 validation = self.validate_deposit_data(deposit)
@@ -473,16 +472,127 @@ class DepositManager:
             
             print(f"✅ Validated {valid_count}/{len(deposit_data)} deposits")
             
-            if valid_count == len(deposit_data):
-                print("📝 Note: In a real implementation, these deposits would be submitted to the network")
-                print("📝 For testing, we're only validating the deposit data structure")
-                return True
-            else:
-                print("❌ Some deposits are invalid")
+            if valid_count != len(deposit_data):
+                print("❌ Some deposits are invalid, cannot submit")
                 return False
+            
+            # Check if Kurtosis testnet is enabled
+            if config and config.get("kurtosis_testnet", {}).get("enabled", False):
+                return self._submit_to_kurtosis_testnet(deposit_data, config)
+            else:
+                print("📝 Note: Kurtosis testnet not enabled, only validating deposit data structure")
+                print("📝 To enable real submission, set kurtosis_testnet.enabled=true in config")
+                return True
                 
         except Exception as e:
             print(f"❌ Error processing deposit file: {e}")
+            return False
+
+    def _submit_to_kurtosis_testnet(self, deposit_data: List[Dict[str, Any]], config: dict) -> bool:
+        """Submit deposits to Kurtosis testnet"""
+        try:
+            kurtosis_config = config["kurtosis_testnet"]
+            web3_url = kurtosis_config["web3_url"]
+            from_address = kurtosis_config["from_address"]
+            private_key = kurtosis_config["private_key"]
+            deposit_contract_address = kurtosis_config["deposit_contract_address"]
+            gas_price = int(kurtosis_config["gas_price"])
+            gas_limit = int(kurtosis_config["gas_limit"])
+            
+            print(f"🌐 Connecting to Kurtosis testnet: {web3_url}")
+            print(f"📝 From address: {from_address}")
+            print(f"📝 Deposit contract: {deposit_contract_address}")
+            
+            # Connect to Web3
+            from web3 import Web3
+            w3 = Web3(Web3.HTTPProvider(web3_url))
+            
+            if not w3.is_connected():
+                print("❌ Failed to connect to Kurtosis testnet")
+                return False
+            
+            print("✅ Connected to Kurtosis testnet")
+            
+            # Check account balance
+            balance = w3.eth.get_balance(from_address)
+            balance_eth = w3.from_wei(balance, 'ether')
+            print(f"💰 Account balance: {balance_eth} ETH")
+            
+            # Calculate required ETH for deposits
+            required_eth = len(deposit_data) * 32  # 32 ETH per validator
+            if balance_eth < required_eth:
+                print(f"❌ Insufficient balance: need {required_eth} ETH, have {balance_eth} ETH")
+                return False
+            
+            # Deposit contract ABI (simplified)
+            deposit_contract_abi = [
+                {
+                    "inputs": [
+                        {"name": "pubkey", "type": "bytes"},
+                        {"name": "withdrawal_credentials", "type": "bytes"},
+                        {"name": "signature", "type": "bytes"},
+                        {"name": "deposit_data_root", "type": "bytes32"}
+                    ],
+                    "name": "deposit",
+                    "outputs": [],
+                    "stateMutability": "payable",
+                    "type": "function"
+                }
+            ]
+            
+            # Create contract instance
+            contract = w3.eth.contract(
+                address=Web3.to_checksum_address(deposit_contract_address),
+                abi=deposit_contract_abi
+            )
+            
+            # Submit deposits one by one
+            tx_hashes = []
+            for i, deposit in enumerate(deposit_data):
+                print(f"📤 Submitting deposit {i+1}/{len(deposit_data)}...")
+                
+                # Prepare deposit data
+                pubkey = bytes.fromhex(deposit["pubkey"][2:])  # Remove 0x prefix
+                withdrawal_credentials = bytes.fromhex(deposit["withdrawal_credentials"][2:])
+                signature = bytes.fromhex(deposit["signature"][2:])
+                deposit_data_root = bytes.fromhex(deposit["deposit_data_root"][2:])
+                
+                # Build transaction
+                transaction = contract.functions.deposit(
+                    pubkey,
+                    withdrawal_credentials,
+                    signature,
+                    deposit_data_root
+                ).build_transaction({
+                    'from': from_address,
+                    'value': w3.to_wei(32, 'ether'),  # 32 ETH per deposit
+                    'gas': gas_limit,
+                    'gasPrice': gas_price,
+                    'nonce': w3.eth.get_transaction_count(from_address)
+                })
+                
+                # Sign and send transaction
+                signed_txn = w3.eth.account.sign_transaction(transaction, private_key)
+                tx_hash = w3.eth.send_raw_transaction(signed_txn.rawTransaction)
+                
+                print(f"✅ Deposit {i+1} submitted: {tx_hash.hex()}")
+                tx_hashes.append(tx_hash.hex())
+                
+                # Wait for transaction to be mined
+                receipt = w3.eth.wait_for_transaction_receipt(tx_hash)
+                if receipt.status == 1:
+                    print(f"✅ Deposit {i+1} confirmed in block {receipt.blockNumber}")
+                else:
+                    print(f"❌ Deposit {i+1} failed")
+                    return False
+            
+            print(f"🎉 Successfully submitted {len(deposit_data)} deposits to Kurtosis testnet!")
+            print(f"📋 Transaction hashes: {tx_hashes}")
+            
+            return True
+            
+        except Exception as e:
+            print(f"❌ Error submitting to Kurtosis testnet: {e}")
             return False
 
     def check_deposit_status(self, deposit_data: List[Dict[str, Any]], beacon_url: str = "http://localhost:5052"):
