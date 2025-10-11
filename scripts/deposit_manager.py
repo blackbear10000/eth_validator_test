@@ -121,7 +121,7 @@ class DepositManager:
         pubkey_hex = pubkey.replace('0x', '')
         pubkey_bytes = bytes.fromhex(pubkey_hex)
         withdrawal_credentials_bytes = bytes.fromhex(withdrawal_credentials.replace('0x', ''))
-        
+
         # Handle compressed BLS12-381 public keys (49 bytes with prefix, need 48 bytes)
         if len(pubkey_bytes) == 49:
             # Remove the compression prefix (first byte) to get 48 bytes
@@ -165,7 +165,7 @@ class DepositManager:
         
         # Compute deposit data root
         deposit_data_root = deposit_data.hash_tree_root
-        
+
         return {
             "pubkey": "0x" + pubkey_bytes.hex(),
             "withdrawal_credentials": "0x" + withdrawal_credentials_bytes.hex(),
@@ -231,11 +231,11 @@ class DepositManager:
             print(f"❌ Validation error: {e}")
             return False
 
-    def generate_batch_deposit_data(self, keys: List[Dict[str, Any]], 
+    def generate_batch_deposit_data(self, keys_data: List[Dict[str, Any]], 
                                   withdrawal_address: str, network_name: str = "devnet",
-                                  vault_manager=None, output_file: str = None) -> List[Dict[str, Any]]:
+                                  output_file: str = None) -> List[Dict[str, Any]]:
         """Generate batch deposit data for multiple validators"""
-        print(f"=== Generating Deposit Data for {len(keys)} Validators ===")
+        print(f"=== Generating Deposit Data for {len(keys_data)} Validators ===")
         print(f"Network: {network_name}")
         print(f"Withdrawal address: {withdrawal_address}")
         
@@ -245,8 +245,8 @@ class DepositManager:
         
         deposit_data_list = []
         
-        for i, key_data in enumerate(keys):
-            print(f"Processing validator {i+1}/{len(keys)}...")
+        for i, key_data in enumerate(keys_data):
+            print(f"Processing validator {i+1}/{len(keys_data)}...")
             
             # Extract public key and private key
             pubkey = key_data["validator_public_key"]
@@ -374,7 +374,7 @@ class DepositManager:
                 print("📝 Proceeding with deposit submission...")
             
             # Submit deposits one by one
-            tx_hashes = []
+        tx_hashes = []
             for i, deposit in enumerate(deposit_data):
                 print(f"📤 Submitting deposit {i+1}/{len(deposit_data)}...")
                 
@@ -404,8 +404,8 @@ class DepositManager:
                 if len(deposit_data_root) != 32:
                     print(f"❌ Invalid deposit data root length: {len(deposit_data_root)} bytes (expected 32)")
                     return False
-                
-                # Build transaction
+
+            # Build transaction
                 try:
                     nonce = w3.eth.get_transaction_count(from_address)
                     print(f"📋 Building transaction for deposit {i+1}:")
@@ -418,11 +418,11 @@ class DepositManager:
                     
                     transaction = contract.functions.deposit(
                         pubkey,
-                        withdrawal_credentials,
+                withdrawal_credentials,
                         signature,
                         deposit_data_root
-                    ).build_transaction({
-                        'from': from_address,
+            ).build_transaction({
+                'from': from_address,
                         'value': w3.to_wei(32, 'ether'),  # 32 ETH per deposit
                         'gas': gas_limit,
                         'gasPrice': gas_price,
@@ -443,8 +443,8 @@ class DepositManager:
                     tx_hash = w3.eth.send_raw_transaction(raw_tx)
                     
                     print(f"✅ Deposit {i+1} submitted: {tx_hash.hex()}")
-                    tx_hashes.append(tx_hash.hex())
-                    
+            tx_hashes.append(tx_hash.hex())
+
                     # Wait for transaction to be mined
                     print(f"⏳ Waiting for transaction confirmation...")
                     try:
@@ -488,9 +488,9 @@ def main():
     parser.add_argument("--output-file", help="Output file for deposit data")
     parser.add_argument("--submit", action="store_true", help="Submit deposits to network")
     parser.add_argument("--config-file", help="Configuration file for network settings")
-    
+
     args = parser.parse_args()
-    
+
     # Load keys
     with open(args.keys_file, 'r') as f:
         keys = json.load(f)
@@ -501,7 +501,7 @@ def main():
     # Generate deposit data
     deposit_data = manager.generate_batch_deposit_data(
         keys=keys,
-        withdrawal_address=args.withdrawal_address,
+            withdrawal_address=args.withdrawal_address,
         network_name=args.network,
         output_file=args.output_file
     )

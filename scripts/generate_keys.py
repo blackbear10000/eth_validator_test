@@ -164,9 +164,9 @@ def derive_keys_from_mnemonic(mnemonic: str, start_index: int, count: int) -> Li
 
         keys.append({
             'index': i,
-            'validator_private_key': validator_sk.to_bytes(32, 'big').hex(),
+            'validator_private_key': hex(validator_sk),
             'validator_public_key': validator_pk.hex(),
-            'withdrawal_private_key': withdrawal_sk.to_bytes(32, 'big').hex(),
+            'withdrawal_private_key': hex(withdrawal_sk),
             'withdrawal_public_key': withdrawal_pk.hex(),
             'keystore': keystore,
             'password': password

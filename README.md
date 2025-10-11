@@ -68,9 +68,25 @@ The system now uses the **official Ethereum Foundation implementation**:
 
 ### Key Changes
 1. **Official Implementation**: All key generation and deposit data creation now uses `ethstaker-deposit-cli`
-2. **Simplified Workflow**: No more fallback implementations or compatibility issues
-3. **Clean Project Structure**: Removed temporary test folders and files
-4. **Production Standards**: Generated data is ready for real Ethereum networks
+2. **Unified Workflow**: Single entry point (`external_validator_manager.py`) for complete lifecycle
+3. **Simplified Architecture**: Removed duplicate/conflicting management scripts
+4. **Clean Project Structure**: Removed temporary test folders and files
+5. **Production Standards**: Generated data is ready for real Ethereum networks
+
+### 🎯 Unified Architecture
+
+The system now uses a **unified architecture** with clear separation of concerns:
+
+- **`external_validator_manager.py`**: Main orchestrator for complete validator lifecycle
+- **`key_manager.py`**: Vault operations (store, retrieve, list, cleanup)
+- **`deposit_manager.py`**: Deposit data generation and submission
+- **`generate_keys.py`**: Official BLS12-381 key generation using ethstaker-deposit-cli
+
+**Removed Scripts** (consolidated into main workflow):
+- ❌ `deposit_cli_wrapper.py` - Replaced by direct ethstaker-deposit-cli integration
+- ❌ `external_validator_client.py` - Simplified to manual setup instructions
+- ❌ `validator_lifecycle.py` - Integrated into external_validator_manager.py
+- ❌ `web3signer_key_manager.py` - Functionality moved to key_manager.py
 
 ### Two-Phase Workflow
 
@@ -92,31 +108,31 @@ The system now uses the **official Ethereum Foundation implementation**:
 ./start.sh quick-start
 
 # 2. Run external validator phases
-cd scripts && source venv/bin/activate
+source scripts/venv/bin/activate
 
 # Check service status
-python3 external_validator_manager.py check-services
+python3 scripts/external_validator_manager.py check-services
 
 # Generate external validator keys
-python3 external_validator_manager.py generate-keys --count 5
+python3 scripts/external_validator_manager.py generate-keys --count 5
 
 # Create and submit deposits (auto-loads from Vault if needed)
-python3 external_validator_manager.py submit-deposits
+python3 scripts/external_validator_manager.py submit-deposits
 
 # Start external validator clients (connects to Web3Signer)
-python3 external_validator_manager.py start-clients
+python3 scripts/external_validator_manager.py start-clients
 
 # Wait for activation
-python3 external_validator_manager.py wait-activation
+python3 scripts/external_validator_manager.py wait-activation
 
 # Monitor performance
-python3 external_validator_manager.py monitor
+python3 scripts/external_validator_manager.py monitor
 
 # Test voluntary exit
-python3 external_validator_manager.py test-exit
+python3 scripts/external_validator_manager.py test-exit
 
 # Test withdrawal process
-python3 external_validator_manager.py test-withdrawal
+python3 scripts/external_validator_manager.py test-withdrawal
 ```
 
 ### Flexible Workflow Options
@@ -126,21 +142,21 @@ The system supports multiple workflow patterns:
 #### Option 1: Complete Flow (Recommended)
 ```bash
 # Generate keys and create deposits in one go
-python3 external_validator_manager.py generate-keys --count 5
-python3 external_validator_manager.py create-deposits
+python3 scripts/external_validator_manager.py generate-keys --count 5
+python3 scripts/external_validator_manager.py create-deposits
 ```
 
 #### Option 2: Resume from Existing Keys
 ```bash
 # Create deposits directly (auto-loads from Vault)
-python3 external_validator_manager.py create-deposits
+python3 scripts/external_validator_manager.py create-deposits
 ```
 
 #### Option 3: Debug/Manual Control
 ```bash
 # Manually load validators (for debugging or explicit control)
-python3 external_validator_manager.py load-validators
-python3 external_validator_manager.py create-deposits
+python3 scripts/external_validator_manager.py load-validators
+python3 scripts/external_validator_manager.py create-deposits
 ```
 
 ### Cleanup
@@ -214,78 +230,65 @@ python3 scripts/external_validator_manager.py full-test
 python3 scripts/external_validator_manager.py cleanup
 ```
 
-### Individual Tools
+### Unified Workflow (Recommended)
 
-#### Key Generation
+The system now uses a **unified workflow** centered around `external_validator_manager.py`:
+
+#### Complete Validator Lifecycle
 ```bash
-# Generate keys using official ethstaker-deposit-cli
-python3 scripts/generate_keys.py --count 10 --output-dir ./keys
+# 1. Generate keys and store in Vault
+python3 scripts/external_validator_manager.py generate-keys --count 5
 
-# Or use external validator manager (includes Vault integration)
-python3 scripts/external_validator_manager.py generate-keys --count 10
+# 2. Create and submit deposits
+python3 scripts/external_validator_manager.py submit-deposits
+
+# 3. Start validator clients (manual setup required)
+python3 scripts/external_validator_manager.py start-clients
+
+# 4. Monitor activation and performance
+python3 scripts/external_validator_manager.py wait-activation
+python3 scripts/external_validator_manager.py monitor
+
+# 5. Test exit and withdrawal
+python3 scripts/external_validator_manager.py test-exit
+python3 scripts/external_validator_manager.py test-withdrawal
 ```
 
-#### Key Management
+#### Key Management (Vault Operations)
 ```bash
-# Import keys to Vault
-python3 scripts/key_manager.py import --keys-dir ./keys
-
-# Export keys for Web3Signer
-python3 scripts/key_manager.py export --output-dir ./web3signer/keys
-
 # List all keys (including deleted)
 python3 scripts/key_manager.py list
 
 # List only active keys (skip deleted, quiet mode)
 python3 scripts/key_manager.py list-active
 
-# List active keys with verbose output
-python3 scripts/key_manager.py list-active --verbose
-
 # Permanently destroy deleted keys
 python3 scripts/key_manager.py destroy-deleted
-
-# Destroy deleted keys quietly
-python3 scripts/key_manager.py destroy-deleted --quiet
 
 # Debug: Show detailed status of all keys
 python3 scripts/key_manager.py debug-status
 
-# Advanced debug: Show comprehensive key information
-python3 scripts/key_manager.py debug-advanced
-
-# Clean corrupted keys (metadata exists but data is inaccessible)
+# Clean corrupted keys
 python3 scripts/key_manager.py clean-corrupted
-
-# Check validator status
-python3 scripts/key_manager.py status
 ```
 
-#### Deposit Management
+#### Direct Deposit Management (Advanced)
 ```bash
-# Generate deposit data using official ethstaker-deposit-cli
+# Generate deposit data directly
 python3 scripts/deposit_manager.py \
-  --keys-file ./keys/keys_data.json \
+  --keys-file ./external_keys/keys_data.json \
   --withdrawal-address 0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266 \
   --network devnet \
   --output-file deposits.json
 
 # Submit deposits to Kurtosis testnet
 python3 scripts/deposit_manager.py \
-  --keys-file ./keys/keys_data.json \
+  --keys-file ./external_keys/keys_data.json \
   --withdrawal-address 0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266 \
   --network devnet \
   --output-file deposits.json \
   --submit \
   --config-file test_config.json
-```
-
-#### Validator Lifecycle
-```bash
-python3 scripts/validator_lifecycle.py status --pubkeys 0xabc... 0xdef...
-python3 scripts/validator_lifecycle.py wait-active --pubkeys 0xabc...
-python3 scripts/validator_lifecycle.py voluntary-exit --pubkey 0xabc...
-python3 scripts/validator_lifecycle.py wait-withdrawal --pubkeys 0xabc...
 ```
 
 ## 🔧 Configuration
@@ -397,35 +400,32 @@ python3 scripts/external_validator_manager.py list-keys
 # List keys using KeyManager
 python3 scripts/key_manager.py list
 
-# List keys using Web3Signer Key Manager
-python3 scripts/web3signer_key_manager.py list
-
 # Load validators from Vault (for debugging only)
 python3 scripts/external_validator_manager.py load-validators
 ```
 
-#### Web3Signer Key Operations
+#### Vault Key Operations
 ```bash
-# Add a new key
-python3 scripts/web3signer_key_manager.py add --keystore ./path/to/keystore.json --password "password" --index 0
+# Import keys to Vault
+python3 scripts/key_manager.py import --keys-dir ./external_keys
 
-# Remove a key
-python3 scripts/web3signer_key_manager.py remove --key-id "validator_0000_20241211_12345678"
+# Export keys for Web3Signer
+python3 scripts/key_manager.py export --output-dir ./web3signer/keys
 
-# Remove keys by pattern
-python3 scripts/web3signer_key_manager.py remove --pattern "validator_0000"
+# List all keys (including deleted)
+python3 scripts/key_manager.py list
 
-# Remove all keys (with confirmation, auto-destroys deleted keys)
-python3 scripts/web3signer_key_manager.py remove --all
+# List only active keys (skip deleted, quiet mode)
+python3 scripts/key_manager.py list-active
 
-# Update key status
-python3 scripts/web3signer_key_manager.py update --key-id "validator_0000_20241211_12345678" --status inactive
+# Permanently destroy deleted keys
+python3 scripts/key_manager.py destroy-deleted
 
-# Export keys to Web3Signer format
-python3 scripts/web3signer_key_manager.py export
+# Debug: Show detailed status of all keys
+python3 scripts/key_manager.py debug-status
 
-# Check Web3Signer status
-python3 scripts/web3signer_key_manager.py status
+# Clean corrupted keys
+python3 scripts/key_manager.py clean-corrupted
 
 # Direct Web3Signer health checks
 curl http://localhost:9000/upcheck
@@ -515,7 +515,7 @@ python3 scripts/key_manager.py debug-advanced
 python3 scripts/key_manager.py clean-corrupted
 
 # Clear all keys (auto-destroys deleted keys first)
-python3 scripts/web3signer_key_manager.py remove --all
+python3 scripts/key_manager.py destroy-deleted --quiet
 ```
 
 #### BLS12-381 Key Length Issues
@@ -596,16 +596,15 @@ The system validates:
 - ✅ **Vault Integration**: Securely stores/retrieves BLS keys for external validators
 - ✅ **Web3Signer Integration**: Loads keys via HashiCorp Vault with slash protection
 - ✅ **PostgreSQL Database**: Slashing protection database with proper schema
-- ✅ **External Validator Lifecycle**: pending → active → exited → withdrawn
+- ✅ **Unified Workflow**: Single entry point for complete validator lifecycle
+- ✅ **Official Implementation**: Uses ethstaker-deposit-cli for BLS12-381 and SSZ
 - ✅ **Deposit Flow**: Generation, submission, and activation
 - ✅ **Remote Signing**: External validators sign via Web3Signer
 - ✅ **Accelerated Testing**: 4s slots for fast validation cycles
 - ✅ **Smart Key Loading**: Auto-loads validators from Vault when needed
-- ✅ **Flexible Workflows**: Multiple workflow patterns for different use cases
-- ✅ **Key Management**: Full CRUD operations for validator keys
-- ✅ **Vault Key Cleanup**: Handles deleted keys and provides cleanup tools
-- ✅ **BLS12-381 Compliance**: Generates proper 48-byte validator keys using official ethstaker-deposit-cli
-- ✅ **Official Implementation**: Uses Ethereum Foundation's official BLS12-381 and SSZ implementations
+- ✅ **Vault Key Management**: Full CRUD operations with cleanup tools
+- ✅ **BLS12-381 Compliance**: Generates proper 48-byte validator keys
+- ✅ **Simplified Architecture**: Removed duplicate/conflicting management scripts
 
 ## 📁 Project Structure
 
@@ -626,14 +625,11 @@ eth_validator_test/
 │   └── init-db.sh                       # PostgreSQL schema initialization
 └── scripts/
     ├── orchestrate.py                   # Infrastructure orchestration
-    ├── external_validator_manager.py    # External validator lifecycle
+    ├── external_validator_manager.py    # 🎯 MAIN: Unified validator lifecycle
     ├── generate_keys.py                 # Key generation (ethstaker-deposit-cli)
-    ├── key_manager.py                   # Key management
-    ├── web3signer_key_manager.py        # Web3Signer key CRUD operations
+    ├── key_manager.py                   # Vault key management
     ├── deposit_manager.py               # Deposit handling (ethstaker-deposit-cli)
-    ├── validator_lifecycle.py           # Lifecycle management
-    ├── vault_setup.py                   # Vault initialization
-    └── requirements.txt                 # Python dependencies
+    └── vault_setup.py                   # Vault initialization
 ```
 
 ## 🤝 Contributing

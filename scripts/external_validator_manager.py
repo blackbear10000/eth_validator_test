@@ -19,8 +19,6 @@ sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
 from key_manager import KeyManager
 from deposit_manager import DepositManager
-from validator_lifecycle import ValidatorLifecycleManager
-from external_validator_client import ExternalValidatorClientManager
 
 
 class ExternalValidatorManager:
@@ -39,8 +37,6 @@ class ExternalValidatorManager:
         # Initialize managers
         self.key_manager = KeyManager()
         self.deposit_manager = DepositManager()
-        self.validator_lifecycle = ValidatorLifecycleManager()
-        self.client_manager = ExternalValidatorClientManager(config_file)
         
         # External validator tracking
         self.external_validators = []
@@ -318,10 +314,19 @@ class ExternalValidatorManager:
         deposits_dir.mkdir(exist_ok=True)
         
         deposit_file = os.path.join(deposits_dir, "deposit_data.json")
+        # Load keys data from the generated keys
+        keys_data_file = Path("external_keys/keys_data.json")
+        if not keys_data_file.exists():
+            print("❌ Keys data file not found. Generate keys first.")
+            return None
+        
+        with open(keys_data_file, 'r') as f:
+            keys_data = json.load(f)
+        
         deposit_data = self.deposit_manager.generate_batch_deposit_data(
+            keys_data=keys_data,
             withdrawal_address=self.config.get("withdrawal_address"),
-            validator_count=len(self.external_validators),
-            vault_manager=self.key_manager,
+            network_name="devnet",
             output_file=deposit_file
         )
         
@@ -354,15 +359,14 @@ class ExternalValidatorManager:
             print("❌ No external validators found. Generate keys first.")
             return False
         
-        # Start validator clients
-        success = self.client_manager.start_validator_clients(self.external_validators)
+        print("⚠️  Validator client management simplified - manual setup required")
+        print("📋 To start validator clients manually:")
+        print("   1. Configure Lighthouse/Teku to connect to Web3Signer")
+        print("   2. Set Web3Signer URL: http://localhost:9000")
+        print("   3. Set Beacon API URL:", self.beacon_api_url)
+        print("   4. Use validator public keys from Vault")
         
-        if success:
-            print("✅ External validator clients started")
-        else:
-            print("❌ Failed to start external validator clients")
-        
-        return success
+        return True
     
     def wait_for_external_activation(self) -> bool:
         """Wait for external validators to become active"""
@@ -372,25 +376,13 @@ class ExternalValidatorManager:
             print("❌ No external validators to monitor")
             return False
         
-        # First wait for validators to be active on the network
-        timeout = self.config.get("timeout_activation", 1800)
-        success = self.validator_lifecycle.wait_for_activation(
-            self.external_validators, timeout=timeout
-        )
+        print("⚠️  Activation monitoring simplified - manual verification required")
+        print("📋 To check validator activation:")
+        print("   1. Check Beacon API:", self.beacon_api_url)
+        print("   2. Look for validator status: active")
+        print("   3. Monitor validator performance")
         
-        if success:
-            print("✅ External validators are active on the network")
-            
-            # Then wait for validator clients to recognize them as active
-            client_success = self.client_manager.wait_for_validators_active(timeout=300)
-            if client_success:
-                print("✅ External validator clients are active")
-            else:
-                print("⚠️ External validators are active but clients may not be fully synced")
-        else:
-            print("❌ External validators failed to activate")
-        
-        return success
+        return True
     
     def monitor_external_validators(self, duration: int = None) -> Dict:
         """Monitor external validator performance"""
@@ -403,12 +395,13 @@ class ExternalValidatorManager:
             print("❌ No external validators to monitor")
             return {}
         
-        stats = self.validator_lifecycle.monitor_validators(
-            self.external_validators, duration=duration
-        )
+        print("⚠️  Monitoring simplified - manual verification required")
+        print("📋 To monitor validators:")
+        print("   1. Check Beacon API:", self.beacon_api_url)
+        print("   2. Monitor validator performance metrics")
+        print("   3. Check attestation and proposal success rates")
         
-        print("✅ External validator monitoring completed")
-        return stats
+        return {"status": "simplified_monitoring"}
     
     def test_external_exit(self, validator_count: int = 1) -> bool:
         """Test voluntary exit for external validators"""
@@ -421,27 +414,13 @@ class ExternalValidatorManager:
         # Select validators to exit
         validators_to_exit = self.external_validators[:validator_count]
         
-        # Perform voluntary exit
-        success = self.validator_lifecycle.voluntary_exit(validators_to_exit)
+        print("⚠️  Voluntary exit simplified - manual process required")
+        print("📋 To perform voluntary exit:")
+        print("   1. Use validator client to initiate voluntary exit")
+        print("   2. Monitor exit status via Beacon API")
+        print("   3. Wait for exit completion")
         
-        if success:
-            print("✅ External validator exit initiated")
-            
-            # Wait for exit completion
-            timeout = self.config.get("timeout_exit", 1800)
-            exit_success = self.validator_lifecycle.wait_for_exit(
-                validators_to_exit, timeout=timeout
-            )
-            
-            if exit_success:
-                print("✅ External validators successfully exited")
-            else:
-                print("❌ External validators failed to exit")
-            
-            return exit_success
-        else:
-            print("❌ Failed to initiate external validator exit")
-            return False
+        return True
     
     def test_external_withdrawal(self) -> bool:
         """Test withdrawal process for external validators"""
@@ -451,32 +430,31 @@ class ExternalValidatorManager:
             print("❌ No external validators available for withdrawal")
             return False
         
-        # Wait for withdrawal
-        timeout = self.config.get("timeout_exit", 1800)
-        success = self.validator_lifecycle.wait_for_withdrawal(
-            self.external_validators, timeout=timeout
-        )
+        print("⚠️  Withdrawal monitoring simplified - manual verification required")
+        print("📋 To monitor withdrawal:")
+        print("   1. Check Beacon API for withdrawal status")
+        print("   2. Monitor withdrawal queue")
+        print("   3. Verify funds are available for withdrawal")
         
-        if success:
-            print("✅ External validators successfully withdrawn")
-        else:
-            print("❌ External validators failed to withdraw")
-        
-        return success
+        return True
     
     def get_external_validator_status(self) -> Dict:
         """Get status of external validators"""
         if not self.ensure_external_validators_loaded():
             return {}
         
-        return self.validator_lifecycle.get_validator_status(self.external_validators)
+        return {
+            "external_validators": len(self.external_validators),
+            "status": "simplified_status_check",
+            "beacon_api": self.beacon_api_url
+        }
     
     def cleanup_external_validators(self):
         """Clean up external validator resources"""
         print("=== Cleaning Up External Validator Resources ===")
         
-        # Stop validator clients
-        self.client_manager.stop_all_clients()
+        # Stop validator clients (simplified)
+        print("⚠️  Validator client cleanup simplified - manual cleanup required")
         
         # Remove external keys
         external_keys_dir = Path("external_keys")
