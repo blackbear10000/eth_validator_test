@@ -278,10 +278,12 @@ class ExternalValidatorManager:
         deposits_dir = Path("external_deposits")
         deposits_dir.mkdir(exist_ok=True)
         
-        deposit_file = self.deposit_manager.generate_deposits(
-            validator_count=len(self.external_validators),
+        deposit_file = os.path.join(deposits_dir, "deposit_data.json")
+        deposit_data = self.deposit_manager.generate_batch_deposit_data(
             withdrawal_address=self.config.get("withdrawal_address"),
-            output_dir=str(deposits_dir)
+            validator_count=len(self.external_validators),
+            vault_manager=self.key_manager,
+            output_file=deposit_file
         )
         
         print(f"✅ Created deposit data: {deposit_file}")
