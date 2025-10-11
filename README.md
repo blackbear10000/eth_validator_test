@@ -247,6 +247,39 @@ kurtosis enclave ls
 
 # Service health checks
 curl http://localhost:8200/v1/sys/health
+```
+
+### Key Management
+
+#### List All Keys
+```bash
+# List keys in Vault and local files
+python3 scripts/external_validator_manager.py list-keys
+
+# List keys using KeyManager
+python3 scripts/key_manager.py list
+
+# List keys using Web3Signer Key Manager
+python3 scripts/web3signer_key_manager.py list
+```
+
+#### Web3Signer Key Operations
+```bash
+# Add a new key
+python3 scripts/web3signer_key_manager.py add --keystore ./path/to/keystore.json --password "password" --index 0
+
+# Remove a key
+python3 scripts/web3signer_key_manager.py remove --key-id "validator_0000_20241211_12345678"
+
+# Update key status
+python3 scripts/web3signer_key_manager.py update --key-id "validator_0000_20241211_12345678" --status inactive
+
+# Export keys to Web3Signer format
+python3 scripts/web3signer_key_manager.py export
+
+# Check Web3Signer status
+python3 scripts/web3signer_key_manager.py status
+```
 curl http://localhost:9000/upcheck
 curl http://localhost:9000/healthcheck/slashing-protection
 ```
@@ -362,6 +395,7 @@ eth_validator_test/
     ├── external_validator_manager.py    # External validator lifecycle
     ├── generate_keys.py                 # Key generation
     ├── key_manager.py                   # Key management
+    ├── web3signer_key_manager.py        # Web3Signer key CRUD operations
     ├── deposit_manager.py               # Deposit handling
     ├── validator_lifecycle.py           # Lifecycle management
     ├── vault_setup.py                   # Vault initialization

@@ -116,9 +116,11 @@ class KeyManager:
                 "created_at": str(subprocess.check_output(["date", "-u", "+%Y-%m-%dT%H:%M:%SZ"]).decode().strip())
             }
 
-            # Extract private key from keystore (simplified - in production use proper decryption)
-            # For now, we'll store the encrypted keystore and password
-            key_id = f"validator_{index:04d}_{validator_pubkey[:12]}"
+            # Generate friendly key ID with date and short pubkey
+            import time
+            from datetime import datetime
+            date_str = datetime.now().strftime("%Y%m%d")
+            key_id = f"validator_{index:04d}_{date_str}_{validator_pubkey[:8]}"
 
             if self.store_key_in_vault(key_id, keystore["crypto"]["cipher"]["message"], metadata):
                 imported_count += 1
@@ -210,7 +212,7 @@ def main():
 
     # Export command
     export_parser = subparsers.add_parser("export", help="Export keys for Web3Signer")
-    export_parser.add_parser("--output-dir", default="./web3signer/keys", help="Output directory")
+    export_parser.add_argument("--output-dir", default="./web3signer/keys", help="Output directory")
 
     # List command
     subparsers.add_parser("list", help="List keys in Vault")
