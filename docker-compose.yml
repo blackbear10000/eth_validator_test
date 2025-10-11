@@ -62,7 +62,7 @@ services:
       "
 
   postgres:
-    image: postgres:15
+    image: postgres:12
     container_name: postgres
     ports:
       - "5432:5432"
@@ -72,6 +72,7 @@ services:
       - POSTGRES_DB=web3signer
     volumes:
       - postgres_data:/var/lib/postgresql/data
+      - ./web3signer/init-db.sh:/docker-entrypoint-initdb.d/init-db.sh
     networks:
       - eth_validator_network
     healthcheck:
