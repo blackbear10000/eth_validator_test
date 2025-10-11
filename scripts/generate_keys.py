@@ -59,9 +59,9 @@ def create_keystore(private_key: bytes, password: str) -> Dict[str, Any]:
     # Derive key using scrypt
     derived_key = scrypt(password.encode(), salt, 32, N=2**18, r=8, p=1)
 
-    # Encrypt private key
-    cipher = AES.new(derived_key[:16], AES.MODE_CTR, nonce=iv)
-    ciphertext = cipher.encrypt(private_key)
+    # Encrypt private key using GCM mode (more secure than CTR)
+    cipher = AES.new(derived_key, AES.MODE_GCM, nonce=iv)
+    ciphertext, tag = cipher.encrypt_and_digest(private_key)
 
     # Create keystore structure
     keystore = {
@@ -80,15 +80,16 @@ def create_keystore(private_key: bytes, password: str) -> Dict[str, Any]:
             "checksum": {
                 "function": "sha256",
                 "params": {},
-                "message": hashlib.sha256(derived_key[16:] + ciphertext).hexdigest()
+                "message": hashlib.sha256(derived_key + ciphertext).hexdigest()
             },
             "cipher": {
-                "function": "aes-128-ctr",
+                "function": "aes-256-gcm",
                 "params": {
                     "iv": iv.hex()
                 },
                 "message": ciphertext.hex()
-            }
+            },
+            "mac": tag.hex()
         },
         "description": "Validator signing key",
         "pubkey": derive_public_key(private_key).hex(),
