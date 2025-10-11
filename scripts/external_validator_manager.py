@@ -91,9 +91,12 @@ class ExternalValidatorManager:
                         if len(parts) > 1:
                             port_part = parts[1].strip()
                             print(f"🔍 Debug: Port part: {port_part}")
-                            # Extract port from "http://127.0.0.1:33182"
+                            # Extract port from "http://127.0.0.1:33182" and remove any trailing status
                             if ':' in port_part:
-                                port = port_part.split(':')[-1]
+                                # Split by ':' and take the last part, then remove any trailing whitespace/status
+                                port_with_status = port_part.split(':')[-1]
+                                # Remove any trailing status like "RUNNING"
+                                port = port_with_status.split()[0]  # Take only the first word (port number)
                                 beacon_url = f"http://localhost:{port}"
                                 print(f"🔍 Debug: Found Beacon API URL: {beacon_url}")
                                 return beacon_url
