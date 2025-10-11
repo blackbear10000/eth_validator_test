@@ -530,7 +530,7 @@ class DepositManager:
                 print(f"❌ Insufficient balance: need {required_eth} ETH, have {balance_eth} ETH")
                 return False
             
-            # Deposit contract ABI (simplified)
+            # Deposit contract ABI (complete)
             deposit_contract_abi = [
                 {
                     "inputs": [
@@ -543,6 +543,32 @@ class DepositManager:
                     "outputs": [],
                     "stateMutability": "payable",
                     "type": "function"
+                },
+                {
+                    "anonymous": False,
+                    "inputs": [
+                        {"indexed": False, "name": "pubkey", "type": "bytes"},
+                        {"indexed": False, "name": "withdrawal_credentials", "type": "bytes"},
+                        {"indexed": False, "name": "amount", "type": "bytes"},
+                        {"indexed": False, "name": "signature", "type": "bytes"},
+                        {"indexed": False, "name": "index", "type": "bytes"}
+                    ],
+                    "name": "DepositEvent",
+                    "type": "event"
+                },
+                {
+                    "inputs": [],
+                    "name": "get_deposit_count",
+                    "outputs": [{"name": "", "type": "bytes"}],
+                    "stateMutability": "view",
+                    "type": "function"
+                },
+                {
+                    "inputs": [],
+                    "name": "get_deposit_root",
+                    "outputs": [{"name": "", "type": "bytes32"}],
+                    "stateMutability": "view",
+                    "type": "function"
                 }
             ]
             
@@ -551,6 +577,14 @@ class DepositManager:
                 address=deposit_contract_address,
                 abi=deposit_contract_abi
             )
+            
+            # Test contract accessibility
+            try:
+                deposit_count = contract.functions.get_deposit_count().call()
+                print(f"✅ Contract accessible, current deposit count: {deposit_count.hex()}")
+            except Exception as e:
+                print(f"⚠️  Warning: Could not call contract function: {e}")
+                print("📝 Proceeding with deposit submission...")
             
             # Submit deposits one by one
             tx_hashes = []
@@ -564,32 +598,42 @@ class DepositManager:
                 deposit_data_root = bytes.fromhex(deposit["deposit_data_root"][2:])
                 
                 # Build transaction
-                transaction = contract.functions.deposit(
-                    pubkey,
-                    withdrawal_credentials,
-                    signature,
-                    deposit_data_root
-                ).build_transaction({
-                    'from': from_address,
-                    'value': w3.to_wei(32, 'ether'),  # 32 ETH per deposit
-                    'gas': gas_limit,
-                    'gasPrice': gas_price,
-                    'nonce': w3.eth.get_transaction_count(from_address)
-                })
+                try:
+                    transaction = contract.functions.deposit(
+                        pubkey,
+                        withdrawal_credentials,
+                        signature,
+                        deposit_data_root
+                    ).build_transaction({
+                        'from': from_address,
+                        'value': w3.to_wei(32, 'ether'),  # 32 ETH per deposit
+                        'gas': gas_limit,
+                        'gasPrice': gas_price,
+                        'nonce': w3.eth.get_transaction_count(from_address)
+                    })
+                    print(f"✅ Transaction built for deposit {i+1}")
+                except Exception as e:
+                    print(f"❌ Failed to build transaction for deposit {i+1}: {e}")
+                    return False
                 
                 # Sign and send transaction
-                signed_txn = w3.eth.account.sign_transaction(transaction, private_key)
-                tx_hash = w3.eth.send_raw_transaction(signed_txn.rawTransaction)
-                
-                print(f"✅ Deposit {i+1} submitted: {tx_hash.hex()}")
-                tx_hashes.append(tx_hash.hex())
-                
-                # Wait for transaction to be mined
-                receipt = w3.eth.wait_for_transaction_receipt(tx_hash)
-                if receipt.status == 1:
-                    print(f"✅ Deposit {i+1} confirmed in block {receipt.blockNumber}")
-                else:
-                    print(f"❌ Deposit {i+1} failed")
+                try:
+                    signed_txn = w3.eth.account.sign_transaction(transaction, private_key)
+                    tx_hash = w3.eth.send_raw_transaction(signed_txn.rawTransaction)
+                    
+                    print(f"✅ Deposit {i+1} submitted: {tx_hash.hex()}")
+                    tx_hashes.append(tx_hash.hex())
+                    
+                    # Wait for transaction to be mined
+                    receipt = w3.eth.wait_for_transaction_receipt(tx_hash)
+                    if receipt.status == 1:
+                        print(f"✅ Deposit {i+1} confirmed in block {receipt.blockNumber}")
+                    else:
+                        print(f"❌ Deposit {i+1} failed")
+                        return False
+                        
+                except Exception as e:
+                    print(f"❌ Failed to send transaction for deposit {i+1}: {e}")
                     return False
             
             print(f"🎉 Successfully submitted {len(deposit_data)} deposits to Kurtosis testnet!")
