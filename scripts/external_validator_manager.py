@@ -195,6 +195,77 @@ class ExternalValidatorManager:
         print(f"✅ Generated {len(self.external_validators)} external validator keys")
         return self.external_validators
     
+    def list_stored_keys(self) -> None:
+        """List all stored keys in Vault and local files"""
+        print("=== Stored Keys Information ===")
+        
+        # List keys in Vault
+        print("\n📦 Keys in Vault:")
+        try:
+            vault_keys = self.key_manager.list_keys_in_vault()
+            if vault_keys:
+                for i, key_id in enumerate(vault_keys, 1):
+                    print(f"  {i}. {key_id}")
+                    # Get key details from Vault
+                    key_data = self.key_manager.retrieve_key_from_vault(key_id)
+                    if key_data:
+                        print(f"     - Public Key: {key_data.get('metadata', {}).get('public_key', 'N/A')}")
+                        print(f"     - Index: {key_data.get('metadata', {}).get('index', 'N/A')}")
+            else:
+                print("  No keys found in Vault")
+        except Exception as e:
+            print(f"  ❌ Error accessing Vault: {e}")
+        
+        # List local files
+        print("\n📁 Local Key Files:")
+        keys_dir = Path("external_keys")
+        if keys_dir.exists():
+            # List keystores
+            keystores_dir = keys_dir / "keystores"
+            if keystores_dir.exists():
+                keystore_files = list(keystores_dir.glob("*.json"))
+                print(f"  Keystores: {len(keystore_files)} files")
+                for keystore_file in keystore_files:
+                    print(f"    - {keystore_file.name}")
+            
+            # List secrets
+            secrets_dir = keys_dir / "secrets"
+            if secrets_dir.exists():
+                password_files = list(secrets_dir.glob("*.txt"))
+                print(f"  Passwords: {len(password_files)} files")
+                for password_file in password_files:
+                    print(f"    - {password_file.name}")
+            
+            # Check pubkeys file
+            pubkeys_file = keys_dir / "pubkeys.json"
+            if pubkeys_file.exists():
+                try:
+                    with open(pubkeys_file, 'r') as f:
+                        pubkeys_data = json.load(f)
+                    print(f"  Public Keys: {len(pubkeys_data)} entries")
+                    for pubkey_info in pubkeys_data:
+                        print(f"    - Index {pubkey_info['index']}: {pubkey_info['validator_pubkey'][:20]}...")
+                except Exception as e:
+                    print(f"  ❌ Error reading pubkeys.json: {e}")
+            
+            # Check mnemonic
+            mnemonic_file = keys_dir / "MNEMONIC.txt"
+            if mnemonic_file.exists():
+                print(f"  Mnemonic: Available (⚠️  Keep secure!)")
+        else:
+            print("  No local key files found")
+        
+        # List Web3Signer keys
+        print("\n🔐 Web3Signer Keys:")
+        web3signer_keys_dir = Path("web3signer/keys")
+        if web3signer_keys_dir.exists():
+            web3signer_files = list(web3signer_keys_dir.glob("*.yaml"))
+            print(f"  Configuration files: {len(web3signer_files)} files")
+            for config_file in web3signer_files:
+                print(f"    - {config_file.name}")
+        else:
+            print("  No Web3Signer key files found")
+    
     def create_external_deposits(self) -> str:
         """Create deposit data for external validators"""
         print("=== Creating External Validator Deposits ===")
@@ -402,7 +473,7 @@ def main():
     """Main function for external validator management"""
     parser = argparse.ArgumentParser(description="External Validator Manager")
     parser.add_argument("command", choices=[
-        "check-services", "generate-keys", "create-deposits", "submit-deposits",
+        "check-services", "generate-keys", "list-keys", "create-deposits", "submit-deposits",
         "start-clients", "wait-activation", "monitor", "test-exit", "test-withdrawal", 
         "status", "cleanup", "full-test"
     ], help="Command to execute")
@@ -421,6 +492,9 @@ def main():
         
         elif args.command == "generate-keys":
             manager.generate_external_keys(args.count)
+        
+        elif args.command == "list-keys":
+            manager.list_stored_keys()
         
         elif args.command == "create-deposits":
             manager.create_external_deposits()
