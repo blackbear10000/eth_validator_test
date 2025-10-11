@@ -200,8 +200,8 @@ class ExternalValidatorManager:
         print("=== Loading External Validators from Vault ===")
         
         try:
-            # Use list_active_keys_in_vault to skip deleted keys
-            vault_keys = self.key_manager.list_active_keys_in_vault()
+            # Use list_active_keys_in_vault to skip deleted keys (quiet mode)
+            vault_keys = self.key_manager.list_active_keys_in_vault(verbose=False)
             if not vault_keys:
                 print("❌ No active keys found in Vault")
                 return False

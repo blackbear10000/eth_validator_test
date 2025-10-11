@@ -216,11 +216,17 @@ python3 scripts/key_manager.py export --output-dir ./web3signer/keys
 # List all keys (including deleted)
 python3 scripts/key_manager.py list
 
-# List only active keys (skip deleted)
+# List only active keys (skip deleted, quiet mode)
 python3 scripts/key_manager.py list-active
+
+# List active keys with verbose output
+python3 scripts/key_manager.py list-active --verbose
 
 # Permanently destroy deleted keys
 python3 scripts/key_manager.py destroy-deleted
+
+# Destroy deleted keys quietly
+python3 scripts/key_manager.py destroy-deleted --quiet
 
 # Check validator status
 python3 scripts/key_manager.py status
@@ -397,14 +403,20 @@ docker-compose up -d
 #### Vault Key Management Issues
 If you encounter "Failed to retrieve key" errors:
 ```bash
-# Check for deleted keys
+# Check for deleted keys (shows all keys including deleted)
 python3 scripts/key_manager.py list
 
-# List only active keys
+# List only active keys (quiet mode, no error messages)
 python3 scripts/key_manager.py list-active
 
-# Permanently destroy deleted keys
+# List active keys with detailed info about deleted keys
+python3 scripts/key_manager.py list-active --verbose
+
+# Permanently destroy deleted keys (with progress output)
 python3 scripts/key_manager.py destroy-deleted
+
+# Destroy deleted keys quietly (minimal output)
+python3 scripts/key_manager.py destroy-deleted --quiet
 
 # Clear all keys (auto-destroys deleted keys first)
 python3 scripts/web3signer_key_manager.py remove --all
@@ -423,8 +435,11 @@ python3 scripts/external_validator_manager.py generate-keys --count 5
 
 **Problem**: "Failed to retrieve key" errors
 ```bash
-# Solution: Clean up deleted keys
-python3 scripts/key_manager.py destroy-deleted
+# Solution: Use quiet mode commands that don't trigger errors
+python3 scripts/key_manager.py list-active
+
+# Or clean up deleted keys
+python3 scripts/key_manager.py destroy-deleted --quiet
 ```
 
 **Problem**: "Invalid pubkey length" errors

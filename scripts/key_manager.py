@@ -73,37 +73,38 @@ class KeyManager:
             print(f"Failed to list keys: {response.text}")
             return []
 
-    def list_active_keys_in_vault(self) -> List[str]:
+    def list_active_keys_in_vault(self, verbose: bool = False) -> List[str]:
         """List only active (non-deleted) validator keys in Vault"""
         all_keys = self.list_keys_in_vault()
         active_keys = []
+        deleted_count = 0
+        error_count = 0
         
         for key_id in all_keys:
-            # Check if key is active (not deleted)
-            response = requests.get(
-                f"{self.vault_url}/v1/secret/metadata/validators/{key_id}",
-                headers=self.headers
-            )
+            status = self.check_key_status(key_id)
             
-            if response.status_code == 200:
-                metadata = response.json().get("data", {})
-                # Check if key is not deleted (no deletion_time or destroyed)
-                if not metadata.get("deletion_time") and not metadata.get("destroyed", False):
-                    active_keys.append(key_id)
-                else:
-                    print(f"Key {key_id} is deleted/destroyed, skipping")
-            else:
-                print(f"Failed to check key {key_id} status: {response.text}")
+            if status == "active":
+                active_keys.append(key_id)
+            elif status in ["deleted", "destroyed"]:
+                deleted_count += 1
+                if verbose:
+                    print(f"Key {key_id} is {status}, skipping")
+            else:  # error
+                error_count += 1
+                if verbose:
+                    print(f"Failed to check key {key_id} status")
+        
+        if verbose:
+            if deleted_count > 0:
+                print(f"Found {deleted_count} deleted/destroyed keys (skipped)")
+            if error_count > 0:
+                print(f"Found {error_count} keys with errors (skipped)")
         
         return active_keys
 
-    def destroy_deleted_keys(self) -> int:
-        """Permanently destroy all deleted keys in Vault"""
-        all_keys = self.list_keys_in_vault()
-        destroyed_count = 0
-        
-        for key_id in all_keys:
-            # Check if key is deleted but not destroyed
+    def check_key_status(self, key_id: str) -> str:
+        """Check the status of a key without triggering errors"""
+        try:
             response = requests.get(
                 f"{self.vault_url}/v1/secret/metadata/validators/{key_id}",
                 headers=self.headers
@@ -111,18 +112,50 @@ class KeyManager:
             
             if response.status_code == 200:
                 metadata = response.json().get("data", {})
-                # If key has deletion_time but is not destroyed, destroy it
-                if metadata.get("deletion_time") and not metadata.get("destroyed", False):
-                    destroy_response = requests.delete(
-                        f"{self.vault_url}/v1/secret/metadata/validators/{key_id}",
-                        headers=self.headers
-                    )
-                    
-                    if destroy_response.status_code in [200, 204]:
-                        print(f"✅ Permanently destroyed key: {key_id}")
-                        destroyed_count += 1
+                if metadata.get("deletion_time"):
+                    if metadata.get("destroyed", False):
+                        return "destroyed"
                     else:
+                        return "deleted"
+                else:
+                    return "active"
+            else:
+                return "error"
+        except Exception:
+            return "error"
+
+    def destroy_deleted_keys(self, verbose: bool = True) -> int:
+        """Permanently destroy all deleted keys in Vault"""
+        all_keys = self.list_keys_in_vault()
+        destroyed_count = 0
+        error_count = 0
+        
+        for key_id in all_keys:
+            status = self.check_key_status(key_id)
+            
+            if status == "deleted":
+                # Key is deleted but not destroyed, destroy it
+                destroy_response = requests.delete(
+                    f"{self.vault_url}/v1/secret/metadata/validators/{key_id}",
+                    headers=self.headers
+                )
+                
+                if destroy_response.status_code in [200, 204]:
+                    if verbose:
+                        print(f"✅ Permanently destroyed key: {key_id}")
+                    destroyed_count += 1
+                else:
+                    error_count += 1
+                    if verbose:
                         print(f"❌ Failed to destroy key {key_id}: {destroy_response.text}")
+            elif status == "error":
+                error_count += 1
+                if verbose:
+                    print(f"❌ Failed to check key {key_id} status")
+            # Skip active and already destroyed keys
+        
+        if verbose and error_count > 0:
+            print(f"⚠️  Encountered {error_count} errors while processing keys")
         
         return destroyed_count
 
@@ -276,10 +309,12 @@ def main():
     subparsers.add_parser("list", help="List keys in Vault")
     
     # List active command
-    subparsers.add_parser("list-active", help="List only active (non-deleted) keys in Vault")
+    list_active_parser = subparsers.add_parser("list-active", help="List only active (non-deleted) keys in Vault")
+    list_active_parser.add_argument("--verbose", "-v", action="store_true", help="Show detailed information about deleted keys")
 
     # Destroy deleted command
-    subparsers.add_parser("destroy-deleted", help="Permanently destroy all deleted keys in Vault")
+    destroy_parser = subparsers.add_parser("destroy-deleted", help="Permanently destroy all deleted keys in Vault")
+    destroy_parser.add_argument("--quiet", "-q", action="store_true", help="Suppress detailed output")
 
     # Status command
     status_parser = subparsers.add_parser("status", help="Check validator status")
@@ -313,7 +348,8 @@ def main():
                 print(f"  {key_id}: [DELETED]")
 
     elif args.command == "list-active":
-        keys = key_manager.list_active_keys_in_vault()
+        verbose = getattr(args, 'verbose', False)
+        keys = key_manager.list_active_keys_in_vault(verbose=verbose)
         print(f"Found {len(keys)} active keys in Vault:")
         for key_id in keys:
             key_data = key_manager.retrieve_key_from_vault(key_id)
@@ -323,7 +359,8 @@ def main():
 
     elif args.command == "destroy-deleted":
         print("=== Destroying Deleted Keys ===")
-        destroyed_count = key_manager.destroy_deleted_keys()
+        quiet = getattr(args, 'quiet', False)
+        destroyed_count = key_manager.destroy_deleted_keys(verbose=not quiet)
         print(f"✅ Permanently destroyed {destroyed_count} deleted keys")
 
     elif args.command == "status":

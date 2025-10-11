@@ -158,14 +158,14 @@ class Web3SignerKeyManager:
         """Remove all validator keys from Vault"""
         print("=== Clearing All Validator Keys ===")
         
-        # First, destroy any deleted keys
+        # First, destroy any deleted keys (quiet mode)
         print("Checking for deleted keys to destroy...")
-        destroyed_count = self.key_manager.destroy_deleted_keys()
+        destroyed_count = self.key_manager.destroy_deleted_keys(verbose=False)
         if destroyed_count > 0:
             print(f"✅ Destroyed {destroyed_count} deleted keys")
         
-        # Then get active keys
-        vault_keys = self.key_manager.list_active_keys_in_vault()
+        # Then get active keys (quiet mode)
+        vault_keys = self.key_manager.list_active_keys_in_vault(verbose=False)
         
         if not vault_keys:
             print("No active keys found in Vault")
