@@ -19,7 +19,7 @@ sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
 from key_manager import KeyManager
 from deposit_manager import DepositManager
-from validator_lifecycle import ValidatorLifecycle
+from validator_lifecycle import ValidatorLifecycleManager
 from external_validator_client import ExternalValidatorClientManager
 
 
@@ -39,7 +39,7 @@ class ExternalValidatorManager:
         # Initialize managers
         self.key_manager = KeyManager()
         self.deposit_manager = DepositManager()
-        self.validator_lifecycle = ValidatorLifecycle()
+        self.validator_lifecycle = ValidatorLifecycleManager()
         self.client_manager = ExternalValidatorClientManager(config_file)
         
         # External validator tracking
