@@ -231,6 +231,12 @@ python3 scripts/key_manager.py destroy-deleted --quiet
 # Debug: Show detailed status of all keys
 python3 scripts/key_manager.py debug-status
 
+# Advanced debug: Show comprehensive key information
+python3 scripts/key_manager.py debug-advanced
+
+# Clean corrupted keys (metadata exists but data is inaccessible)
+python3 scripts/key_manager.py clean-corrupted
+
 # Check validator status
 python3 scripts/key_manager.py status
 ```
@@ -423,6 +429,12 @@ python3 scripts/key_manager.py destroy-deleted --quiet
 
 # Debug: Check detailed status of all keys
 python3 scripts/key_manager.py debug-status
+
+# Advanced debug: Show comprehensive key information
+python3 scripts/key_manager.py debug-advanced
+
+# Clean corrupted keys (metadata exists but data is inaccessible)
+python3 scripts/key_manager.py clean-corrupted
 
 # Clear all keys (auto-destroys deleted keys first)
 python3 scripts/web3signer_key_manager.py remove --all

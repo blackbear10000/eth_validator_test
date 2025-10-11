@@ -103,26 +103,118 @@ class KeyManager:
         return active_keys
 
     def check_key_status(self, key_id: str) -> str:
-        """Check the status of a key without triggering errors"""
+        """Check the status of a key using Vault KV v2 API best practices"""
         try:
-            response = requests.get(
+            # Method 1: Check metadata first (most efficient)
+            metadata_response = requests.get(
                 f"{self.vault_url}/v1/secret/metadata/validators/{key_id}",
                 headers=self.headers
             )
             
-            if response.status_code == 200:
-                metadata = response.json().get("data", {})
-                if metadata.get("deletion_time"):
-                    if metadata.get("destroyed", False):
-                        return "destroyed"
-                    else:
-                        return "deleted"
-                else:
-                    return "active"
-            else:
+            if metadata_response.status_code != 200:
                 return "error"
+            
+            metadata = metadata_response.json().get("data", {})
+            
+            # Check if key has deletion_time (soft deleted)
+            if metadata.get("deletion_time"):
+                if metadata.get("destroyed", False):
+                    return "destroyed"
+                else:
+                    return "deleted"
+            
+            # Method 2: Check current version and data accessibility
+            # For KV v2, we can check the current version
+            current_version = metadata.get("current_version")
+            if current_version is None:
+                return "deleted"  # No current version means key is deleted
+            
+            # Method 3: Try to read the data with version parameter
+            # This is more reliable than just checking /data endpoint
+            data_response = requests.get(
+                f"{self.vault_url}/v1/secret/data/validators/{key_id}",
+                headers=self.headers,
+                params={"version": current_version}
+            )
+            
+            if data_response.status_code == 200:
+                data = data_response.json()["data"]
+                if data.get("data") is None:
+                    return "deleted"  # Data is null, key is effectively deleted
+                else:
+                    return "active"  # Data is accessible
+            elif data_response.status_code == 404:
+                return "deleted"  # Key not found
+            else:
+                return "error"  # Other error
+                
         except Exception:
             return "error"
+
+    def check_key_status_advanced(self, key_id: str) -> Dict[str, Any]:
+        """Advanced key status check with detailed information"""
+        result = {
+            "status": "unknown",
+            "metadata": None,
+            "current_version": None,
+            "deletion_time": None,
+            "destroyed": False,
+            "data_accessible": False,
+            "error": None
+        }
+        
+        try:
+            # Get metadata
+            metadata_response = requests.get(
+                f"{self.vault_url}/v1/secret/metadata/validators/{key_id}",
+                headers=self.headers
+            )
+            
+            if metadata_response.status_code != 200:
+                result["status"] = "error"
+                result["error"] = f"Metadata request failed: {metadata_response.status_code}"
+                return result
+            
+            metadata = metadata_response.json().get("data", {})
+            result["metadata"] = metadata
+            result["current_version"] = metadata.get("current_version")
+            result["deletion_time"] = metadata.get("deletion_time")
+            result["destroyed"] = metadata.get("destroyed", False)
+            
+            # Determine status based on metadata
+            if result["deletion_time"]:
+                if result["destroyed"]:
+                    result["status"] = "destroyed"
+                else:
+                    result["status"] = "deleted"
+            elif result["current_version"] is None:
+                result["status"] = "deleted"
+            else:
+                # Try to access data
+                data_response = requests.get(
+                    f"{self.vault_url}/v1/secret/data/validators/{key_id}",
+                    headers=self.headers,
+                    params={"version": result["current_version"]}
+                )
+                
+                if data_response.status_code == 200:
+                    data = data_response.json()["data"]
+                    if data.get("data") is None:
+                        result["status"] = "deleted"
+                    else:
+                        result["status"] = "active"
+                        result["data_accessible"] = True
+                elif data_response.status_code == 404:
+                    result["status"] = "deleted"
+                else:
+                    result["status"] = "error"
+                    result["error"] = f"Data request failed: {data_response.status_code}"
+            
+        except Exception as e:
+            result["status"] = "error"
+            result["error"] = str(e)
+        
+        return result
 
     def get_key_metadata_safe(self, key_id: str) -> Optional[Dict[str, Any]]:
         """Safely retrieve key metadata without triggering errors"""
@@ -175,6 +267,23 @@ class KeyManager:
                     error_count += 1
                     if verbose:
                         print(f"❌ Failed to destroy key {key_id}: {destroy_response.text}")
+            elif status == "error":
+                # Try to destroy keys that have errors (might be corrupted)
+                if verbose:
+                    print(f"⚠️  Attempting to destroy key with error status: {key_id}")
+                destroy_response = requests.delete(
+                    f"{self.vault_url}/v1/secret/metadata/validators/{key_id}",
+                    headers=self.headers
+                )
+                
+                if destroy_response.status_code in [200, 204]:
+                    if verbose:
+                        print(f"✅ Successfully destroyed error key: {key_id}")
+                    destroyed_count += 1
+                else:
+                    error_count += 1
+                    if verbose:
+                        print(f"❌ Failed to destroy error key {key_id}: {destroy_response.text}")
             elif status == "active":
                 active_count += 1
                 if verbose:
@@ -192,6 +301,86 @@ class KeyManager:
             print(f"Summary: {destroyed_count} destroyed, {active_count} active, {already_destroyed_count} already destroyed, {error_count} errors")
         
         return destroyed_count
+
+    def clean_corrupted_keys(self, verbose: bool = True) -> int:
+        """Clean keys that have metadata but no accessible data"""
+        all_keys = self.list_keys_in_vault()
+        cleaned_count = 0
+        error_count = 0
+        
+        if verbose:
+            print(f"Processing {len(all_keys)} keys...")
+        
+        for key_id in all_keys:
+            # Check if key has metadata but no accessible data
+            try:
+                # Check metadata
+                metadata_response = requests.get(
+                    f"{self.vault_url}/v1/secret/metadata/validators/{key_id}",
+                    headers=self.headers
+                )
+                
+                if metadata_response.status_code != 200:
+                    continue
+                
+                metadata = metadata_response.json().get("data", {})
+                if metadata.get("deletion_time"):
+                    continue  # Skip already deleted keys
+                
+                # Check if data is accessible
+                data_response = requests.get(
+                    f"{self.vault_url}/v1/secret/data/validators/{key_id}",
+                    headers=self.headers
+                )
+                
+                if data_response.status_code == 200:
+                    data = data_response.json()["data"]
+                    if data.get("data") is None:
+                        # Key has metadata but no data - this is corrupted
+                        if verbose:
+                            print(f"🧹 Cleaning corrupted key: {key_id}")
+                        
+                        # Delete the key
+                        delete_response = requests.delete(
+                            f"{self.vault_url}/v1/secret/metadata/validators/{key_id}",
+                            headers=self.headers
+                        )
+                        
+                        if delete_response.status_code in [200, 204]:
+                            cleaned_count += 1
+                        else:
+                            error_count += 1
+                            if verbose:
+                                print(f"❌ Failed to clean key {key_id}: {delete_response.text}")
+                    else:
+                        if verbose:
+                            print(f"✅ Key {key_id} is healthy")
+                else:
+                    # Cannot access data - might be corrupted
+                    if verbose:
+                        print(f"🧹 Cleaning inaccessible key: {key_id}")
+                    
+                    delete_response = requests.delete(
+                        f"{self.vault_url}/v1/secret/metadata/validators/{key_id}",
+                        headers=self.headers
+                    )
+                    
+                    if delete_response.status_code in [200, 204]:
+                        cleaned_count += 1
+                    else:
+                        error_count += 1
+                        if verbose:
+                            print(f"❌ Failed to clean key {key_id}: {delete_response.text}")
+                            
+            except Exception as e:
+                error_count += 1
+                if verbose:
+                    print(f"❌ Error processing key {key_id}: {e}")
+        
+        if verbose and error_count > 0:
+            print(f"⚠️  Encountered {error_count} errors while processing keys")
+        
+        return cleaned_count
 
     def bulk_import_keys(self, keys_dir: str) -> int:
         """Import keys from local directory to Vault"""
@@ -353,6 +542,13 @@ def main():
     # Debug command
     subparsers.add_parser("debug-status", help="Show detailed status of all keys")
 
+    # Advanced debug command
+    subparsers.add_parser("debug-advanced", help="Show advanced detailed status of all keys")
+
+    # Clean corrupted command
+    clean_parser = subparsers.add_parser("clean-corrupted", help="Remove keys that have metadata but no accessible data")
+    clean_parser.add_argument("--quiet", "-q", action="store_true", help="Suppress detailed output")
+
     # Status command
     status_parser = subparsers.add_parser("status", help="Check validator status")
     status_parser.add_argument("--beacon-url", default="http://localhost:5052", help="Beacon node URL")
@@ -419,6 +615,37 @@ def main():
         print(f"\nStatus Summary:")
         for status, count in status_counts.items():
             print(f"  {status}: {count}")
+
+    elif args.command == "debug-advanced":
+        print("=== Advanced Debug: Detailed Key Status Information ===")
+        all_keys = key_manager.list_keys_in_vault()
+        print(f"Total keys found: {len(all_keys)}")
+        
+        status_counts = {"active": 0, "deleted": 0, "destroyed": 0, "error": 0}
+        
+        for key_id in all_keys:
+            status_info = key_manager.check_key_status_advanced(key_id)
+            status = status_info["status"]
+            status_counts[status] += 1
+            
+            print(f"\nKey: {key_id}")
+            print(f"  Status: {status}")
+            print(f"  Current Version: {status_info['current_version']}")
+            print(f"  Deletion Time: {status_info['deletion_time']}")
+            print(f"  Destroyed: {status_info['destroyed']}")
+            print(f"  Data Accessible: {status_info['data_accessible']}")
+            if status_info['error']:
+                print(f"  Error: {status_info['error']}")
+        
+        print(f"\nStatus Summary:")
+        for status, count in status_counts.items():
+            print(f"  {status}: {count}")
+
+    elif args.command == "clean-corrupted":
+        print("=== Cleaning Corrupted Keys ===")
+        quiet = getattr(args, 'quiet', False)
+        cleaned_count = key_manager.clean_corrupted_keys(verbose=not quiet)
+        print(f"✅ Cleaned {cleaned_count} corrupted keys")
 
     elif args.command == "status":
         keys = key_manager.list_keys_in_vault()
