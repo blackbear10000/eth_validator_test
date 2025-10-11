@@ -3,16 +3,10 @@
 # Web3Signer Database Initialization Script
 # Based on official documentation: https://docs.web3signer.consensys.io/how-to/configure-slashing-protection
 
-echo "Waiting for PostgreSQL to be ready..."
-until pg_isready -h postgres -p 5432 -U postgres; do
-  echo "PostgreSQL is unavailable - sleeping"
-  sleep 2
-done
-
-echo "PostgreSQL is ready - initializing Web3Signer database schema..."
+echo "Initializing Web3Signer database schema..."
 
 # Create the database schema tables
-psql -h postgres -p 5432 -U postgres -d web3signer << 'EOF'
+psql -U postgres -d web3signer << 'EOF'
 -- Create database_version table
 CREATE TABLE IF NOT EXISTS database_version (
     id INTEGER PRIMARY KEY,
