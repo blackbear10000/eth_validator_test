@@ -63,36 +63,55 @@ class ExternalValidatorManager:
     
     def get_beacon_api_url(self) -> str:
         """Get the beacon API URL from Kurtosis"""
+        print("🔍 Debug: Getting Beacon API URL from Kurtosis...")
+        
         try:
             # Use kurtosis enclave inspect to get service information
+            print("🔍 Debug: Running 'kurtosis enclave inspect eth-devnet'...")
             result = subprocess.run(
                 ["kurtosis", "enclave", "inspect", "eth-devnet"],
                 capture_output=True, text=True, check=True
             )
             
+            print("🔍 Debug: Kurtosis command output:")
+            print(result.stdout)
+            
             # Parse the output to find lighthouse beacon API port
             lines = result.stdout.split('\n')
-            for line in lines:
+            print(f"🔍 Debug: Parsing {len(lines)} lines of output...")
+            
+            for i, line in enumerate(lines):
+                print(f"🔍 Debug: Line {i}: {line}")
                 if 'cl-' in line and 'lighthouse' in line and 'http:' in line:
+                    print(f"🔍 Debug: Found lighthouse service line: {line}")
                     # Extract port mapping from lines like:
                     # "http: 4000/tcp -> http://127.0.0.1:33182"
                     if '->' in line:
                         parts = line.split('->')
                         if len(parts) > 1:
                             port_part = parts[1].strip()
+                            print(f"🔍 Debug: Port part: {port_part}")
                             # Extract port from "http://127.0.0.1:33182"
                             if ':' in port_part:
                                 port = port_part.split(':')[-1]
-                                return f"http://localhost:{port}"
+                                beacon_url = f"http://localhost:{port}"
+                                print(f"🔍 Debug: Found Beacon API URL: {beacon_url}")
+                                return beacon_url
+            
+            print("🔍 Debug: No lighthouse service found in output")
+            
         except subprocess.CalledProcessError as e:
             print(f"⚠️  Failed to get Kurtosis services: {e}")
+            print(f"🔍 Debug: Command stderr: {e.stderr}")
             pass
         except FileNotFoundError:
             print("⚠️  Kurtosis CLI not found. Please install Kurtosis first.")
             pass
         
         # Fallback to default
-        return "http://localhost:5052"
+        fallback_url = "http://localhost:5052"
+        print(f"🔍 Debug: Using fallback URL: {fallback_url}")
+        return fallback_url
     
     def check_services(self) -> bool:
         """Check if required services are running"""
@@ -123,15 +142,27 @@ class ExternalValidatorManager:
             return False
         
         # Check Beacon API
+        print(f"🔍 Debug: Checking Beacon API at: {self.beacon_api_url}")
         try:
-            response = requests.get(f"{self.beacon_api_url}/eth/v1/node/health", timeout=5)
+            health_url = f"{self.beacon_api_url}/eth/v1/node/health"
+            print(f"🔍 Debug: Making request to: {health_url}")
+            response = requests.get(health_url, timeout=5)
+            print(f"🔍 Debug: Response status code: {response.status_code}")
+            print(f"🔍 Debug: Response headers: {dict(response.headers)}")
+            if response.text:
+                print(f"🔍 Debug: Response body: {response.text[:200]}...")
+            
             if response.status_code in [200, 206]:
                 print("✅ Beacon API is accessible")
             else:
-                print("❌ Beacon API is not responding")
+                print(f"❌ Beacon API is not responding (status: {response.status_code})")
                 return False
-        except requests.RequestException:
-            print("❌ Beacon API is not accessible")
+        except requests.RequestException as e:
+            print(f"❌ Beacon API is not accessible: {e}")
+            print("💡 Troubleshooting tips:")
+            print("   1. Make sure Kurtosis devnet is running: ./start.sh quick-start")
+            print("   2. Check if eth-devnet enclave exists: kurtosis enclave ls")
+            print("   3. Check Kurtosis services: kurtosis enclave inspect eth-devnet")
             return False
         
         return True
