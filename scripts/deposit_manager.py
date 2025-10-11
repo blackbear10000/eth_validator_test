@@ -66,18 +66,28 @@ class DepositManager:
 
     def compute_deposit_domain(self, fork_version: str = "0x00000000") -> bytes:
         """Compute deposit domain for signature"""
-        # Simplified domain computation for testnet
-        domain_type = b'\x03\x00\x00\x00'  # DOMAIN_DEPOSIT
+        # Domain computation for Ethereum 2.0
+        # DOMAIN_DEPOSIT = 0x03000000
+        domain_type = b'\x03\x00\x00\x00'  # DOMAIN_DEPOSIT (little-endian)
         fork_version_bytes = bytes.fromhex(fork_version.replace('0x', ''))
+        
+        # For testnet, use a fixed genesis validators root
+        # In production, this should be the actual genesis validators root
         genesis_validators_root = b'\x00' * 32  # Use zeros for testnet
 
-        # Domain = domain_type + fork_version
-        domain = domain_type + fork_version_bytes + genesis_validators_root[:28]
-        return domain[:32]
+        # Domain = domain_type + fork_version + genesis_validators_root
+        domain = domain_type + fork_version_bytes + genesis_validators_root
+        return domain
 
     def create_deposit_data(self, validator_pubkey: str, withdrawal_address: str,
                            fork_version: str = "0x00000000") -> Dict[str, Any]:
-        """Create deposit data for a single validator"""
+        """
+        Create deposit data for a single validator
+        
+        NOTE: This is a TESTING implementation that creates deterministic but 
+        NOT cryptographically valid signatures. For production use, implement
+        proper BLS12-381 signing with the validator's private key.
+        """
         try:
             # Convert pubkey to bytes
             pubkey_bytes = bytes.fromhex(validator_pubkey.replace('0x', ''))
@@ -99,20 +109,57 @@ class DepositManager:
             "amount": deposit_amount_gwei.to_bytes(8, 'little')
         }
 
-        # For testing purposes, we'll use a dummy signature
+        # Create proper deposit message hash
+        import hashlib
+        
+        # Create deposit message (SSZ structure)
+        deposit_message = {
+            "pubkey": pubkey_bytes,
+            "withdrawal_credentials": withdrawal_credentials_bytes,
+            "amount": deposit_amount_gwei.to_bytes(8, 'little')
+        }
+        
+        # Compute deposit message root (simplified SSZ hash)
+        # In real implementation, this should use proper SSZ serialization
+        # For testing, we'll create a deterministic hash
+        message_data = (
+            deposit_message["pubkey"] +
+            deposit_message["withdrawal_credentials"] +
+            deposit_message["amount"]
+        )
+        deposit_message_root = hashlib.sha256(message_data).digest()
+        
+        print(f"Debug: Deposit message root: {deposit_message_root.hex()}")
+        
+        # Create a deterministic signature for testing
         # In production, this should be properly signed with the validator's private key
-        dummy_signature = b'\x00' * 96
-
-        # Create deposit data root (simplified)
-        # In production, this should be properly computed using SSZ
-        deposit_data_root = b'\x00' * 32
+        domain = self.compute_deposit_domain(fork_version)
+        
+        # Create signing root: hash(deposit_message_root + domain)
+        signing_root = hashlib.sha256(deposit_message_root + domain).digest()
+        
+        # For testing: create a deterministic signature based on the signing root
+        # This creates a unique signature for each validator but is NOT cryptographically valid
+        signature_data = hashlib.sha256(
+            signing_root + 
+            pubkey_bytes + 
+            withdrawal_credentials_bytes
+        ).digest()
+        
+        # Create a deterministic signature (96 bytes)
+        # This is NOT cryptographically valid but serves for testing
+        signature = (signature_data * 3)[:96]  # Repeat and truncate to 96 bytes
+        
+        # Compute deposit data root
+        deposit_data = deposit_message_root + signature
+        deposit_data_root = hashlib.sha256(deposit_data).digest()
 
         return {
             "pubkey": "0x" + pubkey_bytes.hex(),
             "withdrawal_credentials": withdrawal_credentials,
             "amount": str(deposit_amount_gwei),
-            "signature": "0x" + dummy_signature.hex(),
-            "deposit_message_root": "0x" + deposit_data_root.hex(),
+            "signature": "0x" + signature.hex(),
+            "deposit_message_root": "0x" + deposit_message_root.hex(),
             "deposit_data_root": "0x" + deposit_data_root.hex(),
             "fork_version": fork_version,
             "network_name": "devnet",
