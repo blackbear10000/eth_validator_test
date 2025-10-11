@@ -538,13 +538,13 @@ class DepositManager:
                 print(f"❌ Insufficient balance: need {required_eth} ETH, have {balance_eth} ETH")
                 return False
             
-            # Deposit contract ABI (correct for Ethereum 2.0)
+            # Deposit contract ABI (Web3.py compatible)
             deposit_contract_abi = [
                 {
                     "inputs": [
-                        {"name": "pubkey", "type": "bytes48"},
-                        {"name": "withdrawal_credentials", "type": "bytes32"},
-                        {"name": "signature", "type": "bytes96"},
+                        {"name": "pubkey", "type": "bytes"},
+                        {"name": "withdrawal_credentials", "type": "bytes"},
+                        {"name": "signature", "type": "bytes"},
                         {"name": "deposit_data_root", "type": "bytes32"}
                     ],
                     "name": "deposit",
@@ -623,12 +623,18 @@ class DepositManager:
                 signature = bytes.fromhex(deposit["signature"][2:])
                 deposit_data_root = bytes.fromhex(deposit["deposit_data_root"][2:])
                 
-                # Debug: Print data lengths
+                # Debug: Print data lengths and content
                 print(f"📋 Deposit data lengths:")
                 print(f"   - Pubkey: {len(pubkey)} bytes")
                 print(f"   - Withdrawal credentials: {len(withdrawal_credentials)} bytes")
                 print(f"   - Signature: {len(signature)} bytes")
                 print(f"   - Deposit data root: {len(deposit_data_root)} bytes")
+                
+                print(f"📋 Deposit data content (hex):")
+                print(f"   - Pubkey: {pubkey.hex()}")
+                print(f"   - Withdrawal credentials: {withdrawal_credentials.hex()}")
+                print(f"   - Signature: {signature.hex()}")
+                print(f"   - Deposit data root: {deposit_data_root.hex()}")
                 
                 # Validate data lengths
                 if len(pubkey) != 48:
