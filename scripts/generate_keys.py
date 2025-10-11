@@ -104,8 +104,11 @@ def create_keystore(private_key: bytes, password: str) -> Dict[str, Any]:
 def derive_public_key(private_key: bytes) -> bytes:
     """Derive public key from private key (simplified for BLS)"""
     # This is a placeholder - in production use proper BLS12-381 operations
-    # For testing, we'll use a simple hash
-    return hashlib.sha256(private_key).digest()[:48]
+    # For testing, we'll use a simple hash to generate 48 bytes
+    # Use multiple hash rounds to get 48 bytes
+    hash1 = hashlib.sha256(private_key).digest()
+    hash2 = hashlib.sha256(private_key + b"round2").digest()
+    return hash1 + hash2[:16]  # 32 + 16 = 48 bytes
 
 
 def generate_withdrawal_credentials(withdrawal_address: str) -> str:

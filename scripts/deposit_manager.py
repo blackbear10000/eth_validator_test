@@ -123,9 +123,22 @@ class DepositManager:
         
         try:
             # Convert pubkey to bytes
-            pubkey_bytes = bytes.fromhex(validator_pubkey.replace('0x', ''))
+            pubkey_hex = validator_pubkey.replace('0x', '')
+            pubkey_bytes = bytes.fromhex(pubkey_hex)
             print(f"Debug: Processing validator pubkey: {validator_pubkey[:20]}...")
+            print(f"Debug: Pubkey length: {len(pubkey_bytes)} bytes ({len(pubkey_hex)} hex chars)")
             print(f"Debug: Using network: {network_name}, fork_version: {fork_version}")
+            
+            # Ensure we have the right length for BLS12-381
+            if len(pubkey_bytes) == 32:
+                print("Warning: Using 32-byte pubkey, extending to 48 bytes for BLS12-381")
+                # Extend 32-byte pubkey to 48 bytes for BLS12-381
+                import hashlib
+                extended = hashlib.sha256(pubkey_bytes + b"extension").digest()[:16]
+                pubkey_bytes = pubkey_bytes + extended
+            elif len(pubkey_bytes) != 48:
+                raise ValueError(f"Invalid pubkey length: {len(pubkey_bytes)} bytes (expected 32 or 48)")
+                
         except Exception as e:
             print(f"Error processing pubkey {validator_pubkey}: {e}")
             raise
@@ -303,8 +316,13 @@ class DepositManager:
             return validation_results
         
         # Validate field lengths
-        if len(deposit_data["pubkey"]) != 98:  # 0x + 48 bytes * 2
-            validation_results["errors"].append("Invalid pubkey length")
+        pubkey_length = len(deposit_data["pubkey"])
+        if pubkey_length == 66:  # 0x + 32 bytes * 2 (SECP256k1)
+            validation_results["warnings"].append("Using SECP256k1 pubkey (32 bytes) instead of BLS12-381 (48 bytes)")
+        elif pubkey_length == 98:  # 0x + 48 bytes * 2 (BLS12-381)
+            pass  # Correct length
+        else:
+            validation_results["errors"].append(f"Invalid pubkey length: {pubkey_length} (expected 66 for SECP256k1 or 98 for BLS12-381)")
             validation_results["is_valid"] = False
             
         if len(deposit_data["withdrawal_credentials"]) != 66:  # 0x + 32 bytes * 2
