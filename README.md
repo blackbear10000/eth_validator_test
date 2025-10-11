@@ -472,6 +472,15 @@ docker-compose down -v  # Remove volumes
 ./start.sh cleanup      # Full cleanup
 ```
 
+#### Path Issues
+If you encounter "no configuration file provided: not found" errors:
+```bash
+# The scripts now automatically detect the correct project root directory
+# You can run from either the project root or scripts directory:
+python3 scripts/orchestrate.py status  # From project root
+cd scripts && python3 orchestrate.py status  # From scripts directory
+```
+
 #### Web3Signer Configuration Issues
 If Web3Signer fails to start:
 ```bash

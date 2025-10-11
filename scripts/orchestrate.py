@@ -26,6 +26,15 @@ class TestOrchestrator:
         self.config_file = config_file
         self.config = self.load_config()
         self.running_processes = []
+        
+        # Determine the project root directory
+        script_dir = os.path.dirname(os.path.abspath(__file__))
+        if os.path.basename(script_dir) == "scripts":
+            # If running from scripts directory, go up one level
+            self.project_root = os.path.dirname(script_dir)
+        else:
+            # If running from project root, use current directory
+            self.project_root = os.getcwd()
 
     def load_config(self) -> Dict[str, Any]:
         """Load test configuration"""
@@ -92,7 +101,7 @@ class TestOrchestrator:
 
         # Start remote signing stack (Vault + Consul + Web3Signer)
         print("Starting Vault + Consul + Web3Signer...")
-        self.run_command(["docker-compose", "up", "-d"], cwd="..")
+        self.run_command(["docker-compose", "up", "-d"], cwd=self.project_root)
 
         # Wait for services to be ready
         print("Waiting for services to start...")
@@ -123,7 +132,7 @@ class TestOrchestrator:
         
         # Check Docker services
         print("Checking Docker services...")
-        self.run_command(["docker-compose", "ps"], cwd="..")
+        self.run_command(["docker-compose", "ps"], cwd=self.project_root)
         
         # Check Kurtosis enclaves
         print("Checking Kurtosis enclaves...")
@@ -166,7 +175,7 @@ class TestOrchestrator:
 
         # Stop Docker services
         try:
-            self.run_command(["docker-compose", "down", "-v"], cwd="..")
+            self.run_command(["docker-compose", "down", "-v"], cwd=self.project_root)
         except subprocess.CalledProcessError:
             print("Docker cleanup may have failed")
 
