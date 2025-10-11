@@ -189,7 +189,7 @@ class ExternalValidatorManager:
         print(f"✅ Exported {exported_count} keys to Web3Signer format")
         
         # Get public keys from generated keys
-        public_keys = [key["public_key"] for key in generated_keys]
+        public_keys = [key["validator_public_key"] for key in generated_keys]
         self.external_validators = public_keys[:count]
         
         print(f"✅ Generated {len(self.external_validators)} external validator keys")
