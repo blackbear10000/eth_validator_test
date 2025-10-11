@@ -1,77 +1,70 @@
 # Kurtosis Ethereum Package Configuration
-# This configuration spins up a fast devnet with built-in validators
-# External Web3Signer will be used for additional validator management
+# Goal: fast devnet with built-in validators; later you can add external Web3Signer
 
 participants:
-  # --- Combo 1: Geth × Lighthouse (Built-in validators) ---
+  # --- Combo 1: Geth × Prysm ---
   - el_type: geth
-    el_image: ethereum/client-go:v1.16.3
-    cl_type: lighthouse
-    cl_image: sigp/lighthouse:v7.1.0
-    vc_type: lighthouse
-    vc_image: sigp/lighthouse:v7.1.0
-    el_extra_params: ["--http.api=eth,net,web3,debug,admin,txpool"]
+    cl_type: prysm
+    vc_type: prysm
 
-  # --- Combo 2: Geth × Teku (Built-in validators) ---
+  # --- Combo 2: Reth × Lighthouse ---
+  - el_type: reth
+    cl_type: lighthouse
+    vc_type: lighthouse
+
+  # --- Combo 3: Geth × Lighthouse ---
   - el_type: geth
-    el_image: ethereum/client-go:v1.16.3
-    cl_type: teku
-    cl_image: consensys/teku:25.9.3
-    vc_type: teku
-    vc_image: consensys/teku:25.9.3
-    el_extra_params: ["--http.api=eth,net,web3,debug,admin,txpool"]
+    cl_type: lighthouse
+    vc_type: lighthouse
+
+  # --- Combo 4: Reth × Prysm ---
+  - el_type: reth
+    cl_type: prysm
+    vc_type: prysm
+
+# ⬆️ 不固定镜像：省略 el_image/cl_image/vc_image，让包使用其测试过的默认镜像组合
+# ⬆️ 不加 el_extra_params：避免把 geth 专属参数误用到 reth
 
 network_params:
   # ===== 时间尺度（缩短等待但不跳过）=====
-  # slot 缩短，epoch = 32 × 4s = 128s；把 64-epoch 投票期压到 ~2 分钟量级
   seconds_per_slot: 4
-  # 缩短 ETH1 跟随距离（主网是 2048）；设 16（甚至 1 也行）
   eth1_follow_distance: 16
 
   # ===== 激活队列（更快清队列）=====
-  # 主网等价：65536；这里降到 32，让每个 epoch 激活更多
   churn_limit_quotient: 32
   max_per_epoch_activation_churn_limit: 64
 
   # ===== 创世与验证者基数 =====
-  # 每台 VC 需要足够的 genesis 验证者以满足最小要求（64个）
-  # 2 个节点 × 32 个验证者/节点 = 64 个验证者
-  num_validator_keys_per_node: 32
-  # 便于提款观察：直接用 0x01，退出后自动提款到 EL 地址
-  withdrawal_type: "0x01"
+  num_validator_keys_per_node: 32         # 4 组 × 32 = 128 个 genesis 验证者
+  withdrawal_type: "0x01"                 # 退出后自动提款到 EL 地址
 
-  # ===== 网络配置 =====
-  # 使用 minimal preset 以加快共识
+  # ===== 预设与网络标识 =====
   preset: minimal
-  # 网络 ID
   network_id: "3151908"
-  # 存款合约地址
   deposit_contract_address: "0x4242424242424242424242424242424242424242"
-  
-  # ===== Fork 配置 =====
-  # 分叉：只到 Deneb，全部 genesis 启；先不启 Electra
+
+  # ===== Fork 配置（只到 Deneb；先不启 Electra）=====
   altair_fork_epoch: 0
   bellatrix_fork_epoch: 0
   capella_fork_epoch: 0
   deneb_fork_epoch: 0
-  # electra_fork_epoch:  # ← 移除
+  # electra_fork_epoch:   # ← 不配置，等网络稳定后再按需开启（建议 256/512）
 
-  # 预置资金账户（用来批量发送 deposit 交易）
+  # ===== 资金准备（用于后续批量 deposit 测试）=====
   prefunded_accounts: '{
     "0xDeaDbeefDeaDbeefDeaDbeefDeaDbeefDeaDBeEF": {"balance":"10000ETH"}
   }'
 
-  # 给 EL 启动更宽窗口（避免 CL 先跑起来）
+  # 给 EL 充足时间就绪，避免 CL 先行导致初始化失败
   genesis_delay: 180
 
-# 监控与工具（均为包支持的合法服务名）
 additional_services:
   - prometheus_grafana
   - forkmon
   - dora
-  - blockscout         # 看 EL 交易/合约
-  - tx_fuzz            # 产生交易负载；也可换 broadcaster/custom_flood/spamoor
-  - blobscan           # 如需观察 4844 blob
+  - blockscout
+  - tx_fuzz
+  - blobscan
 
 wait_for_finalization: false
 global_log_level: info
