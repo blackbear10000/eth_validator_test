@@ -78,18 +78,25 @@ class DepositManager:
     def create_deposit_data(self, validator_pubkey: str, withdrawal_address: str,
                            fork_version: str = "0x00000000") -> Dict[str, Any]:
         """Create deposit data for a single validator"""
-        # Convert pubkey to bytes
-        pubkey_bytes = bytes.fromhex(validator_pubkey.replace('0x', ''))
+        try:
+            # Convert pubkey to bytes
+            pubkey_bytes = bytes.fromhex(validator_pubkey.replace('0x', ''))
+            print(f"Debug: Processing validator pubkey: {validator_pubkey[:20]}...")
+        except Exception as e:
+            print(f"Error processing pubkey {validator_pubkey}: {e}")
+            raise
 
         # Generate withdrawal credentials
         withdrawal_credentials = self.generate_withdrawal_credentials(withdrawal_address)
         withdrawal_credentials_bytes = bytes.fromhex(withdrawal_credentials.replace('0x', ''))
 
         # Create deposit message
+        # Convert deposit amount to Gwei (32 ETH = 32,000,000,000 Gwei)
+        deposit_amount_gwei = 32 * 10**9  # 32 ETH in Gwei
         deposit_message = {
             "pubkey": pubkey_bytes,
             "withdrawal_credentials": withdrawal_credentials_bytes,
-            "amount": self.deposit_amount.to_bytes(8, 'little')
+            "amount": deposit_amount_gwei.to_bytes(8, 'little')
         }
 
         # For testing purposes, we'll use a dummy signature
@@ -103,7 +110,7 @@ class DepositManager:
         return {
             "pubkey": "0x" + pubkey_bytes.hex(),
             "withdrawal_credentials": withdrawal_credentials,
-            "amount": str(self.deposit_amount),
+            "amount": str(deposit_amount_gwei),
             "signature": "0x" + dummy_signature.hex(),
             "deposit_message_root": "0x" + deposit_data_root.hex(),
             "deposit_data_root": "0x" + deposit_data_root.hex(),
@@ -149,14 +156,19 @@ class DepositManager:
 
         # Generate deposit data
         deposit_data = []
-        for key_info in selected_keys:
+        for i, key_info in enumerate(selected_keys):
+            print(f"Debug: Processing key {i+1}/{len(selected_keys)}: {key_info['key_id']}")
             if key_info["status"] not in ["generated", "ready"]:
                 print(f"Warning: Key {key_info['key_id']} has status {key_info['status']}")
 
-            deposit_info = self.create_deposit_data(
-                validator_pubkey=key_info["validator_pubkey"],
-                withdrawal_address=withdrawal_address
-            )
+            try:
+                deposit_info = self.create_deposit_data(
+                    validator_pubkey=key_info["validator_pubkey"],
+                    withdrawal_address=withdrawal_address
+                )
+            except Exception as e:
+                print(f"Error creating deposit data for key {key_info['key_id']}: {e}")
+                raise
 
             # Add metadata
             deposit_info["validator_index"] = key_info["index"]
