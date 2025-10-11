@@ -61,6 +61,25 @@ services:
         wait
       "
 
+  postgres:
+    image: postgres:15
+    container_name: postgres
+    ports:
+      - "5432:5432"
+    environment:
+      - POSTGRES_PASSWORD=password
+      - POSTGRES_USER=postgres
+      - POSTGRES_DB=web3signer
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - eth_validator_network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
   web3signer:
     image: consensys/web3signer:25.9.1
     container_name: web3signer
@@ -74,10 +93,15 @@ services:
     depends_on:
       vault:
         condition: service_healthy
+      postgres:
+        condition: service_healthy
     command: >
       --config-file=/config/config.yaml
       eth2
-      --slashing-protection-db-enabled=false
+      --slashing-protection-db-url=jdbc:postgresql://postgres:5432/web3signer
+      --slashing-protection-db-username=postgres
+      --slashing-protection-db-password=password
+      --slashing-protection-pruning-enabled=true
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:9000/upcheck"]
       interval: 15s
@@ -87,6 +111,7 @@ services:
 volumes:
   consul_data:
   vault_data:
+  postgres_data:
 
 networks:
   eth_validator_network:
