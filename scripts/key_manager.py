@@ -124,14 +124,41 @@ class KeyManager:
         except Exception:
             return "error"
 
+    def get_key_metadata_safe(self, key_id: str) -> Optional[Dict[str, Any]]:
+        """Safely retrieve key metadata without triggering errors"""
+        try:
+            response = requests.get(
+                f"{self.vault_url}/v1/secret/data/validators/{key_id}",
+                headers=self.headers
+            )
+            
+            if response.status_code == 200:
+                data = response.json()["data"]
+                # Check if key data is null (deleted but not destroyed)
+                if data.get("data") is None:
+                    return None
+                return data["data"]
+            else:
+                return None
+        except Exception:
+            return None
+
     def destroy_deleted_keys(self, verbose: bool = True) -> int:
         """Permanently destroy all deleted keys in Vault"""
         all_keys = self.list_keys_in_vault()
         destroyed_count = 0
         error_count = 0
+        active_count = 0
+        already_destroyed_count = 0
+        
+        if verbose:
+            print(f"Processing {len(all_keys)} keys...")
         
         for key_id in all_keys:
             status = self.check_key_status(key_id)
+            
+            if verbose:
+                print(f"Key {key_id}: status = {status}")
             
             if status == "deleted":
                 # Key is deleted but not destroyed, destroy it
@@ -148,14 +175,21 @@ class KeyManager:
                     error_count += 1
                     if verbose:
                         print(f"❌ Failed to destroy key {key_id}: {destroy_response.text}")
+            elif status == "active":
+                active_count += 1
+                if verbose:
+                    print(f"⏭️  Skipping active key: {key_id}")
+            elif status == "destroyed":
+                already_destroyed_count += 1
+                if verbose:
+                    print(f"⏭️  Key already destroyed: {key_id}")
             elif status == "error":
                 error_count += 1
                 if verbose:
                     print(f"❌ Failed to check key {key_id} status")
-            # Skip active and already destroyed keys
         
-        if verbose and error_count > 0:
-            print(f"⚠️  Encountered {error_count} errors while processing keys")
+        if verbose:
+            print(f"Summary: {destroyed_count} destroyed, {active_count} active, {already_destroyed_count} already destroyed, {error_count} errors")
         
         return destroyed_count
 
@@ -316,6 +350,9 @@ def main():
     destroy_parser = subparsers.add_parser("destroy-deleted", help="Permanently destroy all deleted keys in Vault")
     destroy_parser.add_argument("--quiet", "-q", action="store_true", help="Suppress detailed output")
 
+    # Debug command
+    subparsers.add_parser("debug-status", help="Show detailed status of all keys")
+
     # Status command
     status_parser = subparsers.add_parser("status", help="Check validator status")
     status_parser.add_argument("--beacon-url", default="http://localhost:5052", help="Beacon node URL")
@@ -352,16 +389,36 @@ def main():
         keys = key_manager.list_active_keys_in_vault(verbose=verbose)
         print(f"Found {len(keys)} active keys in Vault:")
         for key_id in keys:
-            key_data = key_manager.retrieve_key_from_vault(key_id)
+            # Use safe retrieval that won't trigger errors
+            key_data = key_manager.get_key_metadata_safe(key_id)
             if key_data and "metadata" in key_data:
                 metadata = key_data["metadata"]
                 print(f"  {key_id}: {metadata.get('validator_pubkey', 'N/A')[:12]}... (status: {metadata.get('status', 'unknown')})")
+            else:
+                # This shouldn't happen for active keys, but handle gracefully
+                print(f"  {key_id}: [ERROR - Unable to retrieve data]")
 
     elif args.command == "destroy-deleted":
         print("=== Destroying Deleted Keys ===")
         quiet = getattr(args, 'quiet', False)
         destroyed_count = key_manager.destroy_deleted_keys(verbose=not quiet)
         print(f"✅ Permanently destroyed {destroyed_count} deleted keys")
+
+    elif args.command == "debug-status":
+        print("=== Debug: Key Status Information ===")
+        all_keys = key_manager.list_keys_in_vault()
+        print(f"Total keys found: {len(all_keys)}")
+        
+        status_counts = {"active": 0, "deleted": 0, "destroyed": 0, "error": 0}
+        
+        for key_id in all_keys:
+            status = key_manager.check_key_status(key_id)
+            status_counts[status] += 1
+            print(f"  {key_id}: {status}")
+        
+        print(f"\nStatus Summary:")
+        for status, count in status_counts.items():
+            print(f"  {status}: {count}")
 
     elif args.command == "status":
         keys = key_manager.list_keys_in_vault()

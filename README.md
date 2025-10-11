@@ -228,6 +228,9 @@ python3 scripts/key_manager.py destroy-deleted
 # Destroy deleted keys quietly
 python3 scripts/key_manager.py destroy-deleted --quiet
 
+# Debug: Show detailed status of all keys
+python3 scripts/key_manager.py debug-status
+
 # Check validator status
 python3 scripts/key_manager.py status
 ```
@@ -417,6 +420,9 @@ python3 scripts/key_manager.py destroy-deleted
 
 # Destroy deleted keys quietly (minimal output)
 python3 scripts/key_manager.py destroy-deleted --quiet
+
+# Debug: Check detailed status of all keys
+python3 scripts/key_manager.py debug-status
 
 # Clear all keys (auto-destroys deleted keys first)
 python3 scripts/web3signer_key_manager.py remove --all
