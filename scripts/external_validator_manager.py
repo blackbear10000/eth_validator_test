@@ -64,25 +64,31 @@ class ExternalValidatorManager:
     def get_beacon_api_url(self) -> str:
         """Get the beacon API URL from Kurtosis"""
         try:
-            # Try to get the beacon API URL from Kurtosis
+            # Use kurtosis enclave inspect to get service information
             result = subprocess.run(
-                ["kurtosis", "service", "ls", "eth-devnet"],
+                ["kurtosis", "enclave", "inspect", "eth-devnet"],
                 capture_output=True, text=True, check=True
             )
             
-            # Parse the output to find beacon API port
+            # Parse the output to find lighthouse beacon API port
             lines = result.stdout.split('\n')
             for line in lines:
-                if 'cl-' in line and 'lighthouse' in line:
-                    # Extract port mapping
+                if 'cl-' in line and 'lighthouse' in line and 'http:' in line:
+                    # Extract port mapping from lines like:
+                    # "http: 4000/tcp -> http://127.0.0.1:33182"
                     if '->' in line:
                         parts = line.split('->')
                         if len(parts) > 1:
                             port_part = parts[1].strip()
+                            # Extract port from "http://127.0.0.1:33182"
                             if ':' in port_part:
-                                port = port_part.split(':')[1].split('/')[0]
+                                port = port_part.split(':')[-1]
                                 return f"http://localhost:{port}"
-        except subprocess.CalledProcessError:
+        except subprocess.CalledProcessError as e:
+            print(f"⚠️  Failed to get Kurtosis services: {e}")
+            pass
+        except FileNotFoundError:
+            print("⚠️  Kurtosis CLI not found. Please install Kurtosis first.")
             pass
         
         # Fallback to default

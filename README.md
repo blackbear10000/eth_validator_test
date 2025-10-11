@@ -23,6 +23,7 @@ This system validates the full Ethereum validator lifecycle with a **hybrid arch
 ### Infrastructure Stack
 - **Consul** (port 8500): Persistent storage backend for Vault
 - **Vault** (port 8200): Secure key storage with KV v2 engine
+- **PostgreSQL** (port 5432): Slashing protection database for Web3Signer
 - **Web3Signer** (port 9000): Remote signing service for external validators
 - **Kurtosis Devnet**: Accelerated testnet with 4s slots for fast testing
 
@@ -228,6 +229,7 @@ network_params:
 - **Consul UI**: http://localhost:8500
 - **Vault UI**: http://localhost:8200 (token: `dev-root-token`)
 - **Web3Signer API**: http://localhost:9000
+- **PostgreSQL**: localhost:5432 (user: `postgres`, password: `password`, db: `web3signer`)
 - **Beacon API**: http://localhost:5052 (varies by Kurtosis mapping)
 - **Prometheus**: http://localhost:3000 (if enabled)
 - **Grafana**: http://localhost:3001 (if enabled)
@@ -246,6 +248,7 @@ kurtosis enclave ls
 # Service health checks
 curl http://localhost:8200/v1/sys/health
 curl http://localhost:9000/upcheck
+curl http://localhost:9000/healthcheck/slashing-protection
 ```
 
 ### View Logs
@@ -255,6 +258,7 @@ curl http://localhost:9000/upcheck
 
 # Individual service logs
 docker-compose logs -f vault
+docker-compose logs -f postgres
 docker-compose logs -f web3signer
 kurtosis service logs eth-devnet cl-1-lighthouse-geth
 kurtosis service logs eth-devnet cl-2-teku-geth
@@ -286,6 +290,21 @@ docker-compose down -v  # Remove volumes
 ./start.sh cleanup      # Full cleanup
 ```
 
+#### Web3Signer Configuration Issues
+If Web3Signer fails to start:
+```bash
+# Check PostgreSQL connection
+docker exec -it postgres psql -U postgres -d web3signer -c "SELECT version FROM database_version;"
+
+# Verify database schema
+docker exec -it postgres psql -U postgres -d web3signer -c "\dt"
+
+# Reset database if needed
+docker-compose down
+docker volume rm eth_validator_test_postgres_data
+docker-compose up -d
+```
+
 ## 🔐 Security Notes
 
 - **Development Only**: Uses weak passwords and dev tokens
@@ -315,7 +334,8 @@ The system attempts to use the official CLI when available, falling back to simp
 The system validates:
 - ✅ **Kurtosis Devnet**: Built-in validators provide network stability
 - ✅ **Vault Integration**: Securely stores/retrieves BLS keys for external validators
-- ✅ **Web3Signer Integration**: Loads keys via Key Manager API
+- ✅ **Web3Signer Integration**: Loads keys via HashiCorp Vault with slash protection
+- ✅ **PostgreSQL Database**: Slashing protection database with proper schema
 - ✅ **External Validator Lifecycle**: pending → active → exited → withdrawn
 - ✅ **Deposit Flow**: Generation, submission, and activation
 - ✅ **Remote Signing**: External validators sign via Web3Signer
@@ -335,7 +355,8 @@ eth_validator_test/
 │   └── init/admin-policy.hcl            # Vault policies
 ├── web3signer/
 │   ├── config/config.yaml               # Web3Signer configuration
-│   └── keys/                            # External validator keys
+│   ├── keys/                            # External validator keys
+│   └── init-db.sh                       # PostgreSQL schema initialization
 └── scripts/
     ├── orchestrate.py                   # Infrastructure orchestration
     ├── external_validator_manager.py    # External validator lifecycle
