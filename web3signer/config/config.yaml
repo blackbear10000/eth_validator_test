@@ -1,16 +1,7 @@
-key-manager-api:
-  enabled: true
+# Web3Signer 25.9.1 Configuration
+# This configuration file is compatible with Web3Signer v25.9.1
 
-http:
-  host: "0.0.0.0"
-  port: 9000
-  cors-allowed-origins: ["*"]
-
-metrics:
-  enabled: true
-  host: "0.0.0.0"
-  port: 9001
-
+# Key store configuration for HashiCorp Vault
 key-stores:
   - type: "hashicorp-vault"
     vault-url: "http://vault:8200"
@@ -20,9 +11,7 @@ key-stores:
     vault-secrets-path: "secret"
     vault-secrets-engine-version: 2
 
+# Logging configuration
 logging:
   level: "INFO"
   format: "JSON"
-
-tls:
-  enabled: false
