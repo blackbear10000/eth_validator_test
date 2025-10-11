@@ -63,34 +63,23 @@ class ExternalValidatorManager:
     
     def get_beacon_api_url(self) -> str:
         """Get the beacon API URL from Kurtosis"""
-        print("🔍 Debug: Getting Beacon API URL from Kurtosis...")
-        
         try:
             # Use kurtosis enclave inspect to get service information
-            print("🔍 Debug: Running 'kurtosis enclave inspect eth-devnet'...")
             result = subprocess.run(
                 ["kurtosis", "enclave", "inspect", "eth-devnet"],
                 capture_output=True, text=True, check=True
             )
             
-            print("🔍 Debug: Kurtosis command output:")
-            print(result.stdout)
-            
             # Parse the output to find lighthouse beacon API port
             lines = result.stdout.split('\n')
-            print(f"🔍 Debug: Parsing {len(lines)} lines of output...")
-            
-            for i, line in enumerate(lines):
-                print(f"🔍 Debug: Line {i}: {line}")
+            for line in lines:
                 if 'cl-' in line and 'lighthouse' in line and 'http:' in line:
-                    print(f"🔍 Debug: Found lighthouse service line: {line}")
                     # Extract port mapping from lines like:
                     # "http: 4000/tcp -> http://127.0.0.1:33182"
                     if '->' in line:
                         parts = line.split('->')
                         if len(parts) > 1:
                             port_part = parts[1].strip()
-                            print(f"🔍 Debug: Port part: {port_part}")
                             # Extract port from "http://127.0.0.1:33182" and remove any trailing status
                             if ':' in port_part:
                                 # Split by ':' and take the last part, then remove any trailing whitespace/status
@@ -98,23 +87,17 @@ class ExternalValidatorManager:
                                 # Remove any trailing status like "RUNNING"
                                 port = port_with_status.split()[0]  # Take only the first word (port number)
                                 beacon_url = f"http://localhost:{port}"
-                                print(f"🔍 Debug: Found Beacon API URL: {beacon_url}")
                                 return beacon_url
-            
-            print("🔍 Debug: No lighthouse service found in output")
             
         except subprocess.CalledProcessError as e:
             print(f"⚠️  Failed to get Kurtosis services: {e}")
-            print(f"🔍 Debug: Command stderr: {e.stderr}")
             pass
         except FileNotFoundError:
             print("⚠️  Kurtosis CLI not found. Please install Kurtosis first.")
             pass
         
         # Fallback to default
-        fallback_url = "http://localhost:5052"
-        print(f"🔍 Debug: Using fallback URL: {fallback_url}")
-        return fallback_url
+        return "http://localhost:5052"
     
     def check_services(self) -> bool:
         """Check if required services are running"""
@@ -177,28 +160,36 @@ class ExternalValidatorManager:
         
         print(f"=== Generating {count} External Validator Keys ===")
         
-        # Generate keys
+        # Generate keys using generate_keys module
+        from generate_keys import generate_validator_keys
+        
         keys_dir = Path("external_keys")
         keys_dir.mkdir(exist_ok=True)
         
-        self.key_manager.generate_keys(
+        # Generate keys
+        generated_keys, mnemonic = generate_validator_keys(
             count=count,
-            output_dir=str(keys_dir),
-            withdrawal_address=self.config.get("withdrawal_address")
+            output_dir=str(keys_dir)
         )
+        
+        print(f"✅ Generated {len(generated_keys)} validator keys")
+        print(f"📝 Mnemonic: {mnemonic}")
+        print("⚠️  IMPORTANT: Store this mnemonic securely offline!")
         
         # Import keys to Vault
         print("Importing keys to Vault...")
-        self.key_manager.import_keys(str(keys_dir))
+        imported_count = self.key_manager.bulk_import_keys(str(keys_dir))
+        print(f"✅ Imported {imported_count} keys to Vault")
         
         # Export keys to Web3Signer format
         print("Exporting keys to Web3Signer...")
         web3signer_keys_dir = Path("web3signer/keys")
         web3signer_keys_dir.mkdir(parents=True, exist_ok=True)
-        self.key_manager.export_keys(str(web3signer_keys_dir))
+        exported_count = self.key_manager.export_keys_for_web3signer(str(web3signer_keys_dir))
+        print(f"✅ Exported {exported_count} keys to Web3Signer format")
         
-        # Get public keys
-        public_keys = self.key_manager.list_public_keys()
+        # Get public keys from generated keys
+        public_keys = [key["public_key"] for key in generated_keys]
         self.external_validators = public_keys[:count]
         
         print(f"✅ Generated {len(self.external_validators)} external validator keys")
