@@ -3,7 +3,7 @@
   "vault_token": "dev-root-token",
   "web3signer_url": "http://localhost:9000",
   "beacon_url": "http://localhost:5052",
-  "web3_url": "http://localhost:8545",
+  "web3_url": "http://localhost:33154",
   "validator_count": 10,
   "withdrawal_address": "0xDeaDbeefDeaDbeefDeaDbeefDeaDbeefDeaDBeEF",
   "keys_output_dir": "./keys",
@@ -21,7 +21,7 @@
   },
   "kurtosis_testnet": {
     "enabled": true,
-    "web3_url": "http://localhost:8545",
+    "web3_url": "http://localhost:33154",
     "deposit_contract_address": "0x4242424242424242424242424242424242424242",
     "from_address": "0xDeaDbeefDeaDbeefDeaDbeefDeaDbeefDeaDBeEF",
     "private_key": "0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80",
