@@ -374,7 +374,7 @@ class DepositManager:
                 print("📝 Proceeding with deposit submission...")
             
             # Submit deposits one by one
-        tx_hashes = []
+            tx_hashes = []
             for i, deposit in enumerate(deposit_data):
                 print(f"📤 Submitting deposit {i+1}/{len(deposit_data)}...")
                 
@@ -443,7 +443,7 @@ class DepositManager:
                     tx_hash = w3.eth.send_raw_transaction(raw_tx)
                     
                     print(f"✅ Deposit {i+1} submitted: {tx_hash.hex()}")
-            tx_hashes.append(tx_hash.hex())
+                    tx_hashes.append(tx_hash.hex())
 
                     # Wait for transaction to be mined
                     print(f"⏳ Waiting for transaction confirmation...")
