@@ -24,7 +24,6 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 try:
     from eth_utils import to_hex, to_bytes
     from eth_account import Account
-    from deposit_contract import DepositContract
 except ImportError as e:
     print(f"❌ 缺少依赖: {e}")
     print("请运行: pip install eth-utils eth-account")
@@ -38,7 +37,6 @@ class DepositGenerator:
     
     def __init__(self, vault_url: str = "http://localhost:8200", vault_token: str = None):
         self.vault_manager = VaultKeyManager(vault_url, vault_token)
-        self.deposit_contract = DepositContract()
         
     def generate_deposits(self, 
                          count: int,
