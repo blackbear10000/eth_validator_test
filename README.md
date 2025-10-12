@@ -7,10 +7,12 @@ A comprehensive testing framework for Ethereum validator lifecycle management us
 This system validates the full Ethereum validator lifecycle with a **hybrid architecture**:
 - **Kurtosis Devnet**: Built-in validators for network stability
 - **External Validators**: Web3Signer-managed validators for lifecycle testing
-- **Key Management**: HashiCorp Vault for secure key storage
+- **Key Management**: HashiCorp Vault for secure key storage with advanced query capabilities
 - **Remote Signing**: Web3Signer for external validator operations
 - **Lifecycle Testing**: Complete validator onboarding/exit workflows
 - **Official Implementation**: Uses `ethstaker-deposit-cli` for BLS12-381 key generation and deposit data creation
+- **Multi-Client Support**: Supports Prysm, Lighthouse, and Teku validator clients
+- **Advanced Backup**: Supports keystore and mnemonic backup formats
 
 ## 🏗️ Architecture
 
@@ -28,12 +30,36 @@ This system validates the full Ethereum validator lifecycle with a **hybrid arch
 - **Web3Signer** (port 9000): Remote signing service for external validators
 - **Kurtosis Devnet**: Accelerated testnet with 4s slots for fast testing
 
-### External Validator Flow
+### New Enhanced Workflow
 ```
-1. Generate Keys → Store in Vault → Export to Web3Signer
-2. Create Deposits → Submit to Network → Wait for Activation
-3. Start Validator Client → Connect to Web3Signer + Beacon API
-4. Monitor Performance → Test Exit → Test Withdrawal
+1. 密钥管理 → 2. 存款生成 → 3. 客户端配置 → 4. 验证者运行
+```
+
+#### 详细流程
+```
+1. 密钥管理 (Vault Key Manager)
+   ├── 生成密钥 → 存储到 Vault
+   ├── 查询密钥 (按公钥/批次/日期)
+   ├── 状态管理 (未使用/使用中/已注销)
+   └── 备份支持 (keystore/mnemonic)
+
+2. 存款生成 (Dynamic Deposit Generator)
+   ├── 从 Vault 读取未使用密钥
+   ├── 支持动态提款地址
+   ├── 生成存款数据
+   └── 自动标记密钥为使用中
+
+3. 客户端配置 (Validator Client Config)
+   ├── 支持 Prysm/Lighthouse/Teku
+   ├── 生成 Web3Signer 配置
+   ├── 生成客户端配置文件
+   └── 生成启动脚本
+
+4. 验证者运行
+   ├── 启动 Web3Signer
+   ├── 启动验证者客户端
+   ├── 监控性能
+   └── 测试退出流程
 ```
 
 ### Smart Validator Loading
@@ -179,6 +205,86 @@ Commands:
 - `logs` - Show service logs
 - `cleanup` - Stop all services
 - `help` - Show help
+
+### 🆕 New Enhanced Scripts
+
+#### Vault Key Manager
+```bash
+# 列出密钥 (支持多种过滤条件)
+python3 scripts/vault_key_manager.py list
+python3 scripts/vault_key_manager.py list --status unused
+python3 scripts/vault_key_manager.py list --batch-id batch-001
+python3 scripts/vault_key_manager.py list --client-type prysm
+python3 scripts/vault_key_manager.py list --created-after 2024-01-01
+
+# 获取指定密钥详情
+python3 scripts/vault_key_manager.py get 0x1234...
+
+# 更新密钥状态
+python3 scripts/vault_key_manager.py status 0x1234... active --client-type prysm --notes "已激活"
+
+# 导出密钥
+python3 scripts/vault_key_manager.py export 0x1234... --format keystore --password mypassword
+python3 scripts/vault_key_manager.py export 0x1234... --format mnemonic
+
+# 获取未使用的密钥
+python3 scripts/vault_key_manager.py unused --count 5
+python3 scripts/vault_key_manager.py unused --batch-id batch-001
+```
+
+#### Dynamic Deposit Generator
+```bash
+# 生成存款 (从 Vault 读取未使用密钥)
+python3 scripts/deposit_generator.py generate 5 0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266
+python3 scripts/deposit_generator.py generate 3 0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266 --batch-id batch-001 --client-type prysm
+
+# 列出可用密钥
+python3 scripts/deposit_generator.py list-keys
+python3 scripts/deposit_generator.py list-keys --batch-id batch-001
+
+# 获取存款摘要
+python3 scripts/deposit_generator.py summary 0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266
+```
+
+#### Validator Client Config Generator
+```bash
+# 生成 Prysm 配置
+python3 scripts/validator_client_config.py prysm --pubkeys 0x1234... 0x5678... --beacon-node http://localhost:3500
+
+# 生成 Lighthouse 配置
+python3 scripts/validator_client_config.py lighthouse --pubkeys 0x1234... 0x5678... --beacon-node http://localhost:5052
+
+# 生成 Teku 配置
+python3 scripts/validator_client_config.py teku --pubkeys 0x1234... 0x5678... --beacon-node http://localhost:5051
+
+# 生成所有客户端配置
+python3 scripts/validator_client_config.py all --pubkeys 0x1234... 0x5678...
+
+# 列出活跃密钥
+python3 scripts/validator_client_config.py list-active
+```
+
+#### Backup System
+```bash
+# 创建 keystore 备份
+python3 scripts/backup_system.py keystore 0x1234... 0x5678... --password mypassword
+
+# 创建 mnemonic 备份
+python3 scripts/backup_system.py mnemonic 0x1234... 0x5678...
+
+# 创建加密备份
+python3 scripts/backup_system.py encrypted 0x1234... 0x5678... --password mypassword
+
+# 创建批次备份
+python3 scripts/backup_system.py batch batch-001 --format both --password mypassword
+
+# 从备份恢复
+python3 scripts/backup_system.py restore backup-file.json --password mypassword
+python3 scripts/backup_system.py restore backup-file.json --dry-run  # 试运行
+
+# 列出所有备份
+python3 scripts/backup_system.py list
+```
 
 ### Infrastructure Management
 ```bash
@@ -632,13 +738,21 @@ eth_validator_test/
 │   ├── config/config.yaml               # Web3Signer configuration
 │   ├── keys/                            # External validator keys
 │   └── init-db.sh                       # PostgreSQL schema initialization
+├── keys/                                # 密钥导出目录
+├── deposits/                            # 存款数据目录
+├── configs/                             # 验证者客户端配置目录
+├── backups/                             # 备份文件目录
 └── scripts/
     ├── orchestrate.py                   # Infrastructure orchestration
     ├── external_validator_manager.py    # 🎯 MAIN: Unified validator lifecycle
     ├── generate_keys.py                 # Key generation (ethstaker-deposit-cli)
-    ├── key_manager.py                   # Vault key management
+    ├── key_manager.py                   # Vault key management (legacy)
     ├── deposit_manager.py               # Deposit handling (ethstaker-deposit-cli)
-    └── vault_setup.py                   # Vault initialization
+    ├── vault_setup.py                   # Vault initialization
+    ├── vault_key_manager.py             # 🆕 核心：Vault 密钥管理 (CRUD + 状态管理)
+    ├── deposit_generator.py             # 🆕 核心：动态存款生成 (从 Vault 读取 + 动态提款地址)
+    ├── validator_client_config.py       # 🆕 核心：验证者客户端配置生成 (Prysm/Lighthouse/Teku)
+    └── backup_system.py                 # 🆕 备份系统 (keystore + mnemonic)
 ```
 
 ## 🤝 Contributing
