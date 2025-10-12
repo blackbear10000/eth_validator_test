@@ -4,33 +4,22 @@ A comprehensive testing framework for Ethereum validator lifecycle management us
 
 ## 🎯 Overview
 
-This system validates the full Ethereum validator lifecycle with a **hybrid architecture**:
-- **Kurtosis Devnet**: Built-in validators for network stability
-- **External Validators**: Web3Signer-managed validators for lifecycle testing
+This system provides a comprehensive Ethereum validator key management solution with:
 - **Key Management**: HashiCorp Vault for secure key storage with advanced query capabilities
-- **Remote Signing**: Web3Signer for external validator operations
-- **Lifecycle Testing**: Complete validator onboarding/exit workflows
-- **Official Implementation**: Uses `ethstaker-deposit-cli` for BLS12-381 key generation and deposit data creation
 - **Multi-Client Support**: Supports Prysm, Lighthouse, and Teku validator clients
 - **Advanced Backup**: Supports keystore and mnemonic backup formats
+- **Official Implementation**: Uses `ethstaker-deposit-cli` for BLS12-381 key generation
+- **Lifecycle Testing**: Complete validator onboarding/exit workflows
 
 ## 🏗️ Architecture
 
-### Hybrid Validator Architecture
-- **Kurtosis Built-in Validators**: 2 EL/CL pairs (Geth+Lighthouse, Geth+Teku) with built-in validators
-- **External Web3Signer Validators**: Additional validators managed via Web3Signer for testing
-  - **Validator Clients**: Independent Lighthouse/Teku validator clients
-  - **Remote Signing**: Validator clients connect to Web3Signer for signing operations
-  - **Beacon API**: Validator clients connect to Kurtosis beacon no
-
 ### Infrastructure Stack
-- **Consul** (port 8500): Persistent storage backend for Vault
 - **Vault** (port 8200): Secure key storage with KV v2 engine
 - **PostgreSQL** (port 5432): Slashing protection database for Web3Signer
 - **Web3Signer** (port 9000): Remote signing service for external validators
 - **Kurtosis Devnet**: Accelerated testnet with 4s slots for fast testing
 
-### New Enhanced Workflow
+### Enhanced Workflow
 ```
 1. 密钥管理 → 2. 存款生成 → 3. 客户端配置 → 4. 验证者运行
 ```
@@ -62,19 +51,6 @@ This system validates the full Ethereum validator lifecycle with a **hybrid arch
    └── 测试退出流程
 ```
 
-### Smart Validator Loading
-The system automatically handles validator loading:
-- **Auto-loading**: Commands automatically load validators from Vault if not in memory
-- **No manual step needed**: You can directly run `create-deposits` without `load-validators`
-- **Manual loading**: Use `load-validators` only for debugging or explicit control
-- **Flexible workflow**: Can start from any step (generate-keys or create-deposits)
-
-### Key Injection Process
-- **Vault**: Stores BLS private keys securely
-- **Web3Signer**: Loads keys from Vault, provides signing API
-- **Validator Client**: Connects to Web3Signer for signing operations
-- **Beacon API**: Provides network state and validator duties
-
 ## 🚀 Quick Start
 
 ### Prerequisites
@@ -83,111 +59,210 @@ The system automatically handles validator loading:
 - Python 3.8+
 - Git (for ethstaker-deposit-cli integration)
 
-### 🆕 Latest Updates (ethstaker-deposit-cli Integration)
+### 🔑 Vault Token 获取指南
 
-The system now uses the **official Ethereum Foundation implementation**:
-- ✅ **Real BLS12-381**: Official elliptic curve operations (no more simplified implementations)
-- ✅ **Official SSZ**: Standard serialization for deposit data
-- ✅ **Production Ready**: Cryptographically valid signatures and deposit data
-- ✅ **Multi-Network**: Supports mainnet, testnets, and devnet configurations
-- ✅ **Clean Architecture**: Removed all test key folders, streamlined project structure
+在这个项目中，Vault 使用开发模式运行，默认的 root token 是 `dev-root-token`。
 
-### Key Changes
-1. **Official Implementation**: All key generation and deposit data creation now uses `ethstaker-deposit-cli`
-2. **Unified Workflow**: Single entry point (`external_validator_manager.py`) for complete lifecycle
-3. **Simplified Architecture**: Removed duplicate/conflicting management scripts
-4. **Clean Project Structure**: Removed temporary test folders and files
-5. **Production Standards**: Generated data is ready for real Ethereum networks
+#### 获取 Vault Token 的方法
 
-### 🎯 Unified Architecture
-
-The system now uses a **unified architecture** with clear separation of concerns:
-
-- **`external_validator_manager.py`**: Main orchestrator for complete validator lifecycle
-- **`key_manager.py`**: Vault operations (store, retrieve, list, cleanup)
-- **`deposit_manager.py`**: Deposit data generation and submission
-- **`generate_keys.py`**: Official BLS12-381 key generation using ethstaker-deposit-cli
-
-**Removed Scripts** (consolidated into main workflow):
-- ❌ `deposit_cli_wrapper.py` - Replaced by direct ethstaker-deposit-cli integration
-- ❌ `external_validator_client.py` - Simplified to manual setup instructions
-- ❌ `validator_lifecycle.py` - Integrated into external_validator_manager.py
-- ❌ `web3signer_key_manager.py` - Functionality moved to key_manager.py
-
-### Two-Phase Workflow
-
-#### Phase 1: Infrastructure Setup
+**方法1：使用默认 token（推荐）**
 ```bash
-# Start infrastructure (Vault, Web3Signer, Kurtosis devnet)
+# 直接使用默认 token
+python3 scripts/vault_key_manager.py list --vault-token dev-root-token
+```
+
+**方法2：设置环境变量**
+```bash
+# 设置环境变量
+export VAULT_TOKEN=dev-root-token
+
+# 然后正常使用命令
+python3 scripts/vault_key_manager.py list
+```
+
+**方法3：启动基础设施后获取**
+```bash
+# 1. 启动基础设施
+./start.sh quick-start
+
+# 2. 等待服务启动完成
+# 3. 使用默认 token
+python3 scripts/vault_key_manager.py list --vault-token dev-root-token
+```
+
+#### 故障排除
+
+**问题1：Vault 服务未运行**
+```bash
+# 检查 Vault 状态
+curl http://localhost:8200/v1/sys/health
+
+# 如果返回 "Vault not accessible"，需要启动服务
 ./start.sh quick-start
 ```
 
-#### Phase 2: External Validator Testing
+**问题2：Token 认证失败**
 ```bash
-# Run complete external validator lifecycle test
-./start.sh external-test
+# 确保使用正确的 token
+python3 scripts/vault_key_manager.py list --vault-token dev-root-token
 ```
 
-### Step-by-Step External Validator Management
+**问题3：Docker 未运行**
 ```bash
-# 1. Start infrastructure first
+# 启动 Docker
+sudo systemctl start docker  # Linux
+# 或启动 Docker Desktop  # macOS/Windows
+
+# 然后启动基础设施
 ./start.sh quick-start
+```
 
-# 2. Run external validator phases
-source scripts/venv/bin/activate
 
-# Check service status
-python3 scripts/external_validator_manager.py check-services
 
-# Generate external validator keys
+## 🎯 完整工作流程示例
+
+### 1. 启动基础设施
+```bash
+# 启动 Vault, Web3Signer, Kurtosis 等
+./start.sh quick-start
+```
+
+### 2. 生成密钥并存储到 Vault
+```bash
+# 使用现有的密钥生成器
 python3 scripts/external_validator_manager.py generate-keys --count 5
-
-# Create and submit deposits (auto-loads from Vault if needed)
-python3 scripts/external_validator_manager.py submit-deposits
-
-# Start external validator clients (connects to Web3Signer)
-python3 scripts/external_validator_manager.py start-clients
-
-# Wait for activation
-python3 scripts/external_validator_manager.py wait-activation
-
-# Monitor performance
-python3 scripts/external_validator_manager.py monitor
-
-# Test voluntary exit
-python3 scripts/external_validator_manager.py test-exit
-
-# Test withdrawal process
-python3 scripts/external_validator_manager.py test-withdrawal
 ```
 
-### Flexible Workflow Options
-
-The system supports multiple workflow patterns:
-
-#### Option 1: Complete Flow (Recommended)
+### 3. 查询和管理密钥
 ```bash
-# Generate keys and create deposits in one go
-python3 scripts/external_validator_manager.py generate-keys --count 5
-python3 scripts/external_validator_manager.py create-deposits
+# 列出所有密钥
+python3 scripts/vault_key_manager.py list --vault-token dev-root-token
+
+# 按状态过滤
+python3 scripts/vault_key_manager.py list --status unused --vault-token dev-root-token
+
+# 按批次过滤
+python3 scripts/vault_key_manager.py list --batch-id batch-001 --vault-token dev-root-token
+
+# 获取未使用的密钥
+python3 scripts/vault_key_manager.py unused --count 3 --vault-token dev-root-token
 ```
 
-#### Option 2: Resume from Existing Keys
+### 4. 生成存款数据
 ```bash
-# Create deposits directly (auto-loads from Vault)
-python3 scripts/external_validator_manager.py create-deposits
+# 从 Vault 读取未使用密钥，生成存款
+python3 scripts/deposit_generator.py generate 3 0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266 --vault-token dev-root-token
+
+# 指定批次和客户端类型
+python3 scripts/deposit_generator.py generate 2 0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266 --batch-id batch-001 --client-type prysm --vault-token dev-root-token
 ```
 
-#### Option 3: Debug/Manual Control
+### 5. 生成验证者客户端配置
 ```bash
-# Manually load validators (for debugging or explicit control)
-python3 scripts/external_validator_manager.py load-validators
-python3 scripts/external_validator_manager.py create-deposits
+# 获取活跃密钥的公钥
+python3 scripts/validator_client_config.py list-active --vault-token dev-root-token
+
+# 生成 Prysm 配置
+python3 scripts/validator_client_config.py prysm --pubkeys 0x1234... 0x5678... --beacon-node http://localhost:3500 --vault-token dev-root-token
+
+# 生成所有客户端配置
+python3 scripts/validator_client_config.py all --pubkeys 0x1234... 0x5678... --vault-token dev-root-token
 ```
 
-### Cleanup
+### 6. 备份密钥
 ```bash
-./start.sh cleanup
+# 创建 keystore 备份
+python3 scripts/backup_system.py keystore 0x1234... 0x5678... --password mypassword --vault-token dev-root-token
+
+# 创建 mnemonic 备份
+python3 scripts/backup_system.py mnemonic 0x1234... 0x5678... --vault-token dev-root-token
+
+# 创建批次备份
+python3 scripts/backup_system.py batch batch-001 --format both --password mypassword --vault-token dev-root-token
+```
+
+### 7. 监控和管理
+```bash
+# 获取存款摘要
+python3 scripts/deposit_generator.py summary 0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266 --vault-token dev-root-token
+
+# 列出所有备份
+python3 scripts/backup_system.py list
+
+# 更新密钥状态
+python3 scripts/vault_key_manager.py status 0x1234... active --client-type prysm --notes "已激活" --vault-token dev-root-token
+```
+
+## 🔄 典型使用场景
+
+### 场景1：批量生成验证者
+```bash
+# 1. 生成 10 个密钥
+python3 scripts/external_validator_manager.py generate-keys --count 10
+
+# 2. 查看生成的密钥
+python3 scripts/vault_key_manager.py list --status unused --vault-token dev-root-token
+
+# 3. 生成存款数据
+python3 scripts/deposit_generator.py generate 10 0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266 --vault-token dev-root-token
+
+# 4. 生成 Prysm 配置
+python3 scripts/validator_client_config.py prysm --pubkeys $(python3 scripts/vault_key_manager.py unused --count 10 --vault-token dev-root-token | grep -o '0x[0-9a-fA-F]*') --vault-token dev-root-token
+```
+
+### 场景2：按批次管理
+```bash
+# 1. 查看特定批次的密钥
+python3 scripts/vault_key_manager.py list --batch-id batch-001 --vault-token dev-root-token
+
+# 2. 为该批次生成存款
+python3 scripts/deposit_generator.py generate 5 0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266 --batch-id batch-001 --vault-token dev-root-token
+
+# 3. 备份该批次
+python3 scripts/backup_system.py batch batch-001 --format both --password mypassword --vault-token dev-root-token
+```
+
+### 场景3：多客户端支持
+```bash
+# 1. 获取活跃密钥
+python3 scripts/validator_client_config.py list-active --vault-token dev-root-token
+
+# 2. 为不同客户端生成配置
+python3 scripts/validator_client_config.py prysm --pubkeys 0x1234... 0x5678... --vault-token dev-root-token
+python3 scripts/validator_client_config.py lighthouse --pubkeys 0x9abc... 0xdef0... --vault-token dev-root-token
+python3 scripts/validator_client_config.py teku --pubkeys 0x1111... 0x2222... --vault-token dev-root-token
+
+# 3. 或者一次性生成所有配置
+python3 scripts/validator_client_config.py all --pubkeys 0x1234... 0x5678... 0x9abc... 0xdef0... --vault-token dev-root-token
+```
+
+## 🛡️ 安全最佳实践
+
+### 密钥备份
+```bash
+# 定期备份所有密钥
+python3 scripts/backup_system.py batch all --format encrypted --password strong_password --vault-token dev-root-token
+
+# 备份特定批次的助记词
+python3 scripts/backup_system.py batch batch-001 --format mnemonic --vault-token dev-root-token
+```
+
+### 密钥状态管理
+```bash
+# 标记密钥为使用中
+python3 scripts/vault_key_manager.py status 0x1234... active --client-type prysm --notes "Prysm 验证者" --vault-token dev-root-token
+
+# 标记密钥为已注销
+python3 scripts/vault_key_manager.py status 0x1234... retired --notes "已退出网络" --vault-token dev-root-token
+```
+
+### 恢复测试
+```bash
+# 试运行恢复
+python3 scripts/backup_system.py restore backup-file.json --dry-run --vault-token dev-root-token
+
+# 实际恢复
+python3 scripts/backup_system.py restore backup-file.json --password mypassword --vault-token dev-root-token
 ```
 
 ## 📋 Commands Reference
@@ -211,191 +286,81 @@ Commands:
 #### Vault Key Manager
 ```bash
 # 列出密钥 (支持多种过滤条件)
-python3 scripts/vault_key_manager.py list
-python3 scripts/vault_key_manager.py list --status unused
-python3 scripts/vault_key_manager.py list --batch-id batch-001
-python3 scripts/vault_key_manager.py list --client-type prysm
-python3 scripts/vault_key_manager.py list --created-after 2024-01-01
+python3 scripts/vault_key_manager.py list --vault-token dev-root-token
+python3 scripts/vault_key_manager.py list --status unused --vault-token dev-root-token
+python3 scripts/vault_key_manager.py list --batch-id batch-001 --vault-token dev-root-token
+python3 scripts/vault_key_manager.py list --client-type prysm --vault-token dev-root-token
+python3 scripts/vault_key_manager.py list --created-after 2024-01-01 --vault-token dev-root-token
 
 # 获取指定密钥详情
-python3 scripts/vault_key_manager.py get 0x1234...
+python3 scripts/vault_key_manager.py get 0x1234... --vault-token dev-root-token
 
 # 更新密钥状态
-python3 scripts/vault_key_manager.py status 0x1234... active --client-type prysm --notes "已激活"
+python3 scripts/vault_key_manager.py status 0x1234... active --client-type prysm --notes "已激活" --vault-token dev-root-token
 
 # 导出密钥
-python3 scripts/vault_key_manager.py export 0x1234... --format keystore --password mypassword
-python3 scripts/vault_key_manager.py export 0x1234... --format mnemonic
+python3 scripts/vault_key_manager.py export 0x1234... --format keystore --password mypassword --vault-token dev-root-token
+python3 scripts/vault_key_manager.py export 0x1234... --format mnemonic --vault-token dev-root-token
 
 # 获取未使用的密钥
-python3 scripts/vault_key_manager.py unused --count 5
-python3 scripts/vault_key_manager.py unused --batch-id batch-001
+python3 scripts/vault_key_manager.py unused --count 5 --vault-token dev-root-token
+python3 scripts/vault_key_manager.py unused --batch-id batch-001 --vault-token dev-root-token
 ```
 
 #### Dynamic Deposit Generator
 ```bash
 # 生成存款 (从 Vault 读取未使用密钥)
-python3 scripts/deposit_generator.py generate 5 0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266
-python3 scripts/deposit_generator.py generate 3 0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266 --batch-id batch-001 --client-type prysm
+python3 scripts/deposit_generator.py generate 5 0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266 --vault-token dev-root-token
+python3 scripts/deposit_generator.py generate 3 0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266 --batch-id batch-001 --client-type prysm --vault-token dev-root-token
 
 # 列出可用密钥
-python3 scripts/deposit_generator.py list-keys
-python3 scripts/deposit_generator.py list-keys --batch-id batch-001
+python3 scripts/deposit_generator.py list-keys --vault-token dev-root-token
+python3 scripts/deposit_generator.py list-keys --batch-id batch-001 --vault-token dev-root-token
 
 # 获取存款摘要
-python3 scripts/deposit_generator.py summary 0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266
+python3 scripts/deposit_generator.py summary 0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266 --vault-token dev-root-token
 ```
 
 #### Validator Client Config Generator
 ```bash
 # 生成 Prysm 配置
-python3 scripts/validator_client_config.py prysm --pubkeys 0x1234... 0x5678... --beacon-node http://localhost:3500
+python3 scripts/validator_client_config.py prysm --pubkeys 0x1234... 0x5678... --beacon-node http://localhost:3500 --vault-token dev-root-token
 
 # 生成 Lighthouse 配置
-python3 scripts/validator_client_config.py lighthouse --pubkeys 0x1234... 0x5678... --beacon-node http://localhost:5052
+python3 scripts/validator_client_config.py lighthouse --pubkeys 0x1234... 0x5678... --beacon-node http://localhost:5052 --vault-token dev-root-token
 
 # 生成 Teku 配置
-python3 scripts/validator_client_config.py teku --pubkeys 0x1234... 0x5678... --beacon-node http://localhost:5051
+python3 scripts/validator_client_config.py teku --pubkeys 0x1234... 0x5678... --beacon-node http://localhost:5051 --vault-token dev-root-token
 
 # 生成所有客户端配置
-python3 scripts/validator_client_config.py all --pubkeys 0x1234... 0x5678...
+python3 scripts/validator_client_config.py all --pubkeys 0x1234... 0x5678... --vault-token dev-root-token
 
 # 列出活跃密钥
-python3 scripts/validator_client_config.py list-active
+python3 scripts/validator_client_config.py list-active --vault-token dev-root-token
 ```
 
 #### Backup System
 ```bash
 # 创建 keystore 备份
-python3 scripts/backup_system.py keystore 0x1234... 0x5678... --password mypassword
+python3 scripts/backup_system.py keystore 0x1234... 0x5678... --password mypassword --vault-token dev-root-token
 
 # 创建 mnemonic 备份
-python3 scripts/backup_system.py mnemonic 0x1234... 0x5678...
+python3 scripts/backup_system.py mnemonic 0x1234... 0x5678... --vault-token dev-root-token
 
 # 创建加密备份
-python3 scripts/backup_system.py encrypted 0x1234... 0x5678... --password mypassword
+python3 scripts/backup_system.py encrypted 0x1234... 0x5678... --password mypassword --vault-token dev-root-token
 
 # 创建批次备份
-python3 scripts/backup_system.py batch batch-001 --format both --password mypassword
+python3 scripts/backup_system.py batch batch-001 --format both --password mypassword --vault-token dev-root-token
 
 # 从备份恢复
-python3 scripts/backup_system.py restore backup-file.json --password mypassword
-python3 scripts/backup_system.py restore backup-file.json --dry-run  # 试运行
+python3 scripts/backup_system.py restore backup-file.json --password mypassword --vault-token dev-root-token
+python3 scripts/backup_system.py restore backup-file.json --dry-run --vault-token dev-root-token  # 试运行
 
 # 列出所有备份
 python3 scripts/backup_system.py list
 ```
 
-### Infrastructure Management
-```bash
-# Start infrastructure
-python3 scripts/orchestrate.py start-infra
-
-# Check status
-python3 scripts/orchestrate.py status
-
-# Cleanup
-python3 scripts/orchestrate.py cleanup
-```
-
-### External Validator Management
-```bash
-# Check services
-python3 scripts/external_validator_manager.py check-services
-
-# Generate keys
-python3 scripts/external_validator_manager.py generate-keys --count 5
-
-# Create deposits (auto-loads from Vault if needed)
-python3 scripts/external_validator_manager.py create-deposits
-
-# Note: load-validators is optional - only needed for debugging
-
-# Submit deposits
-python3 scripts/external_validator_manager.py submit-deposits
-
-# Start validator clients
-python3 scripts/external_validator_manager.py start-clients
-
-# Wait for activation
-python3 scripts/external_validator_manager.py wait-activation
-
-# Monitor validators
-python3 scripts/external_validator_manager.py monitor
-
-# Test exit
-python3 scripts/external_validator_manager.py test-exit
-
-# Test withdrawal
-python3 scripts/external_validator_manager.py test-withdrawal
-
-# Full test
-python3 scripts/external_validator_manager.py full-test
-
-# Cleanup
-python3 scripts/external_validator_manager.py cleanup
-```
-
-### Unified Workflow (Recommended)
-
-The system now uses a **unified workflow** centered around `external_validator_manager.py`:
-
-#### Complete Validator Lifecycle
-```bash
-# 1. Generate keys and store in Vault
-python3 scripts/external_validator_manager.py generate-keys --count 5
-
-# 2. Create and submit deposits
-python3 scripts/external_validator_manager.py submit-deposits
-
-# 3. Start validator clients (manual setup required)
-python3 scripts/external_validator_manager.py start-clients
-
-# 4. Monitor activation and performance
-python3 scripts/external_validator_manager.py wait-activation
-python3 scripts/external_validator_manager.py monitor
-
-# 5. Test exit and withdrawal
-python3 scripts/external_validator_manager.py test-exit
-python3 scripts/external_validator_manager.py test-withdrawal
-```
-
-#### Key Management (Vault Operations)
-```bash
-# List all keys (including deleted)
-python3 scripts/key_manager.py list
-
-# List only active keys (skip deleted, quiet mode)
-python3 scripts/key_manager.py list-active
-
-# Permanently destroy deleted keys
-python3 scripts/key_manager.py destroy-deleted
-
-# Debug: Show detailed status of all keys
-python3 scripts/key_manager.py debug-status
-
-# Clean corrupted keys
-python3 scripts/key_manager.py clean-corrupted
-```
-
-#### Direct Deposit Management (Advanced)
-```bash
-# Generate deposit data directly
-python3 scripts/deposit_manager.py \
-  --keys-file ./external_keys/keys_data.json \
-  --withdrawal-address 0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266 \
-  --network devnet \
-  --output-file deposits.json
-
-# Submit deposits to Kurtosis testnet
-python3 scripts/deposit_manager.py \
-  --keys-file ./external_keys/keys_data.json \
-  --withdrawal-address 0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266 \
-  --network devnet \
-  --output-file deposits.json \
-  --submit \
-  --config-file test_config.json
-```
 
 ## 🔧 Configuration
 
@@ -421,54 +386,6 @@ Edit `test_config.json` for external validator settings:
 }
 ```
 
-### Kurtosis Testnet Integration
-
-The system now supports real deposit submission to Kurtosis testnets:
-
-#### Features
-- **Real Network Submission**: Submit deposits to actual Kurtosis testnet
-- **Pre-funded Account**: Uses `0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266` with 10000 ETH
-- **Automatic Validation**: Validates deposits before submission
-- **Transaction Tracking**: Shows transaction hashes and confirmation status
-
-#### Configuration
-Enable Kurtosis testnet submission in `test_config.json`:
-```json
-{
-  "kurtosis_testnet": {
-    "enabled": true,
-    "web3_url": "http://localhost:8545",
-    "deposit_contract_address": "0x4242424242424242424242424242424242424242",
-    "from_address": "0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266",
-    "private_key": "0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80",
-    "gas_price": "20000000000",
-    "gas_limit": "1000000"
-  }
-}
-```
-
-#### Usage
-```bash
-# Create and submit deposits to Kurtosis testnet
-python3 scripts/external_validator_manager.py submit-deposits
-
-# Or run full test with real submission
-python3 scripts/external_validator_manager.py full-test
-```
-
-### Kurtosis Configuration
-Edit `kurtosis/kurtosis-config.yaml` for devnet settings:
-
-```yaml
-network_params:
-  seconds_per_slot: 4
-  eth1_follow_distance: 16
-  churn_limit_quotient: 32
-  max_per_epoch_activation_churn_limit: 64
-  num_validator_keys_per_node: 8
-  withdrawal_type: "0x01"
-  genesis_delay: 90
-```
 
 ## 📊 Monitoring & Debugging
 
@@ -496,47 +413,6 @@ kurtosis enclave ls
 curl http://localhost:8200/v1/sys/health
 ```
 
-### Key Management
-
-#### List All Keys
-```bash
-# List keys in Vault and local files
-python3 scripts/external_validator_manager.py list-keys
-
-# List keys using KeyManager
-python3 scripts/key_manager.py list
-
-# Load validators from Vault (for debugging only)
-python3 scripts/external_validator_manager.py load-validators
-```
-
-#### Vault Key Operations
-```bash
-# Import keys to Vault
-python3 scripts/key_manager.py import --keys-dir ./external_keys
-
-# Export keys for Web3Signer
-python3 scripts/key_manager.py export --output-dir ./web3signer/keys
-
-# List all keys (including deleted)
-python3 scripts/key_manager.py list
-
-# List only active keys (skip deleted, quiet mode)
-python3 scripts/key_manager.py list-active
-
-# Permanently destroy deleted keys
-python3 scripts/key_manager.py destroy-deleted
-
-# Debug: Show detailed status of all keys
-python3 scripts/key_manager.py debug-status
-
-# Clean corrupted keys
-python3 scripts/key_manager.py clean-corrupted
-
-# Direct Web3Signer health checks
-curl http://localhost:9000/upcheck
-curl http://localhost:9000/healthcheck/slashing-protection
-```
 
 ### View Logs
 ```bash
@@ -564,12 +440,6 @@ pip install --upgrade pip
 pip install -r requirements.txt
 ```
 
-#### ethstaker-deposit-cli Integration
-The system now uses the official `ethstaker-deposit-cli` repository:
-- **Automatic Integration**: The repository is included in the project
-- **Official Implementation**: Uses real BLS12-381 cryptographic operations
-- **Production Ready**: Generates cryptographically valid deposit data
-- **No Fallback**: No simplified implementation, only official standards
 
 #### Docker Issues
 ```bash
@@ -602,69 +472,6 @@ docker volume rm eth_validator_test_postgres_data
 docker-compose up -d
 ```
 
-#### Vault Key Management Issues
-If you encounter "Failed to retrieve key" errors:
-```bash
-# Check for deleted keys (shows all keys including deleted)
-python3 scripts/key_manager.py list
-
-# List only active keys (quiet mode, no error messages)
-python3 scripts/key_manager.py list-active
-
-# List active keys with detailed info about deleted keys
-python3 scripts/key_manager.py list-active --verbose
-
-# Permanently destroy deleted keys (with progress output)
-python3 scripts/key_manager.py destroy-deleted
-
-# Destroy deleted keys quietly (minimal output)
-python3 scripts/key_manager.py destroy-deleted --quiet
-
-# Debug: Check detailed status of all keys
-python3 scripts/key_manager.py debug-status
-
-# Advanced debug: Show comprehensive key information
-python3 scripts/key_manager.py debug-advanced
-
-# Clean corrupted keys (metadata exists but data is inaccessible)
-python3 scripts/key_manager.py clean-corrupted
-
-# Clear all keys (auto-destroys deleted keys first)
-python3 scripts/key_manager.py destroy-deleted --quiet
-```
-
-#### BLS12-381 Key Length Issues
-The system now generates proper 48-byte BLS12-381 keys using `ethstaker-deposit-cli`:
-```bash
-# All keys are now generated with official BLS12-381 implementation
-# No more "Invalid pubkey length" errors
-python3 scripts/external_validator_manager.py generate-keys --count 5
-```
-
-#### Common Key Management Issues
-
-**Problem**: "Failed to retrieve key" errors
-```bash
-# Solution: Use quiet mode commands that don't trigger errors
-python3 scripts/key_manager.py list-active
-
-# Or clean up deleted keys
-python3 scripts/key_manager.py destroy-deleted --quiet
-```
-
-**Problem**: "Invalid pubkey length" errors
-```bash
-# Solution: All keys are now generated with official BLS12-381 implementation
-# This error should no longer occur with ethstaker-deposit-cli integration
-python3 scripts/external_validator_manager.py generate-keys --count 5
-```
-
-**Problem**: Keys not loading in external validator manager
-```bash
-# Solution: Check active keys and reload
-python3 scripts/key_manager.py list-active
-python3 scripts/external_validator_manager.py load-validators
-```
 
 ## 🔐 Security Notes
 
@@ -674,52 +481,7 @@ python3 scripts/external_validator_manager.py load-validators
 - **Vault Dev Mode**: In-memory storage with dev root token
 - **Key Generation**: Uses official `ethstaker-deposit-cli` for BLS12-381 key generation and deposit data creation
 
-### Key Generation Implementation
 
-#### Official ethstaker-deposit-cli (Current)
-- **Repository**: Integrated from [ethereum/staking-deposit-cli](https://github.com/ethereum/staking-deposit-cli)
-- **Implementation**: Full BLS12-381 cryptographic operations
-- **Standards**: EIP-2335 compliant keystores and SSZ serialization
-- **Security**: Production-ready with official Ethereum Foundation implementation
-- **Features**: 
-  - Real BLS12-381 elliptic curve operations
-  - Official SSZ deposit data serialization
-  - Cryptographically valid signatures
-  - Multi-network support (mainnet, testnets, devnet)
-
-The system now exclusively uses the official implementation for all key generation and deposit data creation.
-
-### Vault Key Management
-
-The system includes robust key management features:
-
-#### Key States
-- **Active**: Keys that are stored and accessible
-- **Deleted**: Keys marked for deletion but not yet destroyed (Vault soft delete)
-- **Destroyed**: Keys permanently removed from Vault
-
-#### Key Operations
-- **Auto-loading**: Commands automatically skip deleted keys
-- **Cleanup tools**: `destroy-deleted` command permanently removes deleted keys
-- **Smart listing**: `list-active` shows only accessible keys
-- **Bulk operations**: `remove --all` auto-destroys deleted keys before removal
-
-## 🧪 Validation Checklist
-
-The system validates:
-- ✅ **Kurtosis Devnet**: Built-in validators provide network stability
-- ✅ **Vault Integration**: Securely stores/retrieves BLS keys for external validators
-- ✅ **Web3Signer Integration**: Loads keys via HashiCorp Vault with slash protection
-- ✅ **PostgreSQL Database**: Slashing protection database with proper schema
-- ✅ **Unified Workflow**: Single entry point for complete validator lifecycle
-- ✅ **Official Implementation**: Uses ethstaker-deposit-cli for BLS12-381 and SSZ
-- ✅ **Deposit Flow**: Generation, submission, and activation
-- ✅ **Remote Signing**: External validators sign via Web3Signer
-- ✅ **Accelerated Testing**: 4s slots for fast validation cycles
-- ✅ **Smart Key Loading**: Auto-loads validators from Vault when needed
-- ✅ **Vault Key Management**: Full CRUD operations with cleanup tools
-- ✅ **BLS12-381 Compliance**: Generates proper 48-byte validator keys
-- ✅ **Simplified Architecture**: Removed duplicate/conflicting management scripts
 
 ## 📁 Project Structure
 
@@ -755,12 +517,41 @@ eth_validator_test/
     └── backup_system.py                 # 🆕 备份系统 (keystore + mnemonic)
 ```
 
-## 🤝 Contributing
 
-1. Test changes with `./start.sh external-test`
-2. Ensure all validation checklist items pass
-3. Update documentation for new features
-4. Follow existing code patterns and error handling
+## 🎉 新系统功能总结
+
+这个新系统提供了完整的验证者密钥管理解决方案，满足您的所有需求：
+
+### ✅ 核心功能
+- **按公钥、批次、生成日期查询**：支持多种维度的密钥查询和过滤
+- **支持 Prysm、Lighthouse、Teku**：三种主流验证者客户端全部支持
+- **密钥状态管理**：未使用/使用中/已注销三种状态标记
+- **支持 keystore 和 mnemonic 备份**：多种备份格式，支持加密保护
+
+### 🏗️ 新架构优势
+- **统一管理**：所有密钥操作通过 Vault 统一管理
+- **状态跟踪**：完整的密钥生命周期状态管理
+- **灵活查询**：支持多种维度的密钥查询和过滤
+- **多客户端**：支持所有主流验证者客户端
+- **安全备份**：多种备份格式，支持加密保护
+- **自动化**：减少手动操作，提高效率
+
+### 📋 使用流程
+```
+1. 密钥管理 → 2. 存款生成 → 3. 客户端配置 → 4. 验证者运行
+```
+
+### 🔑 快速开始
+```bash
+# 1. 启动基础设施
+./start.sh quick-start
+
+# 2. 使用新系统
+python3 scripts/vault_key_manager.py list --vault-token dev-root-token
+python3 scripts/deposit_generator.py generate 3 0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266 --vault-token dev-root-token
+python3 scripts/validator_client_config.py prysm --pubkeys 0x1234... --vault-token dev-root-token
+python3 scripts/backup_system.py keystore 0x1234... --password mypassword --vault-token dev-root-token
+```
 
 ## 📄 License
 

@@ -60,8 +60,23 @@ class VaultKeyManager:
         self.client = hvac.Client(url=vault_url, token=self.vault_token)
         
         # 验证连接
-        if not self.client.is_authenticated():
-            raise Exception("❌ Vault 认证失败，请检查 VAULT_TOKEN")
+        try:
+            if not self.client.is_authenticated():
+                print("❌ Vault 认证失败")
+                print("📋 解决方案：")
+                print("1. 启动基础设施：./start.sh quick-start")
+                print("2. 设置环境变量：export VAULT_TOKEN=dev-root-token")
+                print("3. 或者直接使用：python3 scripts/vault_key_manager.py list --vault-token dev-root-token")
+                raise Exception("请检查 VAULT_TOKEN 或启动 Vault 服务")
+        except Exception as e:
+            if "Connection refused" in str(e) or "Max retries exceeded" in str(e):
+                print("❌ 无法连接到 Vault 服务")
+                print("📋 解决方案：")
+                print("1. 启动基础设施：./start.sh quick-start")
+                print("2. 检查 Vault 是否运行：curl http://localhost:8200/v1/sys/health")
+                print("3. 设置环境变量：export VAULT_TOKEN=dev-root-token")
+                print("4. 或者直接使用：python3 scripts/vault_key_manager.py list --vault-token dev-root-token")
+            raise Exception("请检查 VAULT_TOKEN 或启动 Vault 服务")
         
         # 生成加密密钥（用于本地加密）
         self._init_encryption_key()
@@ -311,6 +326,8 @@ class VaultKeyManager:
 
 def main():
     parser = argparse.ArgumentParser(description='Vault 验证者密钥管理器')
+    parser.add_argument('--vault-url', default='http://localhost:8200', help='Vault URL')
+    parser.add_argument('--vault-token', help='Vault token (默认从环境变量 VAULT_TOKEN 获取)')
     subparsers = parser.add_subparsers(dest='command', help='可用命令')
     
     # 列出密钥
@@ -350,7 +367,9 @@ def main():
         return
     
     try:
-        manager = VaultKeyManager()
+        # 获取 vault token
+        vault_token = args.vault_token or os.getenv('VAULT_TOKEN', 'dev-root-token')
+        manager = VaultKeyManager(args.vault_url, vault_token)
         
         if args.command == 'list':
             keys = manager.list_keys(
