@@ -68,7 +68,7 @@ This system provides a comprehensive Ethereum validator key management solution 
 **方法1：使用默认 token（推荐）**
 ```bash
 # 直接使用默认 token
-python3 scripts/vault_key_manager.py list --vault-token dev-root-token
+python3 scripts/vault_key_manager.py --vault-token dev-root-token list
 ```
 
 **方法2：设置环境变量**
@@ -87,7 +87,7 @@ python3 scripts/vault_key_manager.py list
 
 # 2. 等待服务启动完成
 # 3. 使用默认 token
-python3 scripts/vault_key_manager.py list --vault-token dev-root-token
+python3 scripts/vault_key_manager.py --vault-token dev-root-token list
 ```
 
 #### 故障排除
@@ -104,7 +104,7 @@ curl http://localhost:8200/v1/sys/health
 **问题2：Token 认证失败**
 ```bash
 # 确保使用正确的 token
-python3 scripts/vault_key_manager.py list --vault-token dev-root-token
+python3 scripts/vault_key_manager.py --vault-token dev-root-token list
 ```
 
 **问题3：Docker 未运行**
@@ -136,61 +136,61 @@ python3 scripts/external_validator_manager.py generate-keys --count 5
 ### 3. 查询和管理密钥
 ```bash
 # 列出所有密钥
-python3 scripts/vault_key_manager.py list --vault-token dev-root-token
+python3 scripts/vault_key_manager.py --vault-token dev-root-token list
 
 # 按状态过滤
-python3 scripts/vault_key_manager.py list --status unused --vault-token dev-root-token
+python3 scripts/vault_key_manager.py --vault-token dev-root-token list --status unused
 
 # 按批次过滤
-python3 scripts/vault_key_manager.py list --batch-id batch-001 --vault-token dev-root-token
+python3 scripts/vault_key_manager.py --vault-token dev-root-token list --batch-id batch-001
 
 # 获取未使用的密钥
-python3 scripts/vault_key_manager.py unused --count 3 --vault-token dev-root-token
+python3 scripts/vault_key_manager.py --vault-token dev-root-token unused --count 3
 ```
 
 ### 4. 生成存款数据
 ```bash
 # 从 Vault 读取未使用密钥，生成存款
-python3 scripts/deposit_generator.py generate 3 0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266 --vault-token dev-root-token
+python3 scripts/deposit_generator.py --vault-token dev-root-token generate 3 0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266
 
 # 指定批次和客户端类型
-python3 scripts/deposit_generator.py generate 2 0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266 --batch-id batch-001 --client-type prysm --vault-token dev-root-token
+python3 scripts/deposit_generator.py --vault-token dev-root-token generate 2 0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266 --batch-id batch-001 --client-type prysm
 ```
 
 ### 5. 生成验证者客户端配置
 ```bash
 # 获取活跃密钥的公钥
-python3 scripts/validator_client_config.py list-active --vault-token dev-root-token
+python3 scripts/validator_client_config.py --vault-token dev-root-token list-active
 
 # 生成 Prysm 配置
-python3 scripts/validator_client_config.py prysm --pubkeys 0x1234... 0x5678... --beacon-node http://localhost:3500 --vault-token dev-root-token
+python3 scripts/validator_client_config.py --vault-token dev-root-token prysm --pubkeys 0x1234... 0x5678... --beacon-node http://localhost:3500
 
 # 生成所有客户端配置
-python3 scripts/validator_client_config.py all --pubkeys 0x1234... 0x5678... --vault-token dev-root-token
+python3 scripts/validator_client_config.py --vault-token dev-root-token all --pubkeys 0x1234... 0x5678...
 ```
 
 ### 6. 备份密钥
 ```bash
 # 创建 keystore 备份
-python3 scripts/backup_system.py keystore 0x1234... 0x5678... --password mypassword --vault-token dev-root-token
+python3 scripts/backup_system.py --vault-token dev-root-token keystore 0x1234... 0x5678... --password mypassword
 
 # 创建 mnemonic 备份
-python3 scripts/backup_system.py mnemonic 0x1234... 0x5678... --vault-token dev-root-token
+python3 scripts/backup_system.py --vault-token dev-root-token mnemonic 0x1234... 0x5678...
 
 # 创建批次备份
-python3 scripts/backup_system.py batch batch-001 --format both --password mypassword --vault-token dev-root-token
+python3 scripts/backup_system.py --vault-token dev-root-token batch batch-001 --format both --password mypassword
 ```
 
 ### 7. 监控和管理
 ```bash
 # 获取存款摘要
-python3 scripts/deposit_generator.py summary 0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266 --vault-token dev-root-token
+python3 scripts/deposit_generator.py --vault-token dev-root-token summary 0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266
 
 # 列出所有备份
 python3 scripts/backup_system.py list
 
 # 更新密钥状态
-python3 scripts/vault_key_manager.py status 0x1234... active --client-type prysm --notes "已激活" --vault-token dev-root-token
+python3 scripts/vault_key_manager.py --vault-token dev-root-token status 0x1234... active --client-type prysm --notes "已激活"
 ```
 
 ## 🔄 典型使用场景
@@ -201,39 +201,39 @@ python3 scripts/vault_key_manager.py status 0x1234... active --client-type prysm
 python3 scripts/external_validator_manager.py generate-keys --count 10
 
 # 2. 查看生成的密钥
-python3 scripts/vault_key_manager.py list --status unused --vault-token dev-root-token
+python3 scripts/vault_key_manager.py --vault-token dev-root-token list --status unused
 
 # 3. 生成存款数据
 python3 scripts/deposit_generator.py generate 10 0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266 --vault-token dev-root-token
 
 # 4. 生成 Prysm 配置
-python3 scripts/validator_client_config.py prysm --pubkeys $(python3 scripts/vault_key_manager.py unused --count 10 --vault-token dev-root-token | grep -o '0x[0-9a-fA-F]*') --vault-token dev-root-token
+python3 scripts/validator_client_config.py --vault-token dev-root-token prysm --pubkeys $(python3 scripts/vault_key_manager.py --vault-token dev-root-token unused --count 10 | grep -o '0x[0-9a-fA-F]*')
 ```
 
 ### 场景2：按批次管理
 ```bash
 # 1. 查看特定批次的密钥
-python3 scripts/vault_key_manager.py list --batch-id batch-001 --vault-token dev-root-token
+python3 scripts/vault_key_manager.py --vault-token dev-root-token list --batch-id batch-001
 
 # 2. 为该批次生成存款
 python3 scripts/deposit_generator.py generate 5 0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266 --batch-id batch-001 --vault-token dev-root-token
 
 # 3. 备份该批次
-python3 scripts/backup_system.py batch batch-001 --format both --password mypassword --vault-token dev-root-token
+python3 scripts/backup_system.py --vault-token dev-root-token batch batch-001 --format both --password mypassword
 ```
 
 ### 场景3：多客户端支持
 ```bash
 # 1. 获取活跃密钥
-python3 scripts/validator_client_config.py list-active --vault-token dev-root-token
+python3 scripts/validator_client_config.py --vault-token dev-root-token list-active
 
 # 2. 为不同客户端生成配置
-python3 scripts/validator_client_config.py prysm --pubkeys 0x1234... 0x5678... --vault-token dev-root-token
-python3 scripts/validator_client_config.py lighthouse --pubkeys 0x9abc... 0xdef0... --vault-token dev-root-token
-python3 scripts/validator_client_config.py teku --pubkeys 0x1111... 0x2222... --vault-token dev-root-token
+python3 scripts/validator_client_config.py --vault-token dev-root-token prysm --pubkeys 0x1234... 0x5678...
+python3 scripts/validator_client_config.py --vault-token dev-root-token lighthouse --pubkeys 0x9abc... 0xdef0...
+python3 scripts/validator_client_config.py --vault-token dev-root-token teku --pubkeys 0x1111... 0x2222...
 
 # 3. 或者一次性生成所有配置
-python3 scripts/validator_client_config.py all --pubkeys 0x1234... 0x5678... 0x9abc... 0xdef0... --vault-token dev-root-token
+python3 scripts/validator_client_config.py --vault-token dev-root-token all --pubkeys 0x1234... 0x5678... 0x9abc... 0xdef0...
 ```
 
 ## 🛡️ 安全最佳实践
@@ -241,28 +241,28 @@ python3 scripts/validator_client_config.py all --pubkeys 0x1234... 0x5678... 0x9
 ### 密钥备份
 ```bash
 # 定期备份所有密钥
-python3 scripts/backup_system.py batch all --format encrypted --password strong_password --vault-token dev-root-token
+python3 scripts/backup_system.py --vault-token dev-root-token batch all --format encrypted --password strong_password
 
 # 备份特定批次的助记词
-python3 scripts/backup_system.py batch batch-001 --format mnemonic --vault-token dev-root-token
+python3 scripts/backup_system.py --vault-token dev-root-token batch batch-001 --format mnemonic
 ```
 
 ### 密钥状态管理
 ```bash
 # 标记密钥为使用中
-python3 scripts/vault_key_manager.py status 0x1234... active --client-type prysm --notes "Prysm 验证者" --vault-token dev-root-token
+python3 scripts/vault_key_manager.py --vault-token dev-root-token status 0x1234... active --client-type prysm --notes "Prysm 验证者"
 
 # 标记密钥为已注销
-python3 scripts/vault_key_manager.py status 0x1234... retired --notes "已退出网络" --vault-token dev-root-token
+python3 scripts/vault_key_manager.py --vault-token dev-root-token status 0x1234... retired --notes "已退出网络"
 ```
 
 ### 恢复测试
 ```bash
 # 试运行恢复
-python3 scripts/backup_system.py restore backup-file.json --dry-run --vault-token dev-root-token
+python3 scripts/backup_system.py --vault-token dev-root-token restore backup-file.json --dry-run
 
 # 实际恢复
-python3 scripts/backup_system.py restore backup-file.json --password mypassword --vault-token dev-root-token
+python3 scripts/backup_system.py --vault-token dev-root-token restore backup-file.json --password mypassword
 ```
 
 ## 📋 Commands Reference
@@ -286,76 +286,76 @@ Commands:
 #### Vault Key Manager
 ```bash
 # 列出密钥 (支持多种过滤条件)
-python3 scripts/vault_key_manager.py list --vault-token dev-root-token
-python3 scripts/vault_key_manager.py list --status unused --vault-token dev-root-token
-python3 scripts/vault_key_manager.py list --batch-id batch-001 --vault-token dev-root-token
-python3 scripts/vault_key_manager.py list --client-type prysm --vault-token dev-root-token
-python3 scripts/vault_key_manager.py list --created-after 2024-01-01 --vault-token dev-root-token
+python3 scripts/vault_key_manager.py --vault-token dev-root-token list
+python3 scripts/vault_key_manager.py --vault-token dev-root-token list --status unused
+python3 scripts/vault_key_manager.py --vault-token dev-root-token list --batch-id batch-001
+python3 scripts/vault_key_manager.py --vault-token dev-root-token list --client-type prysm
+python3 scripts/vault_key_manager.py --vault-token dev-root-token list --created-after 2024-01-01
 
 # 获取指定密钥详情
-python3 scripts/vault_key_manager.py get 0x1234... --vault-token dev-root-token
+python3 scripts/vault_key_manager.py --vault-token dev-root-token get 0x1234...
 
 # 更新密钥状态
-python3 scripts/vault_key_manager.py status 0x1234... active --client-type prysm --notes "已激活" --vault-token dev-root-token
+python3 scripts/vault_key_manager.py --vault-token dev-root-token status 0x1234... active --client-type prysm --notes "已激活"
 
 # 导出密钥
-python3 scripts/vault_key_manager.py export 0x1234... --format keystore --password mypassword --vault-token dev-root-token
-python3 scripts/vault_key_manager.py export 0x1234... --format mnemonic --vault-token dev-root-token
+python3 scripts/vault_key_manager.py --vault-token dev-root-token export 0x1234... --format keystore --password mypassword
+python3 scripts/vault_key_manager.py --vault-token dev-root-token export 0x1234... --format mnemonic
 
 # 获取未使用的密钥
-python3 scripts/vault_key_manager.py unused --count 5 --vault-token dev-root-token
-python3 scripts/vault_key_manager.py unused --batch-id batch-001 --vault-token dev-root-token
+python3 scripts/vault_key_manager.py --vault-token dev-root-token unused --count 5
+python3 scripts/vault_key_manager.py --vault-token dev-root-token unused --batch-id batch-001
 ```
 
 #### Dynamic Deposit Generator
 ```bash
 # 生成存款 (从 Vault 读取未使用密钥)
-python3 scripts/deposit_generator.py generate 5 0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266 --vault-token dev-root-token
-python3 scripts/deposit_generator.py generate 3 0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266 --batch-id batch-001 --client-type prysm --vault-token dev-root-token
+python3 scripts/deposit_generator.py --vault-token dev-root-token generate 5 0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266
+python3 scripts/deposit_generator.py --vault-token dev-root-token generate 3 0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266 --batch-id batch-001 --client-type prysm
 
 # 列出可用密钥
-python3 scripts/deposit_generator.py list-keys --vault-token dev-root-token
-python3 scripts/deposit_generator.py list-keys --batch-id batch-001 --vault-token dev-root-token
+python3 scripts/deposit_generator.py --vault-token dev-root-token list-keys
+python3 scripts/deposit_generator.py --vault-token dev-root-token list-keys --batch-id batch-001
 
 # 获取存款摘要
-python3 scripts/deposit_generator.py summary 0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266 --vault-token dev-root-token
+python3 scripts/deposit_generator.py --vault-token dev-root-token summary 0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266
 ```
 
 #### Validator Client Config Generator
 ```bash
 # 生成 Prysm 配置
-python3 scripts/validator_client_config.py prysm --pubkeys 0x1234... 0x5678... --beacon-node http://localhost:3500 --vault-token dev-root-token
+python3 scripts/validator_client_config.py --vault-token dev-root-token prysm --pubkeys 0x1234... 0x5678... --beacon-node http://localhost:3500
 
 # 生成 Lighthouse 配置
-python3 scripts/validator_client_config.py lighthouse --pubkeys 0x1234... 0x5678... --beacon-node http://localhost:5052 --vault-token dev-root-token
+python3 scripts/validator_client_config.py --vault-token dev-root-token lighthouse --pubkeys 0x1234... 0x5678... --beacon-node http://localhost:5052
 
 # 生成 Teku 配置
-python3 scripts/validator_client_config.py teku --pubkeys 0x1234... 0x5678... --beacon-node http://localhost:5051 --vault-token dev-root-token
+python3 scripts/validator_client_config.py --vault-token dev-root-token teku --pubkeys 0x1234... 0x5678... --beacon-node http://localhost:5051
 
 # 生成所有客户端配置
-python3 scripts/validator_client_config.py all --pubkeys 0x1234... 0x5678... --vault-token dev-root-token
+python3 scripts/validator_client_config.py --vault-token dev-root-token all --pubkeys 0x1234... 0x5678...
 
 # 列出活跃密钥
-python3 scripts/validator_client_config.py list-active --vault-token dev-root-token
+python3 scripts/validator_client_config.py --vault-token dev-root-token list-active
 ```
 
 #### Backup System
 ```bash
 # 创建 keystore 备份
-python3 scripts/backup_system.py keystore 0x1234... 0x5678... --password mypassword --vault-token dev-root-token
+python3 scripts/backup_system.py --vault-token dev-root-token keystore 0x1234... 0x5678... --password mypassword
 
 # 创建 mnemonic 备份
-python3 scripts/backup_system.py mnemonic 0x1234... 0x5678... --vault-token dev-root-token
+python3 scripts/backup_system.py --vault-token dev-root-token mnemonic 0x1234... 0x5678...
 
 # 创建加密备份
-python3 scripts/backup_system.py encrypted 0x1234... 0x5678... --password mypassword --vault-token dev-root-token
+python3 scripts/backup_system.py --vault-token dev-root-token encrypted 0x1234... 0x5678... --password mypassword
 
 # 创建批次备份
-python3 scripts/backup_system.py batch batch-001 --format both --password mypassword --vault-token dev-root-token
+python3 scripts/backup_system.py --vault-token dev-root-token batch batch-001 --format both --password mypassword
 
 # 从备份恢复
-python3 scripts/backup_system.py restore backup-file.json --password mypassword --vault-token dev-root-token
-python3 scripts/backup_system.py restore backup-file.json --dry-run --vault-token dev-root-token  # 试运行
+python3 scripts/backup_system.py --vault-token dev-root-token restore backup-file.json --password mypassword
+python3 scripts/backup_system.py --vault-token dev-root-token restore backup-file.json --dry-run  # 试运行
 
 # 列出所有备份
 python3 scripts/backup_system.py list
@@ -547,10 +547,10 @@ eth_validator_test/
 ./start.sh quick-start
 
 # 2. 使用新系统
-python3 scripts/vault_key_manager.py list --vault-token dev-root-token
-python3 scripts/deposit_generator.py generate 3 0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266 --vault-token dev-root-token
-python3 scripts/validator_client_config.py prysm --pubkeys 0x1234... --vault-token dev-root-token
-python3 scripts/backup_system.py keystore 0x1234... --password mypassword --vault-token dev-root-token
+python3 scripts/vault_key_manager.py --vault-token dev-root-token list
+python3 scripts/deposit_generator.py --vault-token dev-root-token generate 3 0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266
+python3 scripts/validator_client_config.py --vault-token dev-root-token prysm --pubkeys 0x1234...
+python3 scripts/backup_system.py --vault-token dev-root-token keystore 0x1234... --password mypassword
 ```
 
 ## 📄 License

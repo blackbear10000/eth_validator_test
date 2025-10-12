@@ -83,7 +83,7 @@ class VaultKeyManager:
     
     def _init_encryption_key(self):
         """初始化加密密钥"""
-        encryption_key_path = f"{self.mount_point}/data/encryption-key"
+        encryption_key_path = "encryption-key"
         try:
             response = self.client.secrets.kv.v2.read_secret_version(
                 path=encryption_key_path
@@ -111,7 +111,7 @@ class VaultKeyManager:
         """获取密钥在 Vault 中的路径"""
         # 使用公钥的哈希作为路径，避免特殊字符问题
         pubkey_hash = hashlib.sha256(pubkey.encode()).hexdigest()[:16]
-        return f"{self.mount_point}/data/{self.key_path_prefix}/{pubkey_hash}"
+        return f"{self.key_path_prefix}/{pubkey_hash}"
     
     def store_key(self, key_data: ValidatorKey) -> bool:
         """存储验证者密钥到 Vault"""
@@ -198,14 +198,14 @@ class VaultKeyManager:
         """列出密钥（支持多种过滤条件）"""
         try:
             # 获取所有密钥的元数据
-            list_path = f"{self.mount_point}/metadata/{self.key_path_prefix}"
+            list_path = f"{self.key_path_prefix}"
             response = self.client.secrets.kv.v2.list_secrets(path=list_path)
             
             keys = []
             for key_name in response['data']['keys']:
                 try:
                     # 读取密钥数据
-                    path = f"{self.mount_point}/data/{self.key_path_prefix}/{key_name}"
+                    path = f"{self.key_path_prefix}/{key_name}"
                     key_response = self.client.secrets.kv.v2.read_secret_version(path=path)
                     data = key_response['data']['data']
                     
