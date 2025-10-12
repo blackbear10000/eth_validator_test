@@ -7,9 +7,7 @@ participants:
     cl_type: prysm
     vc_type: prysm
     el_extra_params:
-      - "--http.api=admin,engine,net,eth,web3,debug,txpool"   # 移除 trace
-      - "--gcmode=archive"                                    # 如需 Blockscout/全量追踪
-      # - "--syncmode=full"                                   # 视需要；devnet 通常无所谓
+      - "--http.api=admin,engine,net,eth,web3,debug,txpool"
 
   # 2) Reth × Lighthouse —— 常规
   - el_type: reth
