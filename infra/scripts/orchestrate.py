@@ -30,11 +30,22 @@ class TestOrchestrator:
         # Determine the project root directory
         script_dir = os.path.dirname(os.path.abspath(__file__))
         if os.path.basename(script_dir) == "scripts":
-            # If running from scripts directory, go up one level
-            self.project_root = os.path.dirname(script_dir)
+            # If running from scripts directory, go up two levels to project root
+            self.project_root = os.path.dirname(os.path.dirname(script_dir))
         else:
             # If running from project root, use current directory
             self.project_root = os.getcwd()
+        
+        # Ensure we have the correct project root by checking for key files
+        if not os.path.exists(os.path.join(self.project_root, "infra", "docker-compose.yml")):
+            # If we can't find docker-compose.yml, try to find it relative to the script
+            script_dir = os.path.dirname(os.path.abspath(__file__))
+            if os.path.basename(script_dir) == "scripts":
+                # Go up two levels from scripts to project root
+                self.project_root = os.path.dirname(os.path.dirname(script_dir))
+            else:
+                # Go up one level from infra to project root
+                self.project_root = os.path.dirname(script_dir)
 
     def load_config(self) -> Dict[str, Any]:
         """Load test configuration"""
@@ -46,8 +57,10 @@ class TestOrchestrator:
             "web3_url": "http://localhost:8545",
         }
 
-        if os.path.exists(self.config_file):
-            with open(self.config_file, 'r') as f:
+        # Use absolute path for config file
+        config_path = os.path.join(self.project_root, self.config_file)
+        if os.path.exists(config_path):
+            with open(config_path, 'r') as f:
                 user_config = json.load(f)
                 default_config.update(user_config)
 
@@ -55,7 +68,8 @@ class TestOrchestrator:
 
     def save_config(self):
         """Save current configuration"""
-        with open(self.config_file, 'w') as f:
+        config_path = os.path.join(self.project_root, self.config_file)
+        with open(config_path, 'w') as f:
             json.dump(self.config, f, indent=2)
 
     def run_command(self, cmd: List[str], cwd: str = None, background: bool = False):

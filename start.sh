@@ -96,7 +96,8 @@ case $COMMAND in
         echo -e "${BLUE}Quick start - infrastructure only...${NC}"
         cd code
         source venv/bin/activate
-        python3 ../infra/scripts/orchestrate.py start-infra
+        cd ..
+        python3 infra/scripts/orchestrate.py start-infra
         ;;
     "external-test")
         echo -e "${BLUE}Running external validator test...${NC}"
@@ -108,17 +109,20 @@ case $COMMAND in
         echo -e "${YELLOW}Cleaning up all services...${NC}"
         cd code
         source venv/bin/activate
-        python3 ../infra/scripts/orchestrate.py cleanup
+        cd ..
+        python3 infra/scripts/orchestrate.py cleanup
         ;;
     "status")
         echo -e "${BLUE}Checking service status...${NC}"
         cd code
         source venv/bin/activate
-        python3 ../infra/scripts/orchestrate.py status
+        cd ..
+        python3 infra/scripts/orchestrate.py status
         ;;
     "logs")
         echo -e "${BLUE}Showing service logs...${NC}"
         echo -e "${YELLOW}Docker Compose logs:${NC}"
+        cd infra
         docker-compose logs --tail=50
         ;;
     "help")
