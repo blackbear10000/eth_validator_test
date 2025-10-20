@@ -24,10 +24,9 @@ from vault_setup import VaultSetup
 class TestOrchestrator:
     def __init__(self, config_file: str = "config/config.json"):
         self.config_file = config_file
-        self.config = self.load_config()
         self.running_processes = []
         
-        # Determine the project root directory
+        # Determine the project root directory first
         script_dir = os.path.dirname(os.path.abspath(__file__))
         if os.path.basename(script_dir) == "scripts":
             # If running from scripts directory, go up two levels to project root
@@ -46,6 +45,9 @@ class TestOrchestrator:
             else:
                 # Go up one level from infra to project root
                 self.project_root = os.path.dirname(script_dir)
+        
+        # Now load config after project_root is set
+        self.config = self.load_config()
 
     def load_config(self) -> Dict[str, Any]:
         """Load test configuration"""
