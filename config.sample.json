@@ -6,8 +6,8 @@
   "web3_url": "http://localhost:33205",
   "validator_count": 10,
   "withdrawal_address": "0x8943545177806ED17B9F23F0a21ee5948eCaa776",
-  "keys_output_dir": "./keys",
-  "deposit_file": "deposit_data.json",
+  "keys_output_dir": "./data/keys",
+  "deposit_file": "data/deposits/deposit_data.json",
   "timeout_activation": 1800,
   "timeout_exit": 1800,
   "timeout_withdrawal": 3600,
@@ -33,6 +33,6 @@
     "vault": 8200,
     "web3signer": 9000
   },
-  "docker_compose_file": "docker-compose.yml",
-  "kurtosis_config": "kurtosis/kurtosis-config.yaml"
+  "docker_compose_file": "infra/docker-compose.yml",
+  "kurtosis_config": "infra/kurtosis/kurtosis-config.yaml"
 }

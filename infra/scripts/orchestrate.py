@@ -101,7 +101,7 @@ class TestOrchestrator:
 
         # Start remote signing stack (Vault + Consul + Web3Signer)
         print("Starting Vault + Consul + Web3Signer...")
-        self.run_command(["docker-compose", "up", "-d"], cwd=self.project_root)
+        self.run_command(["docker-compose", "up", "-d"], cwd=os.path.join(self.project_root, "infra"))
 
         # Wait for services to be ready
         print("Waiting for services to start...")
@@ -118,7 +118,7 @@ class TestOrchestrator:
         self.run_command([
             "kurtosis", "run",
             "github.com/ethpandaops/ethereum-package",
-            "--args-file", "../kurtosis/kurtosis-config.yaml",
+            "--args-file", os.path.join(self.project_root, "infra", "kurtosis", "kurtosis-config.yaml"),
             "--enclave", "eth-devnet"
         ])
 
@@ -132,7 +132,7 @@ class TestOrchestrator:
         
         # Check Docker services
         print("Checking Docker services...")
-        self.run_command(["docker-compose", "ps"], cwd=self.project_root)
+        self.run_command(["docker-compose", "ps"], cwd=os.path.join(self.project_root, "infra"))
         
         # Check Kurtosis enclaves
         print("Checking Kurtosis enclaves...")
@@ -175,7 +175,7 @@ class TestOrchestrator:
 
         # Stop Docker services
         try:
-            self.run_command(["docker-compose", "down", "-v"], cwd=self.project_root)
+            self.run_command(["docker-compose", "down", "-v"], cwd=os.path.join(self.project_root, "infra"))
         except subprocess.CalledProcessError:
             print("Docker cleanup may have failed")
 

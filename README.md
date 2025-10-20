@@ -32,6 +32,26 @@ This system provides a complete Ethereum validator testing solution with:
 - Python 3.8+
 - Git
 
+### Initial Setup
+```bash
+# Clone the repository
+git clone <repository-url>
+cd eth_validator_test
+
+# Initialize and update git submodules
+git submodule update --init --recursive
+
+# Copy sample configuration
+cp config.sample.json config/config.json
+
+# Install Python dependencies
+cd code
+python3 -m venv venv
+source venv/bin/activate
+pip install -r requirements.txt
+cd ..
+```
+
 ### 1. Start Infrastructure
 ```bash
 # Start all services (Vault, Web3Signer, Kurtosis)
@@ -209,6 +229,30 @@ kurtosis service logs eth-devnet cl-1-lighthouse-geth
 
 ## 🛠️ Troubleshooting
 
+### Git Submodules
+If you encounter issues with missing dependencies or external modules:
+
+**Common Issues:**
+- `ethstaker-deposit-cli` module not found
+- Import errors for external dependencies
+- Missing files in `code/external/` directory
+
+**Solutions:**
+```bash
+# Update all submodules
+git submodule update --init --recursive
+
+# If submodules are out of sync
+git submodule sync --recursive
+git submodule update --init --recursive
+
+# Force update submodules (if needed)
+git submodule update --init --recursive --force
+
+# Check submodule status
+git submodule status
+```
+
 ### Python Dependencies
 ```bash
 cd code
@@ -278,7 +322,7 @@ eth_validator_test/
 │   │   ├── generate_keys.py            # Key generation
 │   │   ├── deposit_generator.py         # Dynamic deposit generation
 │   │   └── validator_client_config.py  # Client configuration generation
-│   ├── external/                        # External dependencies
+│   ├── external/                        # External dependencies (git submodules)
 │   │   └── ethstaker-deposit-cli/      # Official Ethereum deposit CLI
 │   └── requirements.txt                 # Python dependencies
 │
