@@ -13,7 +13,7 @@ from pathlib import Path
 from typing import List, Dict, Any
 
 # Add ethstaker-deposit-cli to path
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'ethstaker-deposit-cli'))
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'external', 'ethstaker-deposit-cli'))
 
 from ethstaker_deposit.key_handling.key_derivation.mnemonic import get_mnemonic, get_seed
 from ethstaker_deposit.key_handling.key_derivation.path import mnemonic_and_path_to_key
@@ -37,7 +37,7 @@ from py_ecc.bls import G2ProofOfPossession as bls
 def generate_mnemonic() -> str:
     """Generate a new BIP39 mnemonic using ethstaker-deposit-cli"""
     # Get the correct path to word lists
-    words_path = os.path.join(os.path.dirname(__file__), '..', 'ethstaker-deposit-cli', 'ethstaker_deposit', 'key_handling', 'key_derivation', 'word_lists')
+    words_path = os.path.join(os.path.dirname(__file__), '..', 'external', 'ethstaker-deposit-cli', 'ethstaker_deposit', 'key_handling', 'key_derivation', 'word_lists')
     return get_mnemonic(language='english', words_path=words_path)
 
 

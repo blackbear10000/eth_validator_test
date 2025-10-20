@@ -48,7 +48,7 @@ echo -e "${GREEN}✓ All dependencies found${NC}"
 
 # Install Python dependencies
 echo -e "${YELLOW}Installing Python dependencies...${NC}"
-cd scripts
+cd code
 if [ ! -f "venv/bin/activate" ]; then
     python3 -m venv venv
 fi
@@ -57,14 +57,14 @@ source venv/bin/activate
 # Install requirements
 pip install -r requirements.txt
 
-# Install eth2-deposit-cli from GitHub (optional for advanced features)
-if [ ! -d "eth2-deposit-cli" ]; then
-    echo -e "${YELLOW}Installing eth2-deposit-cli from GitHub...${NC}"
-    git clone https://github.com/ethereum/staking-deposit-cli.git eth2-deposit-cli 2>/dev/null || echo "Note: eth2-deposit-cli clone skipped (optional)"
-    if [ -d "eth2-deposit-cli" ]; then
-        cd eth2-deposit-cli
-        pip install -r requirements.txt 2>/dev/null || echo "Note: eth2-deposit-cli requirements install failed (optional)"
-        cd ..
+# Install ethstaker-deposit-cli from external directory
+if [ ! -d "external/ethstaker-deposit-cli" ]; then
+    echo -e "${YELLOW}Installing ethstaker-deposit-cli from GitHub...${NC}"
+    git clone https://github.com/ethstaker/ethstaker-deposit-cli.git external/ethstaker-deposit-cli 2>/dev/null || echo "Note: ethstaker-deposit-cli clone skipped (optional)"
+    if [ -d "external/ethstaker-deposit-cli" ]; then
+        cd external/ethstaker-deposit-cli
+        pip install -r requirements.txt 2>/dev/null || echo "Note: ethstaker-deposit-cli requirements install failed (optional)"
+        cd ../..
     fi
 fi
 cd ..
@@ -73,11 +73,12 @@ echo -e "${GREEN}✓ Python dependencies installed${NC}"
 
 # Create necessary directories
 echo -e "${YELLOW}Setting up directories...${NC}"
-mkdir -p keys deposits logs
+mkdir -p data/keys data/deposits data/logs
 
 # Make scripts executable
-chmod +x scripts/*.py
-chmod +x scripts/orchestrate.py
+chmod +x code/core/*.py
+chmod +x code/utils/*.py
+chmod +x infra/scripts/*.py
 
 echo -e "${GREEN}✓ Setup completed${NC}"
 
@@ -87,33 +88,33 @@ COMMAND=${1:-full-test}
 case $COMMAND in
     "full-test")
         echo -e "${BLUE}Running full external validator lifecycle test...${NC}"
-        cd scripts
+        cd code
         source venv/bin/activate
-        python3 external_validator_manager.py full-test
+        python3 core/validator_manager.py full-test
         ;;
     "quick-start")
         echo -e "${BLUE}Quick start - infrastructure only...${NC}"
-        cd scripts
+        cd code
         source venv/bin/activate
-        python3 orchestrate.py start-infra
+        python3 ../infra/scripts/orchestrate.py start-infra
         ;;
     "external-test")
         echo -e "${BLUE}Running external validator test...${NC}"
-        cd scripts
+        cd code
         source venv/bin/activate
-        python3 external_validator_manager.py full-test
+        python3 core/validator_manager.py full-test
         ;;
     "cleanup")
         echo -e "${YELLOW}Cleaning up all services...${NC}"
-        cd scripts
+        cd code
         source venv/bin/activate
-        python3 orchestrate.py cleanup
+        python3 ../infra/scripts/orchestrate.py cleanup
         ;;
     "status")
         echo -e "${BLUE}Checking service status...${NC}"
-        cd scripts
+        cd code
         source venv/bin/activate
-        python3 orchestrate.py status
+        python3 ../infra/scripts/orchestrate.py status
         ;;
     "logs")
         echo -e "${BLUE}Showing service logs...${NC}"
@@ -132,15 +133,15 @@ case $COMMAND in
         echo -e "${GREEN}./start.sh help${NC}            - Show this help"
         echo ""
         echo -e "${YELLOW}External validator management:${NC}"
-        echo "cd scripts && source venv/bin/activate"
-        echo "python3 external_validator_manager.py check-services"
-        echo "python3 external_validator_manager.py generate-keys"
-        echo "python3 external_validator_manager.py create-deposits"
-        echo "python3 external_validator_manager.py submit-deposits"
-        echo "python3 external_validator_manager.py wait-activation"
-        echo "python3 external_validator_manager.py monitor"
-        echo "python3 external_validator_manager.py test-exit"
-        echo "python3 external_validator_manager.py test-withdrawal"
+        echo "cd code && source venv/bin/activate"
+        echo "python3 core/validator_manager.py check-services"
+        echo "python3 core/validator_manager.py generate-keys"
+        echo "python3 core/validator_manager.py create-deposits"
+        echo "python3 core/validator_manager.py submit-deposits"
+        echo "python3 core/validator_manager.py wait-activation"
+        echo "python3 core/validator_manager.py monitor"
+        echo "python3 core/validator_manager.py test-exit"
+        echo "python3 core/validator_manager.py test-withdrawal"
         echo ""
         echo -e "${YELLOW}Architecture:${NC}"
         echo "• Kurtosis devnet: Built-in validators (no Web3Signer)"

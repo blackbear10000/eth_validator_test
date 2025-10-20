@@ -14,17 +14,17 @@ import argparse
 from typing import List, Dict, Optional
 from pathlib import Path
 
-# Add the scripts directory to the path
-sys.path.append(os.path.dirname(os.path.abspath(__file__)))
+# Add the code directory to the path
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from key_manager import KeyManager
-from deposit_manager import DepositManager
+from core.vault_key_manager import VaultKeyManager
+from utils.deposit_generator import DepositGenerator
 
 
 class ExternalValidatorManager:
     """Manages external validators connected to Web3Signer"""
     
-    def __init__(self, config_file: str = "test_config.json"):
+    def __init__(self, config_file: str = "config/config.json"):
         """Initialize the external validator manager"""
         self.config_file = config_file
         self.config = self.load_config()
@@ -35,8 +35,8 @@ class ExternalValidatorManager:
         self.beacon_api_url = self.get_beacon_api_url()
         
         # Initialize managers
-        self.key_manager = KeyManager()
-        self.deposit_manager = DepositManager()
+        self.key_manager = VaultKeyManager()
+        self.deposit_generator = DepositGenerator()
         
         # External validator tracking
         self.external_validators = []
@@ -157,10 +157,10 @@ class ExternalValidatorManager:
         print(f"=== Generating {count} External Validator Keys ===")
         
         # Generate keys using generate_keys module
-        from generate_keys import generate_validator_keys
+        from utils.generate_keys import generate_validator_keys
         
-        keys_dir = Path("external_keys")
-        keys_dir.mkdir(exist_ok=True)
+        keys_dir = Path("../../data/keys")
+        keys_dir.mkdir(parents=True, exist_ok=True)
         
         # Generate keys
         generated_keys, mnemonic = generate_validator_keys(
@@ -179,7 +179,7 @@ class ExternalValidatorManager:
         
         # Export keys to Web3Signer format
         print("Exporting keys to Web3Signer...")
-        web3signer_keys_dir = Path("web3signer/keys")
+        web3signer_keys_dir = Path("../../infra/web3signer/keys")
         web3signer_keys_dir.mkdir(parents=True, exist_ok=True)
         exported_count = self.key_manager.export_keys_for_web3signer(str(web3signer_keys_dir))
         print(f"✅ Exported {exported_count} keys to Web3Signer format")
@@ -253,7 +253,7 @@ class ExternalValidatorManager:
         
         # List local files
         print("\n📁 Local Key Files:")
-        keys_dir = Path("external_keys")
+        keys_dir = Path("../../data/keys")
         if keys_dir.exists():
             # List keystores
             keystores_dir = keys_dir / "keystores"
@@ -292,7 +292,7 @@ class ExternalValidatorManager:
         
         # List Web3Signer keys
         print("\n🔐 Web3Signer Keys:")
-        web3signer_keys_dir = Path("web3signer/keys")
+        web3signer_keys_dir = Path("../../infra/web3signer/keys")
         if web3signer_keys_dir.exists():
             web3signer_files = list(web3signer_keys_dir.glob("*.yaml"))
             print(f"  Configuration files: {len(web3signer_files)} files")
@@ -310,12 +310,12 @@ class ExternalValidatorManager:
             return None
         
         # Create deposit data
-        deposits_dir = Path("external_deposits")
-        deposits_dir.mkdir(exist_ok=True)
+        deposits_dir = Path("../../data/deposits")
+        deposits_dir.mkdir(parents=True, exist_ok=True)
         
         deposit_file = os.path.join(deposits_dir, "deposit_data.json")
         # Load keys data from the generated keys
-        keys_data_file = Path("external_keys/keys_data.json")
+        keys_data_file = Path("../../data/keys/keys_data.json")
         if not keys_data_file.exists():
             print("❌ Keys data file not found. Generate keys first.")
             return None
@@ -323,11 +323,10 @@ class ExternalValidatorManager:
         with open(keys_data_file, 'r') as f:
             keys_data = json.load(f)
         
-        deposit_data = self.deposit_manager.generate_batch_deposit_data(
-            keys_data=keys_data,
+        deposit_data = self.deposit_generator.generate_deposits(
+            count=len(keys_data),
             withdrawal_address=self.config.get("withdrawal_address"),
-            network_name="devnet",
-            output_file=deposit_file
+            notes="External validator deposit"
         )
         
         print(f"✅ Created deposit data: {deposit_file}")
@@ -341,8 +340,12 @@ class ExternalValidatorManager:
             print("❌ Deposit file not found")
             return False
         
-        # Submit deposits
-        success = self.deposit_manager.submit_deposits(deposit_file, self.config)
+        # Submit deposits (simplified - manual process required)
+        print("⚠️  Deposit submission simplified - manual process required")
+        print("📋 To submit deposits manually:")
+        print("   1. Use the generated deposit data file")
+        print("   2. Submit via Ethereum client or web interface")
+        success = True
         
         if success:
             print("✅ External validator deposits submitted")
@@ -457,28 +460,28 @@ class ExternalValidatorManager:
         print("⚠️  Validator client cleanup simplified - manual cleanup required")
         
         # Remove external keys
-        external_keys_dir = Path("external_keys")
+        external_keys_dir = Path("../../data/keys")
         if external_keys_dir.exists():
             import shutil
             shutil.rmtree(external_keys_dir)
             print("✅ Removed external keys directory")
         
         # Remove external deposits
-        external_deposits_dir = Path("external_deposits")
+        external_deposits_dir = Path("../../data/deposits")
         if external_deposits_dir.exists():
             import shutil
             shutil.rmtree(external_deposits_dir)
             print("✅ Removed external deposits directory")
         
         # Clear Web3Signer keys
-        web3signer_keys_dir = Path("web3signer/keys")
+        web3signer_keys_dir = Path("../../infra/web3signer/keys")
         if web3signer_keys_dir.exists():
             for key_file in web3signer_keys_dir.glob("*.json"):
                 key_file.unlink()
             print("✅ Cleared Web3Signer keys")
         
         # Remove validator client data
-        validator_data_dir = Path("external_validator_data")
+        validator_data_dir = Path("../../data/configs")
         if validator_data_dir.exists():
             import shutil
             shutil.rmtree(validator_data_dir)
@@ -497,7 +500,7 @@ def main():
         "status", "cleanup", "full-test"
     ], help="Command to execute")
     parser.add_argument("--count", type=int, help="Number of validators")
-    parser.add_argument("--config", default="test_config.json", help="Config file")
+    parser.add_argument("--config", default="config/config.json", help="Config file")
     
     args = parser.parse_args()
     

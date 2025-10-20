@@ -3,3 +3,10 @@
 __pycache__
 /result
 /external_keys
+
+# Data directories (runtime data)
+/data/
+/config/
+
+# Python virtual environment
+code/venv/

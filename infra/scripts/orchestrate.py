@@ -22,7 +22,7 @@ from vault_setup import VaultSetup
 
 
 class TestOrchestrator:
-    def __init__(self, config_file: str = "test_config.json"):
+    def __init__(self, config_file: str = "config/config.json"):
         self.config_file = config_file
         self.config = self.load_config()
         self.running_processes = []
@@ -218,7 +218,7 @@ def main():
     parser.add_argument("command", choices=[
         "start-infra", "status", "cleanup", "help"
     ], help="Command to execute")
-    parser.add_argument("--config", default="test_config.json", help="Config file")
+    parser.add_argument("--config", default="config/config.json", help="Config file")
     
     args = parser.parse_args()
     
