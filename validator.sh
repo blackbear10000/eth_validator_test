@@ -116,6 +116,11 @@ case "$COMMAND" in
         python3 utils/web3signer_workflow.py troubleshoot
         ;;
     
+    test-vault-paths)
+        echo "🔍 测试 Vault 路径和密钥访问..."
+        python3 scripts/test_vault_paths.py
+        ;;
+    
     fix-database)
         echo "🔧 修复数据库问题..."
         python3 ../scripts/fix_database.py

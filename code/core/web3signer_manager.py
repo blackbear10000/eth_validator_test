@@ -108,6 +108,7 @@ class Web3SignerManager:
         pubkey_hash = hashlib.sha256(pubkey.encode()).hexdigest()[:16]
         vault_path = f"/v1/secret/data/validator-keys/{pubkey_hash}"
         
+        # Web3Signer HashiCorp Vault 配置格式
         return {
             "type": "hashicorp",
             "keyType": "BLS",
@@ -156,10 +157,16 @@ class Web3SignerManager:
                 # 创建 Web3Signer 密钥配置
                 config = self.create_web3signer_key_config(key_data)
                 
-                # 保存配置文件
-                config_file = self.keys_dir / f"vault-signing-key-{pubkey}.yaml"
+                # 调试：打印配置信息
+                print(f"🔍 密钥配置调试:")
+                print(f"   公钥: {pubkey[:10]}...")
+                print(f"   Vault 路径: {config['keyPath']}")
+                print(f"   字段名: {config['keyName']}")
+                
+                # 保存配置文件 (Web3Signer 需要 JSON 格式)
+                config_file = self.keys_dir / f"vault-signing-key-{pubkey}.json"
                 with open(config_file, 'w') as f:
-                    yaml.dump(config, f, default_flow_style=False)
+                    json.dump(config, f, indent=2)
                 
                 print(f"✅ 密钥配置已保存: {config_file}")
                 loaded_count += 1
