@@ -120,35 +120,6 @@ def generate_withdrawal_credentials(withdrawal_address: str) -> str:
     return '0x' + withdrawal_credentials
 
 
-def derive_keys_from_mnemonic(mnemonic: str, start_index: int, count: int) -> List[Dict[str, Any]]:
-    """Derive validator keys from mnemonic using official BLS12-381"""
-    seed = mnemonic_to_seed(mnemonic)
-
-    keys = []
-    for i in range(start_index, start_index + count):
-        # Derive validator signing key (m/12381/3600/i/0/0)
-        validator_sk = derive_private_key(seed, [12381, 3600, i, 0, 0])
-        validator_pk = derive_public_key(validator_sk)
-
-        # Derive withdrawal key (m/12381/3600/i/0)
-        withdrawal_sk = derive_private_key(seed, [12381, 3600, i, 0])
-        withdrawal_pk = derive_public_key(withdrawal_sk)
-
-        # Create keystore for the validator key
-        password = f"validator_{i}_password"
-        keystore = create_keystore(validator_sk, password, f"m/12381/3600/{i}/0/0")
-
-        keys.append({
-            'index': i,
-            'validator_private_key': hex(validator_sk),
-            'validator_public_key': validator_pk.hex(),
-            'withdrawal_private_key': hex(withdrawal_sk),
-            'withdrawal_public_key': withdrawal_pk.hex(),
-            'keystore': keystore,
-            'password': password
-        })
-
-    return keys
 
 
 def save_keys_locally(keys: List[Dict[str, Any]], output_dir: str, mnemonic: str, network: str = 'mainnet'):
