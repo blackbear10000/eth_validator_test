@@ -44,7 +44,7 @@ def test_vault_paths():
         vault_manager = VaultKeyManager()
         
         # 测试连接
-        if not vault_manager.test_vault_connection():
+        if not vault_manager._test_vault_connection():
             print("❌ Vault 连接失败")
             return False
         
