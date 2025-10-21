@@ -116,6 +116,11 @@ case "$COMMAND" in
         python3 utils/web3signer_workflow.py troubleshoot
         ;;
     
+    fix-database)
+        echo "🔧 修复数据库问题..."
+        python3 scripts/fix_database.py
+        ;;
+    
     # Quick deploy workflow
     deploy)
         echo "=== Quick Deploy Workflow ==="
@@ -180,6 +185,7 @@ function show_help() {
     echo "  verify-keys            Verify keys are loaded in Web3Signer"
     echo "  web3signer-deploy      Complete Web3Signer deployment workflow"
     echo "  web3signer-troubleshoot Web3Signer troubleshooting guide"
+    echo "  fix-database           Fix PostgreSQL database issues"
     echo ""
     echo "Monitoring:"
     echo "  monitor            Monitor validator performance"

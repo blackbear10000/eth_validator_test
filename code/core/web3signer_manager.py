@@ -5,6 +5,7 @@ Web3Signer 密钥管理器
 """
 
 import os
+import sys
 import json
 import yaml
 import requests
@@ -59,14 +60,19 @@ class Web3SignerManager:
         """从 Vault 获取所有验证者密钥"""
         try:
             headers = {"X-Vault-Token": self.vault_token}
+            
+            # 首先尝试获取密钥列表
+            print(f"🔍 尝试获取 Vault 密钥列表: {self.vault_url}/v1/secret/metadata/validator-keys")
             response = requests.get(
                 f"{self.vault_url}/v1/secret/metadata/validator-keys",
                 headers=headers,
                 timeout=10
             )
             
+            print(f"📊 Vault 响应状态: {response.status_code}")
             if response.status_code != 200:
-                print(f"❌ 获取 Vault 密钥列表失败: {response.status_code}")
+                print(f"❌ 获取密钥列表失败: {response.status_code}")
+                print(f"   响应: {response.text}")
                 return []
             
             data = response.json()

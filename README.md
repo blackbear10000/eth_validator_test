@@ -436,7 +436,7 @@ docker-compose up -d
 ./validator.sh verify-keys
 
 # Run Web3Signer diagnostic tool
-python3 debug_web3signer.py
+python3 scripts/debug_web3signer.py
 
 # Check Web3Signer logs
 docker logs web3signer
@@ -490,6 +490,34 @@ docker exec web3signer curl http://vault:8200/v1/sys/health
 - **Prysm**: `./validator.sh web3signer-deploy --client prysm`
 - **Lighthouse**: `./validator.sh web3signer-deploy --client lighthouse`
 - **Teku**: `./validator.sh web3signer-deploy --client teku`
+
+### 故障排除
+
+#### 数据库问题
+```bash
+# 修复 PostgreSQL 数据库问题
+./validator.sh fix-database
+
+# 检查数据库状态
+docker exec postgres psql -U postgres -d web3signer -c "\\dt"
+
+# 完全重置数据库
+docker-compose down
+docker volume rm eth_validator_test_postgres_data
+docker-compose up -d
+```
+
+#### Web3Signer 连接问题
+```bash
+# 检查 Web3Signer 状态
+./validator.sh web3signer-status
+
+# 检查 Web3Signer 日志
+docker logs web3signer
+
+# 重启 Web3Signer
+docker restart web3signer
+```
 
 ## 🏭 Production Considerations
 
@@ -630,6 +658,8 @@ eth_validator_test/
 │   └── requirements.txt                 # Python dependencies
 │
 ├── scripts/                              # Helper scripts
+│   ├── debug_web3signer.py             # Web3Signer diagnostic tool
+│   ├── fix_database.py                  # Database repair tool
 │   └── quick-deploy.sh                  # One-command deployment
 │
 ├── config/                               # Configuration directory (git ignored)
