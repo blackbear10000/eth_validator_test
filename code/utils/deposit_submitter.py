@@ -28,8 +28,29 @@ except ImportError as e:
 class DepositSubmitter:
     """存款提交器"""
     
-    def __init__(self, config_file: str = "config/config.json"):
+    def __init__(self, config_file: str = None):
         """初始化存款提交器"""
+        if config_file is None:
+            # 尝试多个可能的配置文件路径
+            possible_configs = [
+                "config/config.json",
+                "../config/config.json",
+                "../../config/config.json"
+            ]
+            
+            config_file = None
+            for config_path in possible_configs:
+                if os.path.exists(config_path):
+                    config_file = config_path
+                    break
+            
+            if config_file is None:
+                print("❌ 未找到配置文件")
+                print("📋 请确保以下路径之一存在:")
+                for path in possible_configs:
+                    print(f"   - {path}")
+                sys.exit(1)
+        
         self.config = self._load_config(config_file)
         self.web3 = None
         self.account = None

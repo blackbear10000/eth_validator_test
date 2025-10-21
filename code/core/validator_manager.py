@@ -494,7 +494,7 @@ class ExternalValidatorManager:
                 sys.executable, 
                 "utils/deposit_submitter.py",
                 deposit_file,
-                "--config", "config/config.json"
+                "--config", "../config/config.json"
             ]
             
             print("🚀 开始提交存款到网络...")
@@ -601,7 +601,7 @@ class ExternalValidatorManager:
                 sys.executable, 
                 "utils/deposit_submitter.py",
                 deposit_file,
-                "--config", "config/config.json"
+                "--config", "../config/config.json"
             ]
             
             print("🚀 开始提交存款到网络...")
@@ -900,26 +900,15 @@ class ExternalValidatorManager:
     def _validate_deposit_data(self, deposit_data: List[Dict]) -> bool:
         """Validate deposit data using ethstaker-deposit-cli utilities"""
         try:
-            from ethstaker_deposit.utils.validation import validate_deposit_data
+            from ethstaker_deposit.utils.validation import validate_deposit
+            from ethstaker_deposit.settings import get_chain_setting
             
-            # Convert deposit data to bytes format for validation
-            deposit_data_bytes = []
-            for deposit in deposit_data:
-                deposit_data_bytes.append({
-                    'pubkey': bytes.fromhex(deposit['pubkey']),
-                    'withdrawal_credentials': bytes.fromhex(deposit['withdrawal_credentials']),
-                    'amount': deposit['amount'],
-                    'signature': bytes.fromhex(deposit['signature']),
-                    'deposit_message_root': bytes.fromhex(deposit['deposit_message_root']),
-                    'deposit_data_root': bytes.fromhex(deposit['deposit_data_root']),
-                    'fork_version': bytes.fromhex(deposit['fork_version']),
-                    'network_name': deposit['network_name'],
-                    'deposit_cli_version': deposit['deposit_cli_version']
-                })
+            # Get chain setting for validation
+            chain_setting = get_chain_setting("mainnet")
             
             # Validate each deposit
-            for i, deposit in enumerate(deposit_data_bytes):
-                if not validate_deposit_data(deposit):
+            for i, deposit in enumerate(deposit_data):
+                if not validate_deposit(deposit, chain_setting):
                     print(f"❌ Deposit {i} validation failed")
                     return False
             
