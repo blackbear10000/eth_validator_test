@@ -169,8 +169,9 @@ class ExternalValidatorManager:
         )
         
         print(f"✅ Generated {len(generated_keys)} validator keys")
-        print(f"📝 Mnemonic: {mnemonic}")
-        print("⚠️  IMPORTANT: Store this mnemonic securely offline!")
+        print("⚠️  IMPORTANT: Store the mnemonic securely offline!")
+        print("🔐 The mnemonic has been saved to the keys directory for backup purposes.")
+        print("🚨 NEVER share or commit the mnemonic to version control!")
         
         # Import keys to Vault
         print("Importing keys to Vault...")

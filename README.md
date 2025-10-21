@@ -49,7 +49,9 @@ cd code
 python3 -m venv venv
 source venv/bin/activate
 pip install -r requirements.txt
-cd ..
+cd external/ethstaker-deposit-cli
+pip install -r requirements.txt
+cd ../../..
 ```
 
 ### 1. Start Infrastructure
@@ -91,6 +93,7 @@ python3 core/validator_manager.py test-exit
 ### Key Management
 ```bash
 # List all keys in Vault
+cd code && source venv/bin/activate
 python3 core/vault_key_manager.py --vault-token dev-root-token list
 
 # Query keys by status
@@ -103,6 +106,7 @@ python3 core/backup_system.py --vault-token dev-root-token keystore 0x1234... --
 ### Deposit Generation
 ```bash
 # Generate deposits from Vault keys
+cd code && source venv/bin/activate
 python3 utils/deposit_generator.py --vault-token dev-root-token generate 3 0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266
 
 # List available keys
@@ -112,6 +116,7 @@ python3 utils/deposit_generator.py --vault-token dev-root-token list-keys
 ### Client Configuration
 ```bash
 # Generate Prysm configuration
+cd code && source venv/bin/activate
 python3 utils/validator_client_config.py --vault-token dev-root-token prysm --pubkeys 0x1234... 0x5678...
 
 # Generate Lighthouse configuration
@@ -139,6 +144,7 @@ python3 utils/validator_client_config.py --vault-token dev-root-token all --pubk
 
 ### External Validator Manager
 ```bash
+cd code && source venv/bin/activate
 python3 core/validator_manager.py [command]
 ```
 

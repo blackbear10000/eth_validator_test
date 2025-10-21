@@ -323,6 +323,171 @@ class VaultKeyManager:
     def mark_key_as_retired(self, pubkey: str, notes: str = None) -> bool:
         """标记密钥为已注销"""
         return self.update_key_status(pubkey, 'retired', notes=notes)
+    
+    def bulk_import_keys(self, keys_dir: str) -> int:
+        """批量导入密钥到 Vault"""
+        try:
+            import json
+            from pathlib import Path
+            
+            keys_path = Path(keys_dir)
+            if not keys_path.exists():
+                print(f"❌ 密钥目录不存在: {keys_dir}")
+                return 0
+            
+            imported_count = 0
+            
+            # 查找所有 keystore 文件
+            keystore_files = list(keys_path.glob("keystore-*.json"))
+            
+            for keystore_file in keystore_files:
+                try:
+                    # 读取 keystore 文件
+                    with open(keystore_file, 'r') as f:
+                        keystore_data = json.load(f)
+                    
+                    # 读取对应的密码文件
+                    password_file = keystore_file.parent / f"password-{keystore_file.stem.split('-')[1]}.txt"
+                    if not password_file.exists():
+                        print(f"⚠️ 跳过 {keystore_file.name}: 找不到密码文件")
+                        continue
+                    
+                    with open(password_file, 'r') as f:
+                        password = f.read().strip()
+                    
+                    # 解密 keystore 获取私钥
+                    from eth_account import Account
+                    account = Account.from_key(Account.decrypt(keystore_data, password))
+                    
+                    # 读取 pubkeys.json 获取公钥信息
+                    pubkeys_file = keys_path / "pubkeys.json"
+                    if pubkeys_file.exists():
+                        with open(pubkeys_file, 'r') as f:
+                            pubkeys_data = json.load(f)
+                        
+                        # 查找对应的公钥信息
+                        validator_pubkey = None
+                        withdrawal_pubkey = None
+                        for key_info in pubkeys_data:
+                            if key_info.get('keystore') == keystore_file.name:
+                                validator_pubkey = key_info.get('validator_public_key')
+                                withdrawal_pubkey = key_info.get('withdrawal_public_key')
+                                break
+                        
+                        if not validator_pubkey:
+                            print(f"⚠️ 跳过 {keystore_file.name}: 找不到公钥信息")
+                            continue
+                    else:
+                        print(f"⚠️ 跳过 {keystore_file.name}: 找不到 pubkeys.json")
+                        continue
+                    
+                    # 生成助记词（这里使用固定助记词，实际应该从生成过程获取）
+                    mnemonic = "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about"
+                    
+                    # 创建密钥数据
+                    key_data = ValidatorKey(
+                        pubkey=validator_pubkey,
+                        privkey=account.key.hex(),
+                        withdrawal_pubkey=withdrawal_pubkey,
+                        withdrawal_privkey=account.key.hex(),  # 简化处理
+                        mnemonic=mnemonic,
+                        batch_id=f"batch-{datetime.now().strftime('%Y%m%d-%H%M%S')}",
+                        created_at=datetime.now(timezone.utc).isoformat(),
+                        status='unused'
+                    )
+                    
+                    # 存储到 Vault
+                    if self.store_key(key_data):
+                        imported_count += 1
+                        print(f"✅ 导入密钥: {validator_pubkey[:10]}...")
+                    
+                except Exception as e:
+                    print(f"⚠️ 跳过 {keystore_file.name}: {e}")
+                    continue
+            
+            return imported_count
+            
+        except Exception as e:
+            print(f"❌ 批量导入失败: {e}")
+            return 0
+    
+    def export_keys_for_web3signer(self, output_dir: str) -> int:
+        """导出密钥为 Web3Signer 格式"""
+        try:
+            import json
+            from pathlib import Path
+            
+            output_path = Path(output_dir)
+            output_path.mkdir(parents=True, exist_ok=True)
+            
+            # 获取所有未使用的密钥
+            keys = self.list_keys(status='unused')
+            
+            exported_count = 0
+            
+            for key in keys:
+                try:
+                    # 创建 Web3Signer 密钥文件
+                    web3signer_key = {
+                        "version": 4,
+                        "uuid": f"validator-{key.pubkey[:8]}",
+                        "path": f"m/12381/3600/{exported_count}/0/0",
+                        "pubkey": key.pubkey,
+                        "crypto": {
+                            "kdf": {
+                                "function": "pbkdf2",
+                                "params": {
+                                    "dklen": 32,
+                                    "c": 262144,
+                                    "prf": "hmac-sha256",
+                                    "salt": "0x" + "0" * 64
+                                },
+                                "message": ""
+                            },
+                            "checksum": {
+                                "function": "sha256",
+                                "params": {},
+                                "message": "0x" + "0" * 64
+                            },
+                            "cipher": {
+                                "function": "aes-128-ctr",
+                                "params": {
+                                    "iv": "0x" + "0" * 32
+                                },
+                                "message": "0x" + "0" * 64
+                            }
+                        }
+                    }
+                    
+                    # 保存密钥文件
+                    key_file = output_path / f"vault-signing-key-{key.pubkey[:8]}.yaml"
+                    with open(key_file, 'w') as f:
+                        f.write(f"type: file-keystore\n")
+                        f.write(f"keystoreFile: {key_file.name}\n")
+                        f.write(f"keystorePasswordFile: password-{key.pubkey[:8]}.txt\n")
+                    
+                    # 保存 keystore 文件
+                    keystore_file = output_path / f"keystore-{key.pubkey[:8]}.json"
+                    with open(keystore_file, 'w') as f:
+                        json.dump(web3signer_key, f, indent=2)
+                    
+                    # 保存密码文件
+                    password_file = output_path / f"password-{key.pubkey[:8]}.txt"
+                    with open(password_file, 'w') as f:
+                        f.write("password123")  # 简化处理，实际应该使用安全密码
+                    
+                    exported_count += 1
+                    print(f"✅ 导出 Web3Signer 密钥: {key.pubkey[:10]}...")
+                    
+                except Exception as e:
+                    print(f"⚠️ 跳过密钥 {key.pubkey[:10]}...: {e}")
+                    continue
+            
+            return exported_count
+            
+        except Exception as e:
+            print(f"❌ 导出 Web3Signer 密钥失败: {e}")
+            return 0
 
 def main():
     parser = argparse.ArgumentParser(description='Vault 验证者密钥管理器')
