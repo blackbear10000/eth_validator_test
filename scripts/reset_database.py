@@ -36,7 +36,7 @@ def reset_database():
     
     # 1. 停止所有服务
     print("🛑 停止所有服务...")
-    run_command("docker-compose -f infra/docker-compose.yml down", "停止 Docker 服务")
+    run_command("docker-compose -f ../infra/docker-compose.yml down", "停止 Docker 服务")
     
     # 2. 强制停止并删除容器
     print("🛑 强制停止容器...")
@@ -51,7 +51,7 @@ def reset_database():
     
     # 4. 重新启动服务
     print("🚀 重新启动服务...")
-    if not run_command("docker-compose -f infra/docker-compose.yml up -d", "启动 Docker 服务"):
+    if not run_command("docker-compose -f ../infra/docker-compose.yml up -d", "启动 Docker 服务"):
         print("❌ 服务启动失败")
         return False
     

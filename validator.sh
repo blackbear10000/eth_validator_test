@@ -146,6 +146,11 @@ case "$COMMAND" in
         python3 ../scripts/simple_reset.py
         ;;
     
+    direct-reset)
+        echo "🔄 直接重置数据库..."
+        python3 ../scripts/direct_reset.py
+        ;;
+    
     # Quick deploy workflow
     deploy)
         echo "=== Quick Deploy Workflow ==="

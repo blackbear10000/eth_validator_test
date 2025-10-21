@@ -1,12 +1,13 @@
 #!/usr/bin/env python3
 """
-简单重置脚本
-不依赖 docker-compose，直接操作容器和卷
+直接重置脚本
+使用绝对路径，避免相对路径问题
 """
 
 import subprocess
 import time
 import sys
+import os
 
 def run_command(cmd, description):
     """运行命令并显示结果"""
@@ -29,10 +30,18 @@ def run_command(cmd, description):
         print(f"❌ {description} 出错: {e}")
         return False
 
-def simple_reset():
-    """简单重置"""
-    print("🔄 简单重置工具")
+def direct_reset():
+    """直接重置"""
+    print("🔄 直接重置工具")
     print("=" * 40)
+    
+    # 获取项目根目录
+    script_dir = os.path.dirname(os.path.abspath(__file__))
+    project_root = os.path.dirname(script_dir)
+    docker_compose_file = os.path.join(project_root, "infra", "docker-compose.yml")
+    
+    print(f"📁 项目根目录: {project_root}")
+    print(f"📁 Docker Compose 文件: {docker_compose_file}")
     
     # 1. 停止所有相关容器
     print("🛑 停止所有容器...")
@@ -46,7 +55,7 @@ def simple_reset():
     
     # 3. 重新启动服务
     print("🚀 重新启动服务...")
-    if not run_command("docker-compose -f ../infra/docker-compose.yml up -d", "启动 Docker 服务"):
+    if not run_command(f"docker-compose -f {docker_compose_file} up -d", "启动 Docker 服务"):
         print("❌ 服务启动失败")
         return False
     
@@ -135,9 +144,9 @@ def simple_reset():
         run_command("docker logs web3signer --tail 20", "Web3Signer 日志")
         return False
     
-    print("🎉 简单重置完成！")
+    print("🎉 直接重置完成！")
     return True
 
 if __name__ == "__main__":
-    success = simple_reset()
+    success = direct_reset()
     sys.exit(0 if success else 1)
