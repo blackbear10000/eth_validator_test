@@ -57,6 +57,15 @@ cd ../../..
 ./validator.sh submit-deposits
 ```
 
+### Scenario 2.1: Clean and Start Fresh
+```bash
+# Clean all existing keys and start fresh
+./validator.sh clean
+./validator.sh generate-keys --count 5
+./validator.sh create-deposits
+./validator.sh submit-deposits
+```
+
 ### Scenario 3: Backup Everything
 ```bash
 # List all keys first
@@ -101,6 +110,7 @@ cd ../../..
 ./validator.sh generate-keys  # Generate new keys
 ./validator.sh list-keys      # List all keys
 ./validator.sh backup         # Backup keys
+./validator.sh clean         # Clean all keys (local files and Vault)
 ```
 
 ### Deposit Operations
@@ -110,9 +120,10 @@ cd ../../..
 ./validator.sh submit-deposits                    # Submit to network
 ```
 
-### Monitoring
+### Monitoring & Testing
 ```bash
 ./validator.sh monitor        # Monitor validators
+./validator.sh test-import    # Test Vault key import
 ```
 
 ### Quick Deploy
@@ -198,8 +209,11 @@ python3 core/validator_manager.py [command]
 - `generate-keys` - Generate validator keys
 - `list-keys` - List stored keys
 - `create-deposits` - Create deposit data
+- `create-deposits-with-address` - Create deposit data with custom withdrawal address
 - `submit-deposits` - Submit deposits to network
 - `monitor` - Monitor validator performance
+- `test-import` - Test Vault key import
+- `clean` - Clean all keys (local files and Vault)
 - `test-exit` - Test voluntary exit
 - `full-test` - Run complete lifecycle test
 
@@ -321,6 +335,50 @@ docker-compose down -v
 ./start.sh cleanup
 ```
 
+### Key Management Issues
+
+#### File Exists Errors
+If you encounter `[Errno 17] File exists` errors during key generation:
+
+```bash
+# Solution 1: Clean and regenerate
+./validator.sh clean
+./validator.sh generate-keys --count 5
+
+# Solution 2: The system now automatically cleans old files
+./validator.sh generate-keys --count 5  # Will auto-clean existing files
+```
+
+#### Vault Import Failures
+If keys are generated locally but not imported to Vault:
+
+```bash
+# Test single key import
+./validator.sh test-import
+
+# Check Vault status
+./validator.sh list-keys
+
+# Manual Vault import test
+cd code && source venv/bin/activate
+python3 core/vault_key_manager.py --vault-token dev-root-token list
+```
+
+#### No Keys Found in Vault
+If `create-deposits` fails with "No valid validator keys found in Vault":
+
+```bash
+# 1. Check if keys exist locally
+./validator.sh list-keys
+
+# 2. If local keys exist but Vault is empty, re-import
+./validator.sh clean  # Clean everything
+./validator.sh generate-keys --count 5  # Regenerate and import
+
+# 3. Verify Vault import
+./validator.sh test-import
+```
+
 ### Web3Signer Configuration Issues
 ```bash
 # Check PostgreSQL connection
@@ -362,7 +420,8 @@ cat data/deposits/deposit_data-*.json | jq '.deposits[0]'
 ./validator.sh list-keys  # Get pubkeys for backup
 ./validator.sh backup mnemonic 0x1234... 0x5678... --name pre-mainnet-backup
 
-# 4. Deploy to mainnet
+# 4. Clean and start fresh for mainnet
+./validator.sh clean  # Clean testnet keys
 # Update config/config.json with mainnet settings
 ./validator.sh deploy --count 50
 ```
@@ -430,11 +489,11 @@ eth_validator_test/
 │
 ├── code/                                 # Core code
 │   ├── core/                            # Core functionality
-│   │   ├── vault_key_manager.py         # Vault key management
-│   │   ├── validator_manager.py         # Main validator lifecycle manager
+│   │   ├── vault_key_manager.py         # Vault key management (with auto-cleanup)
+│   │   ├── validator_manager.py         # Main validator lifecycle manager (with clean command)
 │   │   └── backup_system.py            # Backup system
 │   ├── utils/                           # Utility modules
-│   │   ├── generate_keys.py            # Key generation (ethstaker-deposit-cli)
+│   │   ├── generate_keys.py            # Key generation (ethstaker-deposit-cli, auto-cleanup)
 │   │   ├── deposit_generator.py         # Dynamic deposit generation
 │   │   └── validator_client_config.py  # Client configuration generation
 │   ├── external/                        # External dependencies (git submodules)

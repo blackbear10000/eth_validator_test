@@ -653,7 +653,7 @@ def main():
     parser.add_argument("command", choices=[
         "check-services", "generate-keys", "list-keys", "load-validators", "create-deposits", "submit-deposits",
         "start-clients", "wait-activation", "monitor", "test-exit", "test-withdrawal", 
-        "status", "cleanup", "full-test", "create-deposits-with-address", "test-import"
+        "status", "cleanup", "full-test", "create-deposits-with-address", "test-import", "clean"
     ], help="Command to execute")
     parser.add_argument("--count", type=int, help="Number of validators")
     parser.add_argument("--config", default="config/config.json", help="Config file")
@@ -694,6 +694,10 @@ def main():
                 # Restore original address
                 if original_address:
                     manager.config["withdrawal_address"] = original_address
+        
+        elif args.command == "clean":
+            print("=== Cleaning All Keys ===")
+            manager.clean_all_keys()
         
         elif args.command == "submit-deposits":
             deposit_file = manager.create_external_deposits()
@@ -763,10 +767,6 @@ def main():
             manager.test_external_withdrawal()
             
             print("✅ Full external validator test completed")
-    
-    elif args.command == "clean":
-        print("=== Cleaning All Keys ===")
-        manager.clean_all_keys()
     
     except KeyboardInterrupt:
         print("\n⚠️ Operation interrupted by user")
