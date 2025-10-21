@@ -509,7 +509,7 @@ docker exec postgres psql -U postgres -d web3signer -c "\\dt"
 
 # 手动完全重置数据库
 docker-compose down
-docker volume rm eth_validator_test_postgres_data
+docker volume rm postgres_data
 docker-compose up -d
 ```
 

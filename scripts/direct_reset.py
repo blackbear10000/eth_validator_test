@@ -51,7 +51,7 @@ def direct_reset():
     # 2. 删除数据库卷
     print("🗑️  删除数据库卷...")
     run_command("docker volume ls | grep postgres", "检查 PostgreSQL 卷")
-    run_command("docker volume rm infra_postgres_data 2>/dev/null || true", "删除 PostgreSQL 数据卷")
+    run_command("docker volume rm postgres_data 2>/dev/null || true", "删除 PostgreSQL 数据卷")
     
     # 3. 重新启动服务
     print("🚀 重新启动服务...")
