@@ -486,10 +486,109 @@ class ExternalValidatorManager:
         
         if success:
             print("✅ External validator deposits submitted")
+            # 标记使用的密钥为 active 状态
+            self._mark_deposited_keys_as_active()
         else:
             print("❌ Failed to submit external validator deposits")
         
         return success
+    
+    def _mark_deposited_keys_as_active(self):
+        """标记已提交存款的密钥为 active 状态"""
+        try:
+            if not self.external_validators:
+                return
+            
+            print("🔄 更新密钥状态为 active...")
+            for pubkey in self.external_validators:
+                if self.key_manager.mark_key_as_active(pubkey, "external", "Deposit submitted"):
+                    print(f"✅ 标记密钥为 active: {pubkey[:10]}...")
+                else:
+                    print(f"⚠️  无法更新密钥状态: {pubkey[:10]}...")
+        except Exception as e:
+            print(f"⚠️  更新密钥状态失败: {e}")
+    
+    def check_validator_activation_status(self) -> bool:
+        """检查验证者激活状态并更新密钥状态"""
+        print("=== Checking Validator Activation Status ===")
+        
+        if not self.ensure_external_validators_loaded():
+            print("❌ No external validators found.")
+            return False
+        
+        print("⚠️  Activation check simplified - manual process required")
+        print("📋 To check activation status manually:")
+        print("   1. Use beacon chain explorer to check validator status")
+        print("   2. Look for 'active_ongoing' status")
+        print("   3. Update key status accordingly")
+        
+        # 这里可以集成真实的 beacon chain API 调用
+        # 例如：https://beaconcha.in/api/v1/validator/{pubkey}
+        
+        return True
+    
+    def validate_deposit_data(self) -> bool:
+        """验证存款数据的有效性"""
+        print("=== Validating Deposit Data ===")
+        
+        # 查找存款数据文件
+        deposit_file = None
+        possible_paths = [
+            "data/deposits/deposit_data.json",
+            "data/deposits/deposit_data-*.json"
+        ]
+        
+        for pattern in possible_paths:
+            if "*" in pattern:
+                import glob
+                files = glob.glob(pattern)
+                if files:
+                    deposit_file = files[0]  # 使用第一个找到的文件
+                    break
+            else:
+                if Path(pattern).exists():
+                    deposit_file = pattern
+                    break
+        
+        if not deposit_file:
+            print("❌ 未找到存款数据文件")
+            print("📋 请先运行: ./validator.sh create-deposits")
+            return False
+        
+        print(f"📁 找到存款数据文件: {deposit_file}")
+        
+        # 使用验证工具（独立运行，不依赖 Vault）
+        try:
+            import subprocess
+            import sys
+            import os
+            
+            # 设置环境变量，避免 Vault 连接问题
+            env = os.environ.copy()
+            env['SKIP_VAULT_CHECK'] = 'true'
+            
+            # 运行验证脚本（使用独立脚本，不依赖 Vault）
+            cmd = [
+                sys.executable, 
+                "validate_deposits_standalone.py",
+                deposit_file,
+                "--network", "mainnet"
+            ]
+            
+            print("🔍 开始验证存款数据...")
+            result = subprocess.run(cmd, capture_output=True, text=True, env=env)
+            
+            # 显示输出
+            if result.stdout:
+                print(result.stdout)
+            if result.stderr:
+                print(result.stderr)
+            
+            return result.returncode == 0
+            
+        except Exception as e:
+            print(f"❌ 验证过程出错: {e}")
+            return False
     
     def start_external_validator_clients(self) -> bool:
         """Start external validator clients connected to Web3Signer"""
@@ -672,7 +771,7 @@ def main():
     parser.add_argument("command", choices=[
         "check-services", "generate-keys", "list-keys", "load-validators", "create-deposits", "submit-deposits",
         "start-clients", "wait-activation", "monitor", "test-exit", "test-withdrawal", 
-        "status", "cleanup", "full-test", "create-deposits-with-address", "test-import", "clean"
+        "status", "cleanup", "full-test", "create-deposits-with-address", "test-import", "clean", "check-status", "validate-deposits"
     ], help="Command to execute")
     parser.add_argument("--count", type=int, help="Number of validators")
     parser.add_argument("--config", default="config/config.json", help="Config file")
@@ -717,6 +816,14 @@ def main():
         elif args.command == "clean":
             print("=== Cleaning All Keys ===")
             manager.clean_all_keys()
+        
+        elif args.command == "check-status":
+            print("=== Checking Validator Status ===")
+            manager.check_validator_activation_status()
+        
+        elif args.command == "validate-deposits":
+            print("=== Validating Deposit Data ===")
+            manager.validate_deposit_data()
         
         elif args.command == "submit-deposits":
             deposit_file = manager.create_external_deposits()

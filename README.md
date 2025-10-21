@@ -46,6 +46,7 @@ cd ../../..
 ./validator.sh backup mnemonic 0x1234... 0x5678... --name batch-50
 ./validator.sh create-deposits
 # Review deposit_data.json
+./validator.sh validate-deposits  # Validate using ethstaker-deposit-cli
 ./validator.sh submit-deposits
 ```
 
@@ -117,6 +118,7 @@ cd ../../..
 ```bash
 ./validator.sh create-deposits                    # Create deposit data (default withdrawal address)
 ./validator.sh create-deposits-with-address --withdrawal-address 0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266  # Create with custom withdrawal address
+./validator.sh validate-deposits                  # Validate deposit data using ethstaker-deposit-cli
 ./validator.sh submit-deposits                    # Submit to network
 ```
 
@@ -124,6 +126,7 @@ cd ../../..
 ```bash
 ./validator.sh monitor        # Monitor validators
 ./validator.sh test-import    # Test Vault key import
+./validator.sh validate-deposits  # Validate deposit data using ethstaker-deposit-cli
 ```
 
 ### Quick Deploy
@@ -210,6 +213,7 @@ python3 core/validator_manager.py [command]
 - `list-keys` - List stored keys
 - `create-deposits` - Create deposit data
 - `create-deposits-with-address` - Create deposit data with custom withdrawal address
+- `validate-deposits` - Validate deposit data using ethstaker-deposit-cli
 - `submit-deposits` - Submit deposits to network
 - `monitor` - Monitor validator performance
 - `test-import` - Test Vault key import

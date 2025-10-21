@@ -77,6 +77,14 @@ case "$COMMAND" in
         echo "🧹 Cleaning all keys (local files and Vault)..."
         python3 core/validator_manager.py clean "$@"
         ;;
+    check-status)
+        echo "🔍 Checking validator activation status..."
+        python3 core/validator_manager.py check-status "$@"
+        ;;
+    validate-deposits)
+        echo "🔍 Validating deposit data..."
+        python3 core/validator_manager.py validate-deposits "$@"
+        ;;
     
     # Quick deploy workflow
     deploy)
@@ -128,10 +136,13 @@ function show_help() {
     echo "  generate-keys      Generate validator keys"
     echo "  list-keys          List all keys"
     echo "  backup             Backup keys and mnemonic"
+    echo "  clean              Clean all keys and data"
+    echo "  check-status       Check validator activation status"
     echo ""
     echo "Deposit Operations:"
     echo "  create-deposits    Create deposit data"
     echo "  submit-deposits    Submit deposits to network"
+    echo "  validate-deposits  Validate deposit data using ethstaker-deposit-cli"
     echo ""
     echo "Monitoring:"
     echo "  monitor            Monitor validator performance"
