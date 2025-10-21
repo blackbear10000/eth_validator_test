@@ -136,6 +136,11 @@ case "$COMMAND" in
         python3 ../scripts/fix_database_version.py
         ;;
     
+    create-database-tables)
+        echo "📋 创建数据库表..."
+        python3 ../scripts/create_database_tables.py
+        ;;
+    
     # Quick deploy workflow
     deploy)
         echo "=== Quick Deploy Workflow ==="
@@ -159,7 +164,43 @@ case "$COMMAND" in
     
     # Help
     help|--help|-h)
-        show_help
+        echo "ETH Validator Management Tool"
+        echo ""
+        echo "Usage: ./validator.sh <command> [options]"
+        echo ""
+        echo "Infrastructure:"
+        echo "  start               Start all services"
+        echo "  stop                Stop all services"
+        echo "  status              Check service status"
+        echo ""
+        echo "Key Management:"
+        echo "  generate-keys       Generate validator keys"
+        echo "  list-keys           List all keys"
+        echo "  backup              Backup keys"
+        echo "  clean               Clean all keys (local files and Vault)"
+        echo ""
+        echo "Deposit Operations:"
+        echo "  create-deposits    Create deposit data"
+        echo "  submit-deposits    Submit deposits to network"
+        echo "  validate-deposits  Validate deposit data using ethstaker-deposit-cli"
+        echo ""
+        echo "Web3Signer Integration:"
+        echo "  load-keys              Load validator keys to Web3Signer"
+        echo "  web3signer-status      Check Web3Signer status and loaded keys"
+        echo "  verify-keys            Verify keys are loaded in Web3Signer"
+        echo "  web3signer-deploy      Complete Web3Signer deployment workflow"
+        echo "  web3signer-troubleshoot Web3Signer troubleshooting guide"
+        echo "  fix-database           Fix PostgreSQL database issues"
+        echo "  reset-database         Complete database reset (destructive)"
+        echo "  manual-fix-database    Manual database table recreation"
+        echo "  fix-database-version   Fix database version mismatch"
+        echo ""
+        echo "Monitoring:"
+        echo "  monitor            Monitor validator performance"
+        echo ""
+        echo "Quick Deploy:"
+        echo "  deploy             Run full deployment workflow"
+        echo ""
         ;;
     
     *)

@@ -38,13 +38,18 @@ def reset_database():
     print("🛑 停止所有服务...")
     run_command("cd infra && docker-compose down", "停止 Docker 服务")
     
-    # 2. 删除数据库卷
+    # 2. 强制停止并删除容器
+    print("🛑 强制停止容器...")
+    run_command("docker stop postgres web3signer vault consul 2>/dev/null || true", "停止相关容器")
+    run_command("docker rm postgres web3signer vault consul 2>/dev/null || true", "删除相关容器")
+    
+    # 3. 删除数据库卷
     print("🗑️  删除数据库卷...")
     # 先检查实际的卷名称
     run_command("docker volume ls | grep postgres", "检查 PostgreSQL 卷")
     run_command("docker volume rm infra_postgres_data", "删除 PostgreSQL 数据卷")
     
-    # 3. 重新启动服务
+    # 4. 重新启动服务
     print("🚀 重新启动服务...")
     if not run_command("cd infra && docker-compose up -d", "启动 Docker 服务"):
         print("❌ 服务启动失败")
