@@ -59,44 +59,41 @@ class Web3SignerManager:
     def get_vault_keys(self) -> List[Dict[str, Any]]:
         """从 Vault 获取所有验证者密钥"""
         try:
-            headers = {"X-Vault-Token": self.vault_token}
+            # 直接使用 VaultKeyManager 来获取密钥，确保路径一致
+            from vault_key_manager import VaultKeyManager
             
-            # 首先尝试获取密钥列表
-            print(f"🔍 尝试获取 Vault 密钥列表: {self.vault_url}/v1/secret/metadata/validator-keys")
-            response = requests.get(
-                f"{self.vault_url}/v1/secret/metadata/validator-keys",
-                headers=headers,
-                timeout=10
-            )
+            vault_manager = VaultKeyManager(self.vault_url, self.vault_token)
             
-            print(f"📊 Vault 响应状态: {response.status_code}")
-            if response.status_code != 200:
-                print(f"❌ 获取密钥列表失败: {response.status_code}")
-                print(f"   响应: {response.text}")
-                return []
+            # 获取所有密钥
+            all_keys = vault_manager.list_keys()
             
-            data = response.json()
-            if 'data' not in data or 'keys' not in data['data']:
+            if not all_keys:
                 print("❌ Vault 中没有找到密钥")
                 return []
             
+            # 转换为 Web3Signer 需要的格式
             keys = []
-            for key_name in data['data']['keys']:
-                # 获取具体密钥数据
-                key_response = requests.get(
-                    f"{self.vault_url}/v1/secret/data/validator-keys/{key_name}",
-                    headers=headers,
-                    timeout=10
-                )
-                
-                if key_response.status_code == 200:
-                    key_data = key_response.json()['data']['data']
-                    keys.append({
-                        'name': key_name,
-                        'pubkey': key_data.get('validator_pubkey', ''),
-                        'data': key_data
-                    })
+            for key in all_keys:
+                keys.append({
+                    'name': key.pubkey,  # 使用公钥作为名称
+                    'pubkey': key.pubkey,
+                    'data': {
+                        'pubkey': key.pubkey,
+                        'privkey': key.privkey,
+                        'withdrawal_pubkey': key.withdrawal_pubkey,
+                        'withdrawal_privkey': key.withdrawal_privkey,
+                        'mnemonic': key.mnemonic,
+                        'index': key.index,
+                        'signing_key_path': key.signing_key_path,
+                        'batch_id': key.batch_id,
+                        'created_at': key.created_at,
+                        'status': key.status,
+                        'client_type': key.client_type,
+                        'notes': key.notes
+                    }
+                })
             
+            print(f"✅ 从 Vault 获取到 {len(keys)} 个密钥")
             return keys
             
         except Exception as e:
@@ -105,12 +102,18 @@ class Web3SignerManager:
     
     def create_web3signer_key_config(self, key_data: Dict[str, Any]) -> Dict[str, str]:
         """为单个密钥创建 Web3Signer 配置"""
+        # 计算与 VaultKeyManager 一致的路径
+        import hashlib
+        pubkey = key_data['pubkey']
+        pubkey_hash = hashlib.sha256(pubkey.encode()).hexdigest()[:16]
+        vault_path = f"/v1/secret/data/validator-keys/{pubkey_hash}"
+        
         return {
             "type": "hashicorp",
             "keyType": "BLS",
             "tlsEnabled": "false",
-            "keyPath": f"/v1/secret/data/validator-keys/{key_data['name']}",
-            "keyName": "private_key",  # Vault 中存储私钥的字段名
+            "keyPath": vault_path,
+            "keyName": "privkey",  # VaultKeyManager 中存储私钥的字段名
             "serverHost": "vault",
             "serverPort": "8200",
             "timeout": "10000",

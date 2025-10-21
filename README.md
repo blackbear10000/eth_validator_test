@@ -17,6 +17,7 @@ cd code && python3 -m venv venv && source venv/bin/activate
 pip install -r requirements.txt
 cd external/ethstaker-deposit-cli && pip install -r requirements.txt
 cd ../../..
+export VAULT_TOKEN=dev-root-token
 ```
 
 ### Deploy Your First Validators
