@@ -224,6 +224,11 @@ class DepositGenerator:
 
 def main():
     parser = argparse.ArgumentParser(description='动态存款生成器')
+    
+    # 全局参数
+    parser.add_argument('--vault-url', default='http://localhost:8200', help='Vault URL')
+    parser.add_argument('--vault-token', help='Vault token (默认从环境变量 VAULT_TOKEN 获取)')
+    
     subparsers = parser.add_subparsers(dest='command', help='可用命令')
     
     # 生成存款
@@ -249,7 +254,9 @@ def main():
         return
     
     try:
-        generator = DepositGenerator()
+        # 获取 vault token
+        vault_token = args.vault_token or os.getenv('VAULT_TOKEN', 'dev-root-token')
+        generator = DepositGenerator(args.vault_url, vault_token)
         
         if args.command == 'generate':
             deposits = generator.generate_deposits(

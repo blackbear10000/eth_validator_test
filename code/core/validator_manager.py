@@ -315,23 +315,48 @@ class ExternalValidatorManager:
         deposits_dir.mkdir(parents=True, exist_ok=True)
         
         deposit_file = os.path.join(deposits_dir, "deposit_data.json")
-        # Load keys data from the generated keys
-        keys_data_file = Path("../../data/keys/keys_data.json")
-        if not keys_data_file.exists():
-            print("❌ Keys data file not found. Generate keys first.")
+        
+        # Try to load keys data from multiple possible locations
+        keys_data = None
+        possible_keys_files = [
+            Path("../../data/keys/keys_data.json"),
+            Path("../../data/keys/pubkeys.json"),
+            Path("../../data/keys/keys_data.json")
+        ]
+        
+        for keys_file in possible_keys_files:
+            if keys_file.exists():
+                try:
+                    with open(keys_file, 'r') as f:
+                        keys_data = json.load(f)
+                    print(f"✅ Loaded keys data from: {keys_file}")
+                    break
+                except Exception as e:
+                    print(f"⚠️ Failed to load {keys_file}: {e}")
+                    continue
+        
+        if not keys_data:
+            print("❌ No keys data file found. Generate keys first.")
             return None
         
-        with open(keys_data_file, 'r') as f:
-            keys_data = json.load(f)
-        
-        deposit_data = self.deposit_generator.generate_deposits(
-            count=len(keys_data),
-            withdrawal_address=self.config.get("withdrawal_address"),
-            notes="External validator deposit"
-        )
-        
-        print(f"✅ Created deposit data: {deposit_file}")
-        return deposit_file
+        # Generate deposit data using the loaded validators
+        try:
+            deposit_data = self.deposit_generator.generate_deposits(
+                count=len(self.external_validators),
+                withdrawal_address=self.config.get("withdrawal_address"),
+                notes="External validator deposit"
+            )
+            
+            # Save deposit data to file
+            with open(deposit_file, 'w') as f:
+                json.dump(deposit_data, f, indent=2)
+            
+            print(f"✅ Created deposit data: {deposit_file}")
+            return deposit_file
+            
+        except Exception as e:
+            print(f"❌ Failed to generate deposit data: {e}")
+            return None
     
     def submit_external_deposits(self, deposit_file: str) -> bool:
         """Submit deposits for external validators"""
