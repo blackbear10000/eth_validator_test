@@ -125,7 +125,8 @@ class VaultKeyManager:
         try:
             # 测试基本连接
             health = self.client.sys.read_health_status()
-            print(f"✅ Vault 连接正常: {health.get('version', 'unknown')}")
+            version = health.get('version', 'unknown') if hasattr(health, 'get') else str(health)
+            print(f"✅ Vault 连接正常: {version}")
             
             # 测试 KV v2 权限
             test_path = f"{self.key_path_prefix}/test"
