@@ -118,7 +118,12 @@ case "$COMMAND" in
     
     fix-database)
         echo "🔧 修复数据库问题..."
-        python3 scripts/fix_database.py
+        python3 ../scripts/fix_database.py
+        ;;
+    
+    reset-database)
+        echo "🔄 完全重置数据库..."
+        python3 ../scripts/reset_database.py
         ;;
     
     # Quick deploy workflow
@@ -186,6 +191,7 @@ function show_help() {
     echo "  web3signer-deploy      Complete Web3Signer deployment workflow"
     echo "  web3signer-troubleshoot Web3Signer troubleshooting guide"
     echo "  fix-database           Fix PostgreSQL database issues"
+    echo "  reset-database         Complete database reset (destructive)"
     echo ""
     echo "Monitoring:"
     echo "  monitor            Monitor validator performance"

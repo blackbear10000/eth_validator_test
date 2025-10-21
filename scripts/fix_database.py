@@ -95,6 +95,13 @@ def fix_database():
         print("❌ 数据库表验证失败")
         return False
     
+    # 6.1 验证数据库连接
+    print("🔍 验证数据库连接...")
+    connection_test_cmd = """docker exec postgres psql -U postgres -d web3signer -c "SELECT version FROM database_version WHERE id = 1;" """
+    if not run_command(connection_test_cmd, "测试数据库连接"):
+        print("❌ 数据库连接测试失败")
+        return False
+    
     # 7. 重启 Web3Signer
     print("🔄 重启 Web3Signer...")
     if not run_command("docker restart web3signer", "重启 Web3Signer"):
@@ -103,11 +110,21 @@ def fix_database():
     
     # 8. 等待 Web3Signer 启动
     print("⏳ 等待 Web3Signer 启动...")
-    time.sleep(15)
+    time.sleep(20)
     
     # 9. 检查 Web3Signer 状态
-    if not run_command("curl -f http://localhost:9000/upcheck", "检查 Web3Signer 健康状态"):
-        print("❌ Web3Signer 启动失败")
+    print("🔍 检查 Web3Signer 启动状态...")
+    for attempt in range(5):
+        print(f"   尝试 {attempt + 1}/5...")
+        if run_command("curl -f http://localhost:9000/upcheck", f"检查 Web3Signer 健康状态 (尝试 {attempt + 1})"):
+            print("✅ Web3Signer 启动成功")
+            break
+        else:
+            print(f"⏳ 等待 5 秒后重试...")
+            time.sleep(5)
+    else:
+        print("❌ Web3Signer 启动失败，检查日志:")
+        run_command("docker logs web3signer --tail 20", "Web3Signer 日志")
         return False
     
     print("🎉 数据库修复完成！")

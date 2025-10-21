@@ -498,10 +498,13 @@ docker exec web3signer curl http://vault:8200/v1/sys/health
 # 修复 PostgreSQL 数据库问题
 ./validator.sh fix-database
 
-# 检查数据库状态
+# 完全重置数据库（推荐）
+./validator.sh reset-database
+
+# 手动检查数据库状态
 docker exec postgres psql -U postgres -d web3signer -c "\\dt"
 
-# 完全重置数据库
+# 手动完全重置数据库
 docker-compose down
 docker volume rm eth_validator_test_postgres_data
 docker-compose up -d
