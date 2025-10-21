@@ -131,6 +131,11 @@ case "$COMMAND" in
         python3 ../scripts/manual_fix_database.py
         ;;
     
+    fix-database-version)
+        echo "🔧 修复数据库版本..."
+        python3 ../scripts/fix_database_version.py
+        ;;
+    
     # Quick deploy workflow
     deploy)
         echo "=== Quick Deploy Workflow ==="
@@ -198,6 +203,7 @@ function show_help() {
     echo "  fix-database           Fix PostgreSQL database issues"
     echo "  reset-database         Complete database reset (destructive)"
     echo "  manual-fix-database    Manual database table recreation"
+    echo "  fix-database-version   Fix database version mismatch"
     echo ""
     echo "Monitoring:"
     echo "  monitor            Monitor validator performance"
