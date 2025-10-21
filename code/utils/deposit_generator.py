@@ -21,12 +21,19 @@ from pathlib import Path
 # 添加项目根目录到路径
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
+# 添加 ethstaker-deposit-cli 到路径
+sys.path.append(os.path.join(os.path.dirname(__file__), '..', 'external', 'ethstaker-deposit-cli'))
+
 try:
     from eth_utils import to_hex, to_bytes
     from eth_account import Account
+    from ethstaker_deposit.credentials import Credential
+    from ethstaker_deposit.settings import get_chain_setting
+    from ethstaker_deposit.utils.deposit import export_deposit_data_json
 except ImportError as e:
     print(f"❌ 缺少依赖: {e}")
     print("请运行: pip install eth-utils eth-account")
+    print("并确保 ethstaker-deposit-cli 子模块已初始化")
     sys.exit(1)
 
 # 导入我们的 Vault 密钥管理器
@@ -38,8 +45,9 @@ from vault_key_manager import VaultKeyManager, ValidatorKey
 class DepositGenerator:
     """动态存款生成器"""
     
-    def __init__(self, vault_url: str = "http://localhost:8200", vault_token: str = None):
+    def __init__(self, vault_url: str = "http://localhost:8200", vault_token: str = None, network: str = 'mainnet'):
         self.vault_manager = VaultKeyManager(vault_url, vault_token)
+        self.network = network
         
     def generate_deposits(self, 
                          count: int,
@@ -99,27 +107,42 @@ class DepositGenerator:
             return []
     
     def _create_deposit_data(self, key: ValidatorKey, withdrawal_address: str) -> Dict[str, Any]:
-        """创建单个存款数据"""
+        """创建单个存款数据使用 ethstaker-deposit-cli Credential"""
         
         try:
-            # 简化版本：直接创建存款数据结构
-            # 实际实现应该使用正确的 BLS12-381 签名
+            # 获取链设置
+            chain_setting = get_chain_setting(self.network or 'mainnet')
             
-            deposit_data = {
-                "pubkey": key.pubkey,
-                "withdrawal_credentials": self._get_withdrawal_credentials(withdrawal_address),
-                "amount": 32000000000,  # 32 ETH in Gwei
-                "signature": self._generate_simple_signature(key, withdrawal_address),
-                "deposit_message_root": "0x" + "0" * 64,  # 占位符
-                "deposit_data_root": "0x" + "0" * 64,  # 占位符
-                "fork_version": "0x00000000",  # 测试网版本
-                "network_name": "testnet"
+            # 使用 Credential 类创建存款数据
+            credential = Credential(
+                mnemonic=key.mnemonic,
+                mnemonic_password='',
+                index=key.index,
+                amount=32000000000,  # 32 ETH in Gwei
+                chain_setting=chain_setting,
+                hex_withdrawal_address=withdrawal_address
+            )
+            
+            # 获取完整的存款数据字典
+            deposit_dict = credential.deposit_datum_dict
+            
+            # 转换为十六进制字符串用于 JSON 序列化
+            return {
+                'pubkey': deposit_dict['pubkey'].hex(),
+                'withdrawal_credentials': deposit_dict['withdrawal_credentials'].hex(),
+                'amount': deposit_dict['amount'],
+                'signature': deposit_dict['signature'].hex(),
+                'deposit_message_root': deposit_dict['deposit_message_root'].hex(),
+                'deposit_data_root': deposit_dict['deposit_data_root'].hex(),
+                'fork_version': deposit_dict['fork_version'].hex(),
+                'network_name': deposit_dict['network_name'],
+                'deposit_cli_version': deposit_dict['deposit_cli_version']
             }
-            
-            return deposit_data
             
         except Exception as e:
             print(f"❌ 创建存款数据失败: {e}")
+            import traceback
+            print(f"🔍 详细错误: {traceback.format_exc()}")
             raise
     
     def _get_withdrawal_credentials(self, withdrawal_address: str) -> str:
@@ -209,23 +232,51 @@ class DepositGenerator:
             raise
     
     def _save_deposit_data(self, deposits: List[Dict[str, Any]], withdrawal_address: str) -> str:
-        """保存存款数据到文件"""
-        timestamp = datetime.now().strftime('%Y%m%d-%H%M%S')
-        filename = f"deposits-{withdrawal_address[:8]}-{timestamp}.json"
-        filepath = Path("deposits") / filename
-        filepath.parent.mkdir(exist_ok=True)
-        
-        deposit_data = {
-            "withdrawal_address": withdrawal_address,
-            "count": len(deposits),
-            "generated_at": datetime.now(timezone.utc).isoformat(),
-            "deposits": deposits
-        }
-        
-        with open(filepath, 'w') as f:
-            json.dump(deposit_data, f, indent=2)
-        
-        return str(filepath)
+        """保存存款数据到文件使用官方格式"""
+        try:
+            # 创建输出目录
+            output_dir = Path("../../data/deposits")
+            output_dir.mkdir(parents=True, exist_ok=True)
+            
+            # 转换回字节格式用于官方导出函数
+            deposit_data_bytes = []
+            for d in deposits:
+                deposit_data_bytes.append({
+                    'pubkey': bytes.fromhex(d['pubkey']),
+                    'withdrawal_credentials': bytes.fromhex(d['withdrawal_credentials']),
+                    'amount': d['amount'],
+                    'signature': bytes.fromhex(d['signature']),
+                    'deposit_message_root': bytes.fromhex(d['deposit_message_root']),
+                    'deposit_data_root': bytes.fromhex(d['deposit_data_root']),
+                    'fork_version': bytes.fromhex(d['fork_version']),
+                    'network_name': d['network_name'],
+                    'deposit_cli_version': d['deposit_cli_version']
+                })
+            
+            # 使用官方导出函数
+            timestamp = int(datetime.now().timestamp())
+            filepath = export_deposit_data_json(str(output_dir), timestamp, deposit_data_bytes)
+            
+            return filepath
+            
+        except Exception as e:
+            print(f"❌ 保存存款数据失败: {e}")
+            # 回退到简单格式
+            timestamp = datetime.now().strftime('%Y%m%d-%H%M%S')
+            filename = f"deposit_data-{timestamp}.json"
+            filepath = output_dir / filename
+            
+            deposit_data = {
+                "withdrawal_address": withdrawal_address,
+                "count": len(deposits),
+                "generated_at": datetime.now(timezone.utc).isoformat(),
+                "deposits": deposits
+            }
+            
+            with open(filepath, 'w') as f:
+                json.dump(deposit_data, f, indent=2)
+            
+            return str(filepath)
     
     def list_available_keys(self, batch_id: str = None) -> List[ValidatorKey]:
         """列出可用的未使用密钥"""

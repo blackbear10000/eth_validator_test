@@ -36,7 +36,9 @@ class ExternalValidatorManager:
         
         # Initialize managers
         self.key_manager = VaultKeyManager()
-        self.deposit_generator = DepositGenerator()
+        # Pass network setting to deposit generator
+        network = self.config.get('network', 'mainnet')
+        self.deposit_generator = DepositGenerator(network=network)
         
         # External validator tracking
         self.external_validators = []
@@ -47,6 +49,7 @@ class ExternalValidatorManager:
         if not config_path.exists():
             # Default configuration
             return {
+                "network": "mainnet",  # mainnet, holesky, sepolia, etc.
                 "external_validator_count": 5,
                 "withdrawal_address": "0x0000000000000000000000000000000000000001",
                 "timeout_activation": 1800,
@@ -347,12 +350,17 @@ class ExternalValidatorManager:
                 notes="External validator deposit"
             )
             
-            # Save deposit data to file
-            with open(deposit_file, 'w') as f:
-                json.dump(deposit_data, f, indent=2)
-            
-            print(f"✅ Created deposit data: {deposit_file}")
-            return deposit_file
+            # Validate deposit data before saving
+            if self._validate_deposit_data(deposit_data):
+                # Save deposit data to file
+                with open(deposit_file, 'w') as f:
+                    json.dump(deposit_data, f, indent=2)
+                
+                print(f"✅ Created deposit data: {deposit_file}")
+                return deposit_file
+            else:
+                print("❌ Deposit data validation failed")
+                return None
             
         except Exception as e:
             print(f"❌ Failed to generate deposit data: {e}")
@@ -515,6 +523,42 @@ class ExternalValidatorManager:
         
         self.external_validators = []
         print("✅ External validator cleanup completed")
+
+    def _validate_deposit_data(self, deposit_data: List[Dict]) -> bool:
+        """Validate deposit data using ethstaker-deposit-cli utilities"""
+        try:
+            from ethstaker_deposit.utils.validation import validate_deposit_data
+            
+            # Convert deposit data to bytes format for validation
+            deposit_data_bytes = []
+            for deposit in deposit_data:
+                deposit_data_bytes.append({
+                    'pubkey': bytes.fromhex(deposit['pubkey']),
+                    'withdrawal_credentials': bytes.fromhex(deposit['withdrawal_credentials']),
+                    'amount': deposit['amount'],
+                    'signature': bytes.fromhex(deposit['signature']),
+                    'deposit_message_root': bytes.fromhex(deposit['deposit_message_root']),
+                    'deposit_data_root': bytes.fromhex(deposit['deposit_data_root']),
+                    'fork_version': bytes.fromhex(deposit['fork_version']),
+                    'network_name': deposit['network_name'],
+                    'deposit_cli_version': deposit['deposit_cli_version']
+                })
+            
+            # Validate each deposit
+            for i, deposit in enumerate(deposit_data_bytes):
+                if not validate_deposit_data(deposit):
+                    print(f"❌ Deposit {i} validation failed")
+                    return False
+            
+            print(f"✅ Validated {len(deposit_data)} deposits successfully")
+            return True
+            
+        except ImportError:
+            print("⚠️ ethstaker-deposit-cli validation not available, skipping validation")
+            return True
+        except Exception as e:
+            print(f"❌ Deposit validation error: {e}")
+            return False
 
 
 def main():

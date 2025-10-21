@@ -36,11 +36,13 @@ except ImportError as e:
 @dataclass
 class ValidatorKey:
     """验证者密钥数据结构"""
-    pubkey: str                    # 验证者公钥 (0x开头)
+    pubkey: str                    # 验证者公钥 (0x开头, 48 bytes)
     privkey: str                   # 验证者私钥 (加密存储)
-    withdrawal_pubkey: str         # 提款公钥 (0x开头)
+    withdrawal_pubkey: str         # 提款公钥 (0x开头, 48 bytes)
     withdrawal_privkey: str        # 提款私钥 (加密存储)
     mnemonic: str                  # 助记词 (加密存储)
+    index: int                     # 密钥派生索引
+    signing_key_path: str         # 签名密钥路径 (m/12381/3600/X/0/0)
     batch_id: str                  # 批次ID
     created_at: str                # 创建时间 (ISO格式)
     status: str                    # 状态: unused/active/retired
@@ -484,62 +486,75 @@ class VaultKeyManager:
                     from eth_account import Account
                     account = Account.from_key(Account.decrypt(keystore_data, password))
                     
-                    # 读取 pubkeys.json 获取公钥信息 (支持多种位置)
-                    pubkeys_file = None
-                    possible_pubkeys_locations = [
-                        keys_path / "pubkeys.json",
+                    # 读取 keys_data.json 获取完整密钥信息
+                    keys_data_file = None
+                    possible_keys_locations = [
                         keys_path / "keys_data.json",
-                        keys_path / ".." / "pubkeys.json"
+                        keys_path / "pubkeys.json",  # 向后兼容
+                        keys_path / ".." / "keys_data.json"
                     ]
                     
-                    for pubkeys_loc in possible_pubkeys_locations:
-                        if pubkeys_loc.exists():
-                            pubkeys_file = pubkeys_loc
+                    for keys_loc in possible_keys_locations:
+                        if keys_loc.exists():
+                            keys_data_file = keys_loc
                             break
                     
-                    if not pubkeys_file:
-                        print(f"⚠️ 跳过 {keystore_file.name}: 找不到公钥信息文件")
+                    if not keys_data_file:
+                        print(f"⚠️ 跳过 {keystore_file.name}: 找不到密钥信息文件")
                         continue
                     
-                    with open(pubkeys_file, 'r') as f:
-                        pubkeys_data = json.load(f)
+                    with open(keys_data_file, 'r') as f:
+                        keys_data = json.load(f)
                     
-                    # 查找对应的公钥信息
-                    validator_pubkey = None
-                    withdrawal_pubkey = None
+                    # 获取助记词和密钥信息
+                    mnemonic = None
+                    key_info = None
                     
-                    # 支持不同的数据结构
-                    if isinstance(pubkeys_data, list):
-                        # 尝试通过索引匹配 (keystore-0000.json -> index 0)
+                    if isinstance(keys_data, dict) and 'mnemonic' in keys_data:
+                        # 新格式: keys_data.json with mnemonic
+                        mnemonic = keys_data.get('mnemonic')
+                        keys_list = keys_data.get('keys', [])
+                        
+                        # 通过索引匹配密钥
                         try:
                             keystore_index = int(keystore_file.stem.split('-')[1])
-                            for key_info in pubkeys_data:
-                                if key_info.get('index') == keystore_index:
-                                    validator_pubkey = key_info.get('validator_pubkey')
-                                    withdrawal_pubkey = key_info.get('withdrawal_pubkey')
+                            for k in keys_list:
+                                if k.get('index') == keystore_index:
+                                    key_info = k
                                     break
                         except (ValueError, IndexError):
-                            # 如果索引匹配失败，尝试通过文件名匹配
-                            for key_info in pubkeys_data:
-                                if key_info.get('keystore') == keystore_file.name:
-                                    validator_pubkey = key_info.get('validator_pubkey') or key_info.get('validator_public_key')
-                                    withdrawal_pubkey = key_info.get('withdrawal_pubkey') or key_info.get('withdrawal_public_key')
+                            print(f"⚠️ 跳过 {keystore_file.name}: 无法解析索引")
+                            continue
+                            
+                    elif isinstance(keys_data, list):
+                        # 旧格式: pubkeys.json
+                        try:
+                            keystore_index = int(keystore_file.stem.split('-')[1])
+                            for k in keys_data:
+                                if k.get('index') == keystore_index:
+                                    key_info = k
                                     break
-                    elif isinstance(pubkeys_data, dict):
-                        # 如果是字典格式，尝试直接获取
-                        validator_pubkey = pubkeys_data.get('validator_pubkey') or pubkeys_data.get('validator_public_key')
-                        withdrawal_pubkey = pubkeys_data.get('withdrawal_pubkey') or pubkeys_data.get('withdrawal_public_key')
+                        except (ValueError, IndexError):
+                            print(f"⚠️ 跳过 {keystore_file.name}: 无法解析索引")
+                            continue
+                    
+                    if not key_info:
+                        print(f"⚠️ 跳过 {keystore_file.name}: 找不到对应的密钥信息")
+                        continue
+                    
+                    # 获取密钥信息
+                    validator_pubkey = key_info.get('validator_pubkey') or key_info.get('validator_public_key')
+                    withdrawal_pubkey = key_info.get('withdrawal_pubkey') or key_info.get('withdrawal_public_key')
+                    signing_key_path = key_info.get('signing_key_path', f"m/12381/3600/{keystore_index}/0/0")
+                    index = key_info.get('index', keystore_index)
                     
                     if not validator_pubkey:
                         print(f"⚠️ 跳过 {keystore_file.name}: 找不到公钥信息")
-                        print(f"🔍 调试信息: keystore_index={keystore_index if 'keystore_index' in locals() else 'N/A'}")
-                        print(f"🔍 调试信息: pubkeys_data 类型={type(pubkeys_data)}, 长度={len(pubkeys_data) if isinstance(pubkeys_data, list) else 'N/A'}")
-                        if isinstance(pubkeys_data, list) and len(pubkeys_data) > 0:
-                            print(f"🔍 调试信息: 第一个条目: {pubkeys_data[0]}")
                         continue
                     
-                    # 生成助记词（这里使用固定助记词，实际应该从生成过程获取）
-                    mnemonic = "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about"
+                    # 如果没有助记词，使用默认值（向后兼容）
+                    if not mnemonic:
+                        mnemonic = "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about"
                     
                     # 创建密钥数据
                     key_data = ValidatorKey(
@@ -548,6 +563,8 @@ class VaultKeyManager:
                         withdrawal_pubkey=withdrawal_pubkey,
                         withdrawal_privkey=account.key.hex(),  # 简化处理
                         mnemonic=mnemonic,
+                        index=index,
+                        signing_key_path=signing_key_path,
                         batch_id=f"batch-{datetime.now().strftime('%Y%m%d-%H%M%S')}",
                         created_at=datetime.now(timezone.utc).isoformat(),
                         status='unused'

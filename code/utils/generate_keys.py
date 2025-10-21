@@ -15,23 +15,10 @@ from typing import List, Dict, Any
 # Add ethstaker-deposit-cli to path
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'external', 'ethstaker-deposit-cli'))
 
-from ethstaker_deposit.key_handling.key_derivation.mnemonic import get_mnemonic, get_seed
-from ethstaker_deposit.key_handling.key_derivation.path import mnemonic_and_path_to_key
-from ethstaker_deposit.key_handling.key_derivation.tree import derive_master_SK, derive_child_SK
-from ethstaker_deposit.utils.crypto import SHA256
-from ethstaker_deposit.key_handling.keystore import Keystore
-from py_ecc.optimized_bls12_381 import (
-    G1,
-    G2,
-    curve_order,
-    multiply,
-    add,
-    neg,
-    pairing,
-    Z1,
-    Z2
-)
-from py_ecc.bls import G2ProofOfPossession as bls
+from ethstaker_deposit.credentials import Credential
+from ethstaker_deposit.settings import get_chain_setting
+from ethstaker_deposit.key_handling.key_derivation.mnemonic import get_mnemonic
+from ethstaker_deposit.key_handling.keystore import ScryptKeystore
 
 
 def generate_mnemonic() -> str:
@@ -41,44 +28,33 @@ def generate_mnemonic() -> str:
     return get_mnemonic(language='english', words_path=words_path)
 
 
-def mnemonic_to_seed(mnemonic: str, passphrase: str = "") -> bytes:
-    """Convert mnemonic to seed using ethstaker-deposit-cli"""
-    return get_seed(mnemonic=mnemonic, password=passphrase)
-
-
-def derive_private_key(seed: bytes, path: List[int]) -> int:
-    """Derive private key from seed using official BLS12-381 derivation"""
-    # Start with master key
-    sk = derive_master_SK(seed)
+def derive_keys_from_mnemonic(mnemonic: str, start_index: int, count: int, network: str = 'mainnet') -> List[Dict[str, Any]]:
+    """Derive validator keys from mnemonic using ethstaker-deposit-cli Credential class"""
+    chain_setting = get_chain_setting(network)
+    keys = []
     
-    # Derive through the path
-    for index in path:
-        sk = derive_child_SK(parent_SK=sk, index=index)
+    for i in range(start_index, start_index + count):
+        # Use official Credential class for proper key derivation
+        credential = Credential(
+            mnemonic=mnemonic,
+            mnemonic_password='',
+            index=i,
+            amount=32000000000,  # 32 ETH in Gwei
+            chain_setting=chain_setting,
+            hex_withdrawal_address=None  # BLS withdrawal initially
+        )
+        
+        keys.append({
+            'index': i,
+            'validator_public_key': '0x' + credential.signing_pk.hex(),  # 48 bytes
+            'validator_private_key': '0x' + credential.signing_sk.to_bytes(32, 'big').hex(),
+            'withdrawal_public_key': '0x' + credential.withdrawal_pk.hex(),
+            'withdrawal_private_key': '0x' + credential.withdrawal_sk.to_bytes(32, 'big').hex(),
+            'signing_key_path': credential.signing_key_path,
+            'withdrawal_key_path': f"m/12381/3600/{i}/0"
+        })
     
-    return sk
-
-
-def derive_public_key(private_key: int) -> bytes:
-    """Derive public key from private key using BLS12-381"""
-    # Convert private key to public key on G1
-    public_key_point = multiply(G1, private_key)
-    
-    # Serialize the public key (48 bytes)
-    # BLS12-381 G1 point serialization: compressed format
-    x = public_key_point[0]
-    y = public_key_point[1]
-    
-    # Check if y is even or odd for compression
-    # Convert field element to int for modulo operation
-    y_int = int(y)
-    if y_int % 2 == 0:
-        prefix = 0x02
-    else:
-        prefix = 0x03
-    
-    # Serialize: 1 byte prefix + 48 bytes x coordinate
-    x_int = int(x)
-    return bytes([prefix]) + x_int.to_bytes(48, 'big')
+    return keys
 
 
 def create_keystore(private_key: int, password: str, path: str = "m/12381/3600/0/0/0") -> Dict[str, Any]:
@@ -175,8 +151,8 @@ def derive_keys_from_mnemonic(mnemonic: str, start_index: int, count: int) -> Li
     return keys
 
 
-def save_keys_locally(keys: List[Dict[str, Any]], output_dir: str):
-    """Save keys to local files for backup"""
+def save_keys_locally(keys: List[Dict[str, Any]], output_dir: str, mnemonic: str, network: str = 'mainnet'):
+    """Save keys to local files for backup using ethstaker-deposit-cli format"""
     os.makedirs(output_dir, exist_ok=True)
 
     # Save individual keystores
@@ -187,41 +163,97 @@ def save_keys_locally(keys: List[Dict[str, Any]], output_dir: str):
     secrets_dir = os.path.join(output_dir, 'secrets')
     os.makedirs(secrets_dir, exist_ok=True)
 
-    # Save public key index
+    # Create complete keys data with mnemonic
+    keys_data = {
+        'mnemonic': mnemonic,
+        'network': network,
+        'timestamp': __import__('datetime').datetime.now().isoformat(),
+        'keys': []
+    }
+
+    # Save public key index (for backward compatibility)
     pubkeys = []
 
     for key_data in keys:
         index = key_data['index']
+        password = f'validator_{index}_password'
 
+        # Create keystore using ethstaker-deposit-cli
+        chain_setting = get_chain_setting(network)
+        credential = Credential(
+            mnemonic=mnemonic,
+            mnemonic_password='',
+            index=index,
+            amount=32000000000,
+            chain_setting=chain_setting,
+            hex_withdrawal_address=None
+        )
+
+        # Generate keystore
+        keystore = credential.signing_keystore(password)
+        
         # Save keystore
         keystore_path = os.path.join(keystores_dir, f'keystore-{index:04d}.json')
-        with open(keystore_path, 'w') as f:
-            json.dump(key_data['keystore'], f, indent=2)
+        keystore.save(keystore_path)
 
         # Save password
         password_path = os.path.join(secrets_dir, f'password-{index:04d}.txt')
         with open(password_path, 'w') as f:
-            f.write(key_data['password'])
+            f.write(password)
 
-        # Collect public key info
+        # Add to keys_data
+        keys_data['keys'].append({
+            'index': index,
+            'validator_public_key': key_data['validator_public_key'],
+            'validator_private_key': key_data['validator_private_key'],
+            'withdrawal_public_key': key_data['withdrawal_public_key'],
+            'withdrawal_private_key': key_data['withdrawal_private_key'],
+            'signing_key_path': key_data['signing_key_path'],
+            'withdrawal_key_path': key_data['withdrawal_key_path'],
+            'keystore_filename': f'keystore-{index:04d}.json',
+            'password': password
+        })
+
+        # Collect public key info for backward compatibility
         pubkeys.append({
             'index': index,
             'validator_pubkey': key_data['validator_public_key'],
             'withdrawal_pubkey': key_data['withdrawal_public_key']
         })
 
-    # Save public key index
+    # Save complete keys data (primary file)
+    with open(os.path.join(output_dir, 'keys_data.json'), 'w') as f:
+        json.dump(keys_data, f, indent=2)
+
+    # Save public key index (for backward compatibility)
+    # Add deprecation notice
+    pubkeys_with_notice = {
+        "_deprecated": "This file is deprecated. Use keys_data.json instead.",
+        "_migration": "All data is now in keys_data.json with mnemonic and complete key information.",
+        "keys": pubkeys
+    }
     with open(os.path.join(output_dir, 'pubkeys.json'), 'w') as f:
-        json.dump(pubkeys, f, indent=2)
+        json.dump(pubkeys_with_notice, f, indent=2)
+
+    # Save mnemonic separately with warning
+    mnemonic_path = os.path.join(output_dir, 'mnemonic.txt')
+    with open(mnemonic_path, 'w') as f:
+        f.write("KEEP THIS FILE SECURE - DO NOT SHARE\n")
+        f.write("=" * 50 + "\n\n")
+        f.write(f"Mnemonic: {mnemonic}\n")
+        f.write(f"Network: {network}\n")
+        f.write(f"Generated: {keys_data['timestamp']}\n")
 
     print(f"Generated {len(keys)} validator keys using official BLS12-381")
     print(f"Keys saved to: {output_dir}")
     print(f"Keystores: {keystores_dir}")
     print(f"Secrets: {secrets_dir}")
+    print(f"Mnemonic: {mnemonic_path}")
+    print("BACKUP MNEMONIC OFFLINE IMMEDIATELY!")
 
 
-def generate_validator_keys(count: int, start_index: int = 0, output_dir: str = "./keys", mnemonic: str = None):
-    """Main key generation function using ethstaker-deposit-cli"""
+def generate_validator_keys(count: int, start_index: int = 0, output_dir: str = "./keys", mnemonic: str = None, network: str = 'mainnet'):
+    """Main key generation function using ethstaker-deposit-cli Credential class"""
 
     if mnemonic is None:
         mnemonic = generate_mnemonic()
@@ -230,11 +262,11 @@ def generate_validator_keys(count: int, start_index: int = 0, output_dir: str = 
     else:
         print("Using provided mnemonic")
 
-    # Derive keys from mnemonic using official BLS12-381
-    keys = derive_keys_from_mnemonic(mnemonic, start_index, count)
+    # Derive keys from mnemonic using official BLS12-381 Credential class
+    keys = derive_keys_from_mnemonic(mnemonic, start_index, count, network)
 
-    # Save keys locally
-    save_keys_locally(keys, output_dir)
+    # Save keys locally with mnemonic
+    save_keys_locally(keys, output_dir, mnemonic, network)
 
     return keys, mnemonic
 
@@ -252,13 +284,11 @@ if __name__ == "__main__":
         count=args.count,
         start_index=args.start_index,
         output_dir=args.output_dir,
-        mnemonic=args.mnemonic
+        mnemonic=args.mnemonic,
+        network='mainnet'  # Default to mainnet
     )
 
-    # Save mnemonic securely (separate from keys)
-    mnemonic_path = os.path.join(args.output_dir, 'MNEMONIC.txt')
-    with open(mnemonic_path, 'w') as f:
-        f.write(mnemonic)
-
-    print(f"\nMnemonic saved to: {mnemonic_path}")
-    print("BACKUP THIS MNEMONIC OFFLINE IMMEDIATELY!")
+    print(f"\n✅ Key generation complete!")
+    print(f"📁 Keys saved to: {args.output_dir}")
+    print(f"🔑 Mnemonic saved to: {os.path.join(args.output_dir, 'mnemonic.txt')}")
+    print("⚠️  BACKUP MNEMONIC OFFLINE IMMEDIATELY!")

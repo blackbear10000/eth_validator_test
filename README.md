@@ -1,15 +1,114 @@
 # ETH Validator Testing System
 
-A comprehensive testing framework for Ethereum validator lifecycle management using Kurtosis, Web3Signer, and Vault.
+Comprehensive Ethereum validator lifecycle management using Kurtosis, Web3Signer, and Vault with official `ethstaker-deposit-cli` integration.
 
-## 🎯 Overview
+## 🚀 Quick Start
 
-This system provides a complete Ethereum validator testing solution with:
-- **Key Management**: HashiCorp Vault for secure key storage
-- **Remote Signing**: Web3Signer for external validator signing
-- **Multi-Client Support**: Prysm, Lighthouse, and Teku validator clients
-- **Lifecycle Testing**: Complete validator onboarding/exit workflows
-- **Official Implementation**: Uses `ethstaker-deposit-cli` for BLS12-381 key generation
+### One-Time Setup
+```bash
+# Clone and setup
+git clone <your-repository-url> && cd eth_validator_test
+git submodule update --init --recursive
+cp config.sample.json config/config.json
+
+# Install dependencies
+cd code && python3 -m venv venv && source venv/bin/activate
+pip install -r requirements.txt
+cd external/ethstaker-deposit-cli && pip install -r requirements.txt
+cd ../../..
+```
+
+### Deploy Your First Validators
+```bash
+# 1. Start infrastructure
+./validator.sh start
+
+# 2. Generate 5 validators
+./validator.sh generate-keys --count 5
+
+# 3. Create deposits
+./validator.sh create-deposits
+
+# 4. Submit to network
+./validator.sh submit-deposits
+
+# 5. Monitor
+./validator.sh monitor
+```
+
+## 📋 Common Scenarios
+
+### Scenario 1: Deploy 50 Validators
+```bash
+./validator.sh start
+./validator.sh generate-keys --count 50
+./validator.sh list-keys  # Get pubkeys for backup
+./validator.sh backup mnemonic 0x1234... 0x5678... --name batch-50
+./validator.sh create-deposits
+# Review deposit_data.json
+./validator.sh submit-deposits
+```
+
+### Scenario 2: Add More Validators Later
+```bash
+# Generate additional keys (will use existing mnemonic from Vault)
+./validator.sh generate-keys --count 10
+./validator.sh create-deposits
+./validator.sh submit-deposits
+```
+
+### Scenario 3: Backup Everything
+```bash
+# List all keys first
+./validator.sh list-keys
+
+# Backup specific keys (replace with actual pubkeys)
+./validator.sh backup mnemonic 0x1234... 0x5678... --name full-backup
+
+# Or backup by batch
+./validator.sh backup batch batch-20241021 --format both
+```
+
+### Scenario 4: Restore from Backup
+```bash
+# Restore from backup file
+./validator.sh backup restore /secure/backup/full-backup.zip --password your-password
+
+# Or restore from keystore backup
+./validator.sh backup restore /secure/backup/keystore-backup.zip --password keystore-password
+```
+
+## 🎯 Command Reference
+
+### Infrastructure Commands
+```bash
+./validator.sh start          # Start all services
+./validator.sh stop           # Stop all services
+./validator.sh status         # Check status
+```
+
+### Key Management
+```bash
+./validator.sh generate-keys  # Generate new keys
+./validator.sh list-keys      # List all keys
+./validator.sh backup         # Backup keys
+```
+
+### Deposit Operations
+```bash
+./validator.sh create-deposits   # Create deposit data
+./validator.sh submit-deposits   # Submit to network
+```
+
+### Monitoring
+```bash
+./validator.sh monitor        # Monitor validators
+```
+
+### Quick Deploy
+```bash
+./validator.sh deploy         # Run full deployment workflow
+```
 
 ## 🏗️ Architecture
 
@@ -24,70 +123,6 @@ This system provides a complete Ethereum validator testing solution with:
 1. Key Generation → 2. Deposit Creation → 3. Client Configuration → 4. Validator Operation
 ```
 
-## 🚀 Quick Start
-
-### Prerequisites
-- Docker & Docker Compose
-- [Kurtosis CLI](https://docs.kurtosis.com/install)
-- Python 3.8+
-- Git
-
-### Initial Setup
-```bash
-# Clone the repository
-git clone <repository-url>
-cd eth_validator_test
-
-# Initialize and update git submodules
-git submodule update --init --recursive
-
-# Copy sample configuration
-cp config.sample.json config/config.json
-
-# Install Python dependencies
-cd code
-python3 -m venv venv
-source venv/bin/activate
-pip install -r requirements.txt
-cd external/ethstaker-deposit-cli
-pip install -r requirements.txt
-cd ../../..
-```
-
-### 1. Start Infrastructure
-```bash
-# Start all services (Vault, Web3Signer, Kurtosis)
-./start.sh quick-start
-```
-
-### 2. Generate Validator Keys
-```bash
-# Generate 5 validator keys
-cd code && source venv/bin/activate
-python3 core/validator_manager.py generate-keys --count 5
-```
-
-### 3. Create and Submit Deposits
-```bash
-# Create deposit data
-python3 core/validator_manager.py create-deposits
-
-# Submit deposits to testnet
-python3 core/validator_manager.py submit-deposits
-```
-
-### 4. Monitor Validator Lifecycle
-```bash
-# Check services status
-python3 core/validator_manager.py check-services
-
-# Monitor validator performance
-python3 core/validator_manager.py monitor
-
-# Test voluntary exit
-python3 core/validator_manager.py test-exit
-```
-
 ## 🔧 Advanced Usage
 
 ### Key Management
@@ -100,7 +135,7 @@ python3 core/vault_key_manager.py --vault-token dev-root-token list
 python3 core/vault_key_manager.py --vault-token dev-root-token list --status unused
 
 # Export keys for backup
-python3 core/backup_system.py --vault-token dev-root-token keystore 0x1234... --password mypassword
+python3 core/backup_system.py keystore 0x1234... --password mypassword
 ```
 
 ### Deposit Generation
@@ -117,13 +152,13 @@ python3 utils/deposit_generator.py --vault-token dev-root-token list-keys
 ```bash
 # Generate Prysm configuration
 cd code && source venv/bin/activate
-python3 utils/validator_client_config.py --vault-token dev-root-token prysm --pubkeys 0x1234... 0x5678...
+python3 utils/validator_client_config.py prysm --pubkeys 0x1234... 0x5678...
 
 # Generate Lighthouse configuration
-python3 utils/validator_client_config.py --vault-token dev-root-token lighthouse --pubkeys 0x1234... 0x5678...
+python3 utils/validator_client_config.py lighthouse --pubkeys 0x1234... 0x5678...
 
 # Generate all client configurations
-python3 utils/validator_client_config.py --vault-token dev-root-token all --pubkeys 0x1234... 0x5678...
+python3 utils/validator_client_config.py all --pubkeys 0x1234... 0x5678...
 ```
 
 ## 📋 Commands Reference
@@ -287,6 +322,53 @@ docker volume rm eth_validator_test_postgres_data
 docker-compose up -d
 ```
 
+## 🏭 Production Considerations
+
+### Before Mainnet Deployment
+1. **Test on Testnet First**: Run entire workflow on testnet (holesky/sepolia)
+2. **Backup Mnemonic Offline**: Store `data/keys/mnemonic.txt` in secure, offline location
+3. **Verify Withdrawal Address**: Double-check withdrawal address in `config/config.json`
+4. **Test Backup/Restore**: Verify you can restore from backup
+5. **Set Up Monitoring**: Configure alerts and monitoring systems
+
+### Security Checklist
+- [ ] Mnemonic backed up offline (hardware wallet or air-gapped device)
+- [ ] Withdrawal address verified and tested
+- [ ] Infrastructure access controlled (SSH keys, VPN, etc.)
+- [ ] Monitoring and alerting configured
+- [ ] Disaster recovery plan documented and tested
+- [ ] Key rotation procedures established
+- [ ] Multi-signature withdrawal address (recommended)
+
+### Production Deployment Steps
+```bash
+# 1. Test on testnet first
+./validator.sh deploy --count 1  # Test with 1 validator
+
+# 2. Verify deposit data
+cat data/deposits/deposit_data-*.json | jq '.deposits[0]'
+
+# 3. Backup before mainnet
+./validator.sh list-keys  # Get pubkeys for backup
+./validator.sh backup mnemonic 0x1234... 0x5678... --name pre-mainnet-backup
+
+# 4. Deploy to mainnet
+# Update config/config.json with mainnet settings
+./validator.sh deploy --count 50
+```
+
+### Monitoring Setup
+```bash
+# Check validator status
+./validator.sh monitor
+
+# Check service health
+./validator.sh status
+
+# View logs
+./start.sh logs
+```
+
 ## 🔐 Security Notes
 
 - **Development Only**: Uses weak passwords and dev tokens
@@ -300,9 +382,9 @@ docker-compose up -d
 ```
 eth_validator_test/
 ├── README.md                             # Project documentation
-├── start.sh                              # Main entry point
+├── validator.sh                          # Unified command interface
+├── start.sh                              # Infrastructure entry point
 ├── config.sample.json                   # Sample configuration
-├── CLAUDE.md                             # Project planning document
 │
 ├── infra/                                # Infrastructure configuration
 │   ├── docker-compose.yml               # Docker services
@@ -325,30 +407,36 @@ eth_validator_test/
 │   │   ├── validator_manager.py         # Main validator lifecycle manager
 │   │   └── backup_system.py            # Backup system
 │   ├── utils/                           # Utility modules
-│   │   ├── generate_keys.py            # Key generation
+│   │   ├── generate_keys.py            # Key generation (ethstaker-deposit-cli)
 │   │   ├── deposit_generator.py         # Dynamic deposit generation
 │   │   └── validator_client_config.py  # Client configuration generation
 │   ├── external/                        # External dependencies (git submodules)
 │   │   └── ethstaker-deposit-cli/      # Official Ethereum deposit CLI
 │   └── requirements.txt                 # Python dependencies
 │
+├── scripts/                              # Helper scripts
+│   └── quick-deploy.sh                  # One-command deployment
+│
 ├── config/                               # Configuration directory (git ignored)
 │   └── config.json                      # Runtime configuration
+│
 ├── data/                                 # Data directory (git ignored)
 │   ├── keys/                            # Key data
-│   │   ├── keystores/                  # keystore files
+│   │   ├── keystores/                  # EIP-2335 keystore files
 │   │   ├── secrets/                    # Password files
-│   │   └── pubkeys.json                # Public key index
+│   │   ├── keys_data.json              # Complete key data with mnemonic
+│   │   ├── pubkeys.json                # Public key index (backward compatibility)
+│   │   └── mnemonic.txt                # Mnemonic backup (SECURE!)
 │   ├── deposits/                        # Deposit data
-│   ├── backups/                         # Backup files
-│   │   ├── keystores/
-│   │   └── mnemonics/
 │   └── logs/                            # Log files
 │
-└── docs/                                # Documentation
-    ├── api/                             # API documentation
-    ├── guides/                          # Usage guides
-    └── troubleshooting/                 # Troubleshooting guides
+└── archived/                            # Archived files and directories
+    ├── README.md                        # Archive documentation
+    ├── CLAUDE.md                        # Original planning document
+    ├── CONFIG.md                        # Configuration documentation
+    ├── docs/                            # Empty documentation directories
+    ├── tmp/                             # Temporary files
+    └── plans/                           # Development planning files
 ```
 
 ## 📄 License
