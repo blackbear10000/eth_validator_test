@@ -37,7 +37,7 @@ def reset_web3signer():
     
     # 1. 清理 keys 目录
     print("🧹 步骤 1: 清理 keys 目录...")
-    if not run_command("python3 scripts/clean_web3signer_keys.py", "清理 keys 目录"):
+    if not run_command("python3 ../scripts/clean_web3signer_keys.py", "清理 keys 目录"):
         print("❌ 清理 keys 目录失败")
         return False
     
@@ -76,13 +76,13 @@ def reset_web3signer():
     
     # 7. 重新加载密钥
     print("\n🔑 步骤 5: 重新加载密钥...")
-    if not run_command("python3 code/core/web3signer_manager.py load", "加载密钥到 Web3Signer"):
+    if not run_command("python3 core/web3signer_manager.py load", "加载密钥到 Web3Signer"):
         print("❌ 密钥加载失败")
         return False
     
     # 8. 验证密钥加载
     print("\n🔍 步骤 6: 验证密钥加载...")
-    if not run_command("python3 code/core/web3signer_manager.py verify", "验证密钥加载"):
+    if not run_command("python3 core/web3signer_manager.py verify", "验证密钥加载"):
         print("❌ 密钥验证失败")
         return False
     
