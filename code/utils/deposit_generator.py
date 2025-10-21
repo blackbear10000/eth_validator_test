@@ -236,7 +236,10 @@ class DepositGenerator:
         """保存存款数据到文件使用官方格式"""
         try:
             # 创建输出目录
-            output_dir = Path("../../data/deposits")
+            # 使用绝对路径避免路径冲突
+            script_path = Path(__file__)
+            project_root = script_path.parent.parent.parent
+            output_dir = project_root / "data" / "deposits"
             output_dir.mkdir(parents=True, exist_ok=True)
             
             # 转换回字节格式用于官方导出函数

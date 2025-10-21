@@ -106,7 +106,7 @@ cd ../../..
 ### Deposit Operations
 ```bash
 ./validator.sh create-deposits                    # Create deposit data (default withdrawal address)
-./validator.sh create-deposits-with-address --withdrawal-address 0x1234...  # Create with custom withdrawal address
+./validator.sh create-deposits-with-address --withdrawal-address 0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266  # Create with custom withdrawal address
 ./validator.sh submit-deposits                    # Submit to network
 ```
 
