@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
-数据库完全重置脚本
-彻底重置 PostgreSQL 和 Web3Signer
+简单重置脚本
+不依赖 docker-compose，直接操作容器和卷
 """
 
 import subprocess
@@ -29,27 +29,22 @@ def run_command(cmd, description):
         print(f"❌ {description} 出错: {e}")
         return False
 
-def reset_database():
-    """完全重置数据库"""
-    print("🔄 数据库完全重置工具")
+def simple_reset():
+    """简单重置"""
+    print("🔄 简单重置工具")
     print("=" * 40)
     
-    # 1. 停止所有服务
-    print("🛑 停止所有服务...")
-    run_command("docker-compose -f infra/docker-compose.yml down", "停止 Docker 服务")
+    # 1. 停止所有相关容器
+    print("🛑 停止所有容器...")
+    run_command("docker stop postgres web3signer vault consul 2>/dev/null || true", "停止容器")
+    run_command("docker rm postgres web3signer vault consul 2>/dev/null || true", "删除容器")
     
-    # 2. 强制停止并删除容器
-    print("🛑 强制停止容器...")
-    run_command("docker stop postgres web3signer vault consul 2>/dev/null || true", "停止相关容器")
-    run_command("docker rm postgres web3signer vault consul 2>/dev/null || true", "删除相关容器")
-    
-    # 3. 删除数据库卷
+    # 2. 删除数据库卷
     print("🗑️  删除数据库卷...")
-    # 先检查实际的卷名称
     run_command("docker volume ls | grep postgres", "检查 PostgreSQL 卷")
-    run_command("docker volume rm infra_postgres_data", "删除 PostgreSQL 数据卷")
+    run_command("docker volume rm infra_postgres_data 2>/dev/null || true", "删除 PostgreSQL 数据卷")
     
-    # 4. 重新启动服务
+    # 3. 重新启动服务
     print("🚀 重新启动服务...")
     if not run_command("docker-compose -f infra/docker-compose.yml up -d", "启动 Docker 服务"):
         print("❌ 服务启动失败")
@@ -140,9 +135,9 @@ def reset_database():
         run_command("docker logs web3signer --tail 20", "Web3Signer 日志")
         return False
     
-    print("🎉 数据库重置完成！")
+    print("🎉 简单重置完成！")
     return True
 
 if __name__ == "__main__":
-    success = reset_database()
+    success = simple_reset()
     sys.exit(0 if success else 1)
