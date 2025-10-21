@@ -214,20 +214,26 @@ class ExternalValidatorManager:
         print("=== Loading External Validators from Vault ===")
         
         try:
-            # Use list_active_keys_in_vault to skip deleted keys (quiet mode)
-            vault_keys = self.key_manager.list_active_keys_in_vault(verbose=False)
+            # Use list_active_keys_in_vault to skip deleted keys (verbose mode for debugging)
+            vault_keys = self.key_manager.list_active_keys_in_vault(verbose=True)
             if not vault_keys:
                 print("❌ No active keys found in Vault")
                 return False
             
             public_keys = []
+            print(f"🔍 Processing {len(vault_keys)} keys from Vault...")
             for key_id in vault_keys:
+                print(f"🔍 Processing key: {key_id[:10]}...")
                 key_data = self.key_manager.retrieve_key_from_vault(key_id)
                 if key_data and "metadata" in key_data:
                     metadata = key_data["metadata"]
                     validator_pubkey = metadata.get("validator_pubkey")
+                    print(f"🔍 Found validator pubkey: {validator_pubkey[:10] if validator_pubkey else 'None'}...")
                     if validator_pubkey:
                         public_keys.append(validator_pubkey)
+                        print(f"✅ Added validator: {validator_pubkey[:10]}...")
+                else:
+                    print(f"⚠️  Invalid key data for: {key_id[:10]}...")
             
             if public_keys:
                 self.external_validators = public_keys
