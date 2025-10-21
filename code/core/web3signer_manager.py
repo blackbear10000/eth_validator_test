@@ -106,10 +106,12 @@ class Web3SignerManager:
         import hashlib
         pubkey = key_data['pubkey']
         pubkey_hash = hashlib.sha256(pubkey.encode()).hexdigest()[:16]
-        vault_path = f"/v1/secret/data/validator-keys/{pubkey_hash}"
         
         # 为 Web3Signer 创建兼容的 Vault 存储
         self._store_key_for_web3signer(key_data, pubkey_hash)
+        
+        # 使用 Web3Signer 专用路径
+        vault_path = f"/v1/secret/data/web3signer-keys/{pubkey_hash}"
         
         # Web3Signer HashiCorp Vault 配置格式
         # 根据官方文档：https://docs.web3signer.consensys.io/how-to/store-keys/vaults/hashicorp
@@ -130,8 +132,18 @@ class Web3SignerManager:
         try:
             import requests
             
-            # 获取私钥（解密）
-            privkey = key_data['data']['privkey']
+            # 从 VaultKeyManager 获取原始私钥数据
+            from vault_key_manager import VaultKeyManager
+            vault_manager = VaultKeyManager(self.vault_url, self.vault_token)
+            
+            # 获取完整的密钥数据
+            full_key_data = vault_manager.get_key(key_data['pubkey'])
+            if not full_key_data:
+                print(f"❌ 无法获取密钥数据: {key_data['pubkey'][:10]}...")
+                return
+            
+            # 获取私钥（已经是解密后的格式）
+            privkey = full_key_data.privkey
             if privkey.startswith('0x'):
                 privkey = privkey[2:]  # 移除 0x 前缀
             
@@ -140,24 +152,28 @@ class Web3SignerManager:
                 "value": privkey  # Web3Signer 期望的字段名
             }
             
-            # 存储到 Vault
+            # 存储到 Vault（使用 Web3Signer 专用路径）
             headers = {"X-Vault-Token": self.vault_token}
-            vault_path = f"/v1/secret/data/validator-keys/{pubkey_hash}"
+            web3signer_path = f"/v1/secret/data/web3signer-keys/{pubkey_hash}"
             
             response = requests.post(
-                f"{self.vault_url}{vault_path}",
+                f"{self.vault_url}{web3signer_path}",
                 headers=headers,
                 json={"data": vault_data},
                 timeout=10
             )
             
             if response.status_code in [200, 204]:
-                print(f"✅ Web3Signer 密钥已存储到 Vault: {vault_path}")
+                print(f"✅ Web3Signer 密钥已存储到 Vault: {web3signer_path}")
+                # 更新配置中的路径
+                key_data['web3signer_path'] = web3signer_path
             else:
                 print(f"❌ Web3Signer 密钥存储失败: {response.status_code} - {response.text}")
                 
         except Exception as e:
             print(f"❌ 存储 Web3Signer 密钥失败: {e}")
+            import traceback
+            print(f"详细错误: {traceback.format_exc()}")
     
     def load_keys_to_web3signer(self) -> bool:
         """将 Vault 中的密钥加载到 Web3Signer"""
