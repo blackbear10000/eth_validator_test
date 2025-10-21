@@ -172,6 +172,8 @@ class VaultKeyManager:
                 'withdrawal_pubkey': key_data.withdrawal_pubkey,
                 'withdrawal_privkey': self._encrypt_data(key_data.withdrawal_privkey),
                 'mnemonic': self._encrypt_data(key_data.mnemonic),
+                'index': key_data.index,
+                'signing_key_path': key_data.signing_key_path,
                 'batch_id': key_data.batch_id,
                 'created_at': key_data.created_at,
                 'status': key_data.status,
