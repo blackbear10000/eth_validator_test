@@ -70,9 +70,11 @@ def test_vault_paths():
         retrieved_key = vault_manager.retrieve_key_from_vault(first_key.pubkey)
         if retrieved_key:
             print("✅ 密钥读取成功")
-            print(f"   公钥: {retrieved_key.pubkey[:10]}...")
-            print(f"   状态: {retrieved_key.status}")
-            print(f"   索引: {retrieved_key.index}")
+            # retrieved_key 是字典，不是 ValidatorKey 对象
+            metadata = retrieved_key.get('metadata', {})
+            print(f"   公钥: {metadata.get('validator_pubkey', 'N/A')[:10]}...")
+            print(f"   状态: {metadata.get('status', 'N/A')}")
+            print(f"   批次ID: {metadata.get('batch_id', 'N/A')}")
         else:
             print("❌ 密钥读取失败")
             return False
