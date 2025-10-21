@@ -487,6 +487,7 @@ class VaultKeyManager:
             for key_info in keys_list:
                 try:
                     print(f"🔍 导入密钥: index={key_info.get('index')}, pubkey={key_info.get('validator_public_key', 'N/A')[:20]}...")
+                    print(f"🔍 密钥信息: {key_info}")
                     
                     # 创建 ValidatorKey 对象
                     key_data = ValidatorKey(
@@ -501,6 +502,7 @@ class VaultKeyManager:
                         created_at=datetime.now(timezone.utc).isoformat(),
                         status='unused'
                     )
+                    print(f"🔍 创建的密钥对象: index={key_data.index}, pubkey={key_data.pubkey[:10]}...")
                     
                     # 存储到 Vault
                     if self.store_key(key_data):
