@@ -186,10 +186,11 @@ class ValidatorClientConfig:
             "logging": {
                 "level": "INFO"
             },
-            "keyStorePath": "/data/keystore",
-            "keyStorePasswordFile": "/data/keystore-password.txt",
+            "keyStorePath": "/keys",  # Web3Signer 容器中的密钥路径
             "slashingProtectionEnabled": True,
-            "slashingProtectionDbUrl": "postgres://user:password@localhost:5432/slashing_protection",
+            "slashingProtectionDbUrl": "jdbc:postgresql://postgres:5432/web3signer",
+            "slashingProtectionDbUsername": "postgres",
+            "slashingProtectionDbPassword": "password",
             "validators": {
                 "validatorKeys": pubkeys
             }

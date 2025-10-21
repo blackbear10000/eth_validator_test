@@ -45,7 +45,7 @@ from vault_key_manager import VaultKeyManager, ValidatorKey
 class DepositGenerator:
     """动态存款生成器"""
     
-    def __init__(self, vault_url: str = "http://localhost:8200", vault_token: str = None, network: str = 'mainnet'):
+    def __init__(self, vault_url: str = "http://localhost:8200", vault_token: str = None, network: str = 'kurtosis'):
         self.vault_manager = VaultKeyManager(vault_url, vault_token)
         self.network = network
         
@@ -111,7 +111,11 @@ class DepositGenerator:
 
         try:
             # 获取链设置
-            chain_setting = get_chain_setting(self.network or 'mainnet')
+            if self.network == 'kurtosis':
+                # Kurtosis 使用 minimal 预设
+                chain_setting = get_chain_setting('minimal')
+            else:
+                chain_setting = get_chain_setting(self.network or 'mainnet')
 
             # 使用 Credential 类创建存款数据
             # 动态指定 withdrawal address，支持 0x01 类型提款
@@ -223,8 +227,8 @@ class DepositGenerator:
                 "signature": input_data["signature"],
                 "deposit_data_root": "0x" + "0" * 64,  # 模拟数据
                 "deposit_message_root": "0x" + "0" * 64,  # 模拟数据
-                "fork_version": "0x00000000",  # 主网版本
-                "network_name": "mainnet",
+                "fork_version": "0x00000000" if self.network != 'kurtosis' else "0x00000000",  # minimal 网络版本
+                "network_name": "kurtosis" if self.network == 'kurtosis' else "mainnet",
                 "deposit_cli_version": "2.7.0"
             }
             

@@ -424,8 +424,17 @@ docker volume rm eth_validator_test_postgres_data
 docker-compose up -d
 ```
 
-### Web3Signer Debugging
+### Web3Signer Integration
 ```bash
+# Load keys to Web3Signer
+./validator.sh load-keys
+
+# Check Web3Signer status
+./validator.sh web3signer-status
+
+# Verify keys are loaded
+./validator.sh verify-keys
+
 # Run Web3Signer diagnostic tool
 python3 debug_web3signer.py
 
@@ -435,6 +444,52 @@ docker logs web3signer
 # Check Vault connection from Web3Signer
 docker exec web3signer curl http://vault:8200/v1/sys/health
 ```
+
+### Web3Signer Workflow
+
+#### 快速部署（推荐）
+```bash
+# 一键完整部署
+./validator.sh web3signer-deploy --count 5 --client prysm
+
+# 检查系统状态
+./validator.sh web3signer-status
+
+# 故障排除
+./validator.sh web3signer-troubleshoot
+```
+
+### Kurtosis 网络集成
+
+#### 网络配置
+项目默认配置为 Kurtosis 测试网络：
+- **网络类型**: `kurtosis` (基于 minimal 预设)
+- **网络 ID**: `3151908`
+- **存款合约**: `0x4242424242424242424242424242424242424242`
+- **退出类型**: `0x01` (自动提款)
+
+#### 存款数据生成
+```bash
+# 为 Kurtosis 网络生成存款数据
+./validator.sh create-deposits
+
+# 验证存款数据
+./validator.sh validate-deposits
+
+# 提交到 Kurtosis 网络
+./validator.sh submit-deposits
+```
+
+#### 手动步骤
+1. **Generate Keys**: `./validator.sh generate-keys --count 5`
+2. **Load to Web3Signer**: `./validator.sh load-keys`
+3. **Verify Loading**: `./validator.sh verify-keys`
+4. **Start Validator**: `./validator.sh start`
+
+#### 支持的客户端
+- **Prysm**: `./validator.sh web3signer-deploy --client prysm`
+- **Lighthouse**: `./validator.sh web3signer-deploy --client lighthouse`
+- **Teku**: `./validator.sh web3signer-deploy --client teku`
 
 ## 🏭 Production Considerations
 

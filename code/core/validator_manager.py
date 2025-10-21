@@ -203,6 +203,20 @@ class ExternalValidatorManager:
         exported_count = self.key_manager.export_keys_for_web3signer(str(web3signer_keys_dir))
         print(f"✅ Exported {exported_count} keys to Web3Signer format")
         
+        # Load keys to Web3Signer
+        print("Loading keys to Web3Signer...")
+        try:
+            from web3signer_manager import Web3SignerManager
+            web3signer_manager = Web3SignerManager()
+            if web3signer_manager.load_keys_to_web3signer():
+                print("✅ Keys loaded to Web3Signer successfully")
+                web3signer_manager.verify_keys_loaded()
+            else:
+                print("❌ Failed to load keys to Web3Signer")
+        except Exception as e:
+            print(f"⚠️  Web3Signer loading failed: {e}")
+            print("💡 Run './validator.sh load-keys' manually to load keys")
+        
         # Get public keys from generated keys
         public_keys = [key["validator_public_key"] for key in generated_keys]
         self.external_validators = public_keys[:count]

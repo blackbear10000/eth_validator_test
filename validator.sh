@@ -86,6 +86,36 @@ case "$COMMAND" in
         python3 core/validator_manager.py validate-deposits "$@"
         ;;
     
+    load-keys)
+        echo "🔧 Loading keys to Web3Signer..."
+        python3 core/web3signer_manager.py load
+        ;;
+    
+    web3signer-status)
+        echo "📊 Checking Web3Signer status..."
+        python3 core/web3signer_manager.py status
+        ;;
+    
+    verify-keys)
+        echo "🔍 Verifying keys in Web3Signer..."
+        python3 core/web3signer_manager.py verify
+        ;;
+    
+    web3signer-deploy)
+        echo "🚀 Web3Signer 完整部署工作流..."
+        python3 utils/web3signer_workflow.py deploy --count ${2:-5} --client ${3:-prysm}
+        ;;
+    
+    web3signer-status)
+        echo "📊 Web3Signer 系统状态..."
+        python3 utils/web3signer_workflow.py status
+        ;;
+    
+    web3signer-troubleshoot)
+        echo "🔧 Web3Signer 故障排除..."
+        python3 utils/web3signer_workflow.py troubleshoot
+        ;;
+    
     # Quick deploy workflow
     deploy)
         echo "=== Quick Deploy Workflow ==="
@@ -143,6 +173,13 @@ function show_help() {
     echo "  create-deposits    Create deposit data"
     echo "  submit-deposits    Submit deposits to network"
     echo "  validate-deposits  Validate deposit data using ethstaker-deposit-cli"
+    echo ""
+    echo "Web3Signer Integration:"
+    echo "  load-keys              Load validator keys to Web3Signer"
+    echo "  web3signer-status      Check Web3Signer status and loaded keys"
+    echo "  verify-keys            Verify keys are loaded in Web3Signer"
+    echo "  web3signer-deploy      Complete Web3Signer deployment workflow"
+    echo "  web3signer-troubleshoot Web3Signer troubleshooting guide"
     echo ""
     echo "Monitoring:"
     echo "  monitor            Monitor validator performance"
