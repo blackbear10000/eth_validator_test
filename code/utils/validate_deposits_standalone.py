@@ -11,7 +11,7 @@ from pathlib import Path
 from typing import List, Dict, Any
 
 # 添加项目根目录到 Python 路径
-project_root = Path(__file__).parent
+project_root = Path(__file__).parent.parent.parent
 sys.path.insert(0, str(project_root))
 
 # 导入 ethstaker-deposit-cli 的验证功能
@@ -20,6 +20,15 @@ try:
     ethstaker_path = project_root / "code" / "external" / "ethstaker-deposit-cli"
     sys.path.insert(0, str(ethstaker_path))
     
+    # 检查路径是否存在
+    if not ethstaker_path.exists():
+        raise ImportError(f"ethstaker-deposit-cli 路径不存在: {ethstaker_path}")
+    
+    # 检查关键模块是否存在
+    validation_module = ethstaker_path / "ethstaker_deposit" / "utils" / "validation.py"
+    if not validation_module.exists():
+        raise ImportError(f"validation.py 不存在: {validation_module}")
+    
     from ethstaker_deposit.utils.validation import (
         verify_deposit_data_json,
         validate_deposit
@@ -27,9 +36,19 @@ try:
     from ethstaker_deposit.settings import get_chain_setting
     from ethstaker_deposit.credentials import Credential
     from ethstaker_deposit.settings import BaseChainSetting
+    
+    print(f"✅ 成功导入 ethstaker-deposit-cli 验证功能")
+    
 except ImportError as e:
     print(f"❌ 导入 ethstaker-deposit-cli 失败: {e}")
-    print("请确保 ethstaker-deposit-cli 已正确安装")
+    print(f"📁 检查路径: {ethstaker_path}")
+    print(f"📁 路径存在: {ethstaker_path.exists()}")
+    print("📋 解决方案:")
+    print("1. 确保 git submodule 已正确初始化:")
+    print("   git submodule update --init --recursive")
+    print("2. 安装 ethstaker-deposit-cli 依赖:")
+    print("   cd code/external/ethstaker-deposit-cli")
+    print("   pip install -r requirements.txt")
     sys.exit(1)
 
 
