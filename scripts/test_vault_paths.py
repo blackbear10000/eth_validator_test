@@ -7,11 +7,33 @@ import sys
 import os
 from pathlib import Path
 
-# 添加项目根目录到路径
-project_root = Path(__file__).parent.parent
-sys.path.insert(0, str(project_root))
+# 设置正确的 Python 路径
+def setup_python_path():
+    """设置 Python 路径以正确导入模块"""
+    # 获取项目根目录
+    project_root = Path(__file__).parent.parent
+    
+    # 添加项目根目录到路径
+    if str(project_root) not in sys.path:
+        sys.path.insert(0, str(project_root))
+    
+    # 添加 code 目录到路径
+    code_dir = project_root / "code"
+    if str(code_dir) not in sys.path:
+        sys.path.insert(0, str(code_dir))
+    
+    # 添加 code/core 目录到路径
+    core_dir = project_root / "code" / "core"
+    if str(core_dir) not in sys.path:
+        sys.path.insert(0, str(core_dir))
+    
+    return project_root
 
-from code.core.vault_key_manager import VaultKeyManager
+# 设置路径
+project_root = setup_python_path()
+
+# 现在可以导入模块
+from vault_key_manager import VaultKeyManager
 
 def test_vault_paths():
     """测试 Vault 路径和密钥访问"""
