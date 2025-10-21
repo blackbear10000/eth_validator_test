@@ -538,17 +538,48 @@ class ExternalValidatorManager:
             "data/deposits/deposit_data-*.json"
         ]
         
+        # 获取项目根目录
+        project_root = Path(__file__).parent.parent.parent
+        print(f"🔍 搜索存款数据文件...")
+        print(f"📁 项目根目录: {project_root}")
+        
         for pattern in possible_paths:
             if "*" in pattern:
                 import glob
-                files = glob.glob(pattern)
+                # 使用绝对路径搜索
+                full_pattern = str(project_root / pattern)
+                print(f"🔍 搜索模式: {full_pattern}")
+                files = glob.glob(full_pattern)
+                print(f"📋 找到文件: {files}")
                 if files:
                     deposit_file = files[0]  # 使用第一个找到的文件
                     break
             else:
-                if Path(pattern).exists():
-                    deposit_file = pattern
+                full_path = project_root / pattern
+                print(f"🔍 检查路径: {full_path}")
+                if full_path.exists():
+                    deposit_file = str(full_path)
+                    print(f"✅ 找到文件: {deposit_file}")
                     break
+                else:
+                    print(f"❌ 文件不存在: {full_path}")
+        
+        # 如果没找到，尝试相对路径搜索
+        if not deposit_file:
+            print("🔍 尝试相对路径搜索...")
+            for pattern in possible_paths:
+                if "*" in pattern:
+                    import glob
+                    files = glob.glob(pattern)
+                    print(f"📋 相对路径找到: {files}")
+                    if files:
+                        deposit_file = files[0]
+                        break
+                else:
+                    if Path(pattern).exists():
+                        deposit_file = pattern
+                        print(f"✅ 相对路径找到: {deposit_file}")
+                        break
         
         if not deposit_file:
             print("❌ 未找到存款数据文件")
