@@ -27,6 +27,7 @@ import base64
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 # 导入我们的 Vault 密钥管理器
+# vault_key_manager is in the same directory, so we can import directly
 from vault_key_manager import VaultKeyManager, ValidatorKey
 
 class BackupSystem:

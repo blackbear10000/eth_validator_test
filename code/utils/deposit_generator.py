@@ -30,6 +30,9 @@ except ImportError as e:
     sys.exit(1)
 
 # 导入我们的 Vault 密钥管理器
+import sys
+import os
+sys.path.append(os.path.join(os.path.dirname(__file__), '..', 'core'))
 from vault_key_manager import VaultKeyManager, ValidatorKey
 
 class DepositGenerator:

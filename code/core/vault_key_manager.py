@@ -378,6 +378,49 @@ class VaultKeyManager:
         """标记密钥为已注销"""
         return self.update_key_status(pubkey, 'retired', notes=notes)
     
+    def list_active_keys_in_vault(self, verbose: bool = True) -> List[str]:
+        """列出 Vault 中的活跃密钥"""
+        try:
+            # 获取所有未使用的密钥
+            keys = self.list_keys(status='unused')
+            if verbose:
+                print(f"📋 找到 {len(keys)} 个未使用的密钥")
+            
+            # 返回公钥列表
+            return [key.pubkey for key in keys]
+            
+        except Exception as e:
+            if verbose:
+                print(f"❌ 列出活跃密钥失败: {e}")
+            return []
+    
+    def retrieve_key_from_vault(self, pubkey: str) -> Optional[Dict]:
+        """从 Vault 检索密钥数据"""
+        try:
+            key_data = self.get_key(pubkey)
+            if not key_data:
+                return None
+            
+            # 返回格式化的密钥数据
+            return {
+                "metadata": {
+                    "validator_pubkey": key_data.pubkey,
+                    "withdrawal_pubkey": key_data.withdrawal_pubkey,
+                    "batch_id": key_data.batch_id,
+                    "created_at": key_data.created_at,
+                    "status": key_data.status,
+                    "client_type": key_data.client_type,
+                    "notes": key_data.notes
+                },
+                "private_key": key_data.privkey,
+                "withdrawal_private_key": key_data.withdrawal_privkey,
+                "mnemonic": key_data.mnemonic
+            }
+            
+        except Exception as e:
+            print(f"❌ 检索密钥失败: {e}")
+            return None
+    
     def bulk_import_keys(self, keys_dir: str) -> int:
         """批量导入密钥到 Vault"""
         try:
