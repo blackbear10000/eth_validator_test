@@ -30,10 +30,13 @@ cd ../../..
 # 3. Create deposits
 ./validator.sh create-deposits
 
-# 4. Submit to network
+# 4. Validate deposits (optional)
+./validator.sh validate-deposits
+
+# 5. Submit to network
 ./validator.sh submit-deposits
 
-# 5. Monitor
+# 6. Monitor
 ./validator.sh monitor
 ```
 
@@ -120,7 +123,7 @@ cd ../../..
 ./validator.sh create-deposits                    # Create deposit data (default withdrawal address)
 ./validator.sh create-deposits-with-address --withdrawal-address 0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266  # Create with custom withdrawal address
 ./validator.sh validate-deposits                  # Validate deposit data using ethstaker-deposit-cli
-./validator.sh submit-deposits                    # Submit to network
+./validator.sh submit-deposits                    # Submit existing deposit_data.json to network
 ```
 
 ### Monitoring & Testing

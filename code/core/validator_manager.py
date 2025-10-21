@@ -525,6 +525,112 @@ class ExternalValidatorManager:
             print("   3. 检查网络连接和配置")
             return False
     
+    def submit_existing_deposits(self) -> bool:
+        """提交已存在的存款数据文件到网络"""
+        print("📤 Submitting deposits...")
+        
+        # 查找存款数据文件
+        deposit_file = None
+        possible_paths = [
+            "data/deposits/deposit_data.json",
+            "data/deposits/deposit_data-*.json"
+        ]
+        
+        # 获取项目根目录
+        project_root = Path(__file__).parent.parent.parent
+        print(f"🔍 搜索存款数据文件...")
+        print(f"📁 项目根目录: {project_root}")
+        
+        for pattern in possible_paths:
+            if "*" in pattern:
+                import glob
+                # 使用绝对路径搜索
+                full_pattern = str(project_root / pattern)
+                print(f"🔍 搜索模式: {full_pattern}")
+                files = glob.glob(full_pattern)
+                print(f"📋 找到文件: {files}")
+                if files:
+                    deposit_file = files[0]  # 使用第一个找到的文件
+                    break
+            else:
+                full_path = project_root / pattern
+                print(f"🔍 检查路径: {full_path}")
+                if full_path.exists():
+                    deposit_file = str(full_path)
+                    print(f"✅ 找到文件: {deposit_file}")
+                    break
+                else:
+                    print(f"❌ 文件不存在: {full_path}")
+        
+        # 如果没找到，尝试相对路径搜索
+        if not deposit_file:
+            print("🔍 尝试相对路径搜索...")
+            for pattern in possible_paths:
+                if "*" in pattern:
+                    import glob
+                    files = glob.glob(pattern)
+                    print(f"📋 相对路径找到: {files}")
+                    if files:
+                        deposit_file = files[0]
+                        break
+                else:
+                    if Path(pattern).exists():
+                        deposit_file = pattern
+                        print(f"✅ 相对路径找到: {deposit_file}")
+                        break
+        
+        if not deposit_file:
+            print("❌ 未找到存款数据文件")
+            print("📋 请先运行: ./validator.sh create-deposits")
+            return False
+        
+        print(f"📁 找到存款数据文件: {deposit_file}")
+        
+        # 使用存款提交工具
+        try:
+            import subprocess
+            import sys
+            import os
+            
+            # 设置环境变量
+            env = os.environ.copy()
+            env['SKIP_VAULT_CHECK'] = 'true'
+            
+            # 运行存款提交脚本
+            cmd = [
+                sys.executable, 
+                "utils/deposit_submitter.py",
+                deposit_file,
+                "--config", "config/config.json"
+            ]
+            
+            print("🚀 开始提交存款到网络...")
+            result = subprocess.run(cmd, capture_output=True, text=True, env=env)
+            
+            # 显示输出
+            if result.stdout:
+                print(result.stdout)
+            if result.stderr:
+                print(result.stderr)
+            
+            success = result.returncode == 0
+            
+            if success:
+                print("✅ 存款提交成功")
+                # 注意：这里不标记密钥状态，因为密钥可能已经存在
+            else:
+                print("❌ 存款提交失败")
+            
+            return success
+            
+        except Exception as e:
+            print(f"❌ 提交存款过程出错: {e}")
+            print("📋 手动提交选项:")
+            print("   1. 使用以太坊客户端提交")
+            print("   2. 使用 Web 界面提交")
+            print("   3. 检查网络连接和配置")
+            return False
+    
     def _mark_deposited_keys_as_active(self):
         """标记已提交存款的密钥为 active 状态"""
         try:
@@ -889,9 +995,8 @@ def main():
             manager.validate_deposit_data()
         
         elif args.command == "submit-deposits":
-            deposit_file = manager.create_external_deposits()
-            if deposit_file:
-                manager.submit_external_deposits(deposit_file)
+            # 直接提交已存在的存款数据文件
+            manager.submit_existing_deposits()
         
         elif args.command == "start-clients":
             manager.start_external_validator_clients()
