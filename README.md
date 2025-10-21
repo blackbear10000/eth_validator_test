@@ -172,6 +172,16 @@ python3 utils/deposit_generator.py --vault-token dev-root-token generate 3 0xf39
 python3 utils/deposit_generator.py --vault-token dev-root-token list-keys
 ```
 
+### Deposit Validation
+```bash
+# Validate deposit data using ethstaker-deposit-cli
+cd code && source venv/bin/activate
+python3 utils/validate_deposits_standalone.py ../data/deposits/deposit_data.json
+
+# Validate with specific network
+python3 utils/validate_deposits_standalone.py ../data/deposits/deposit_data.json --network sepolia
+```
+
 ### Client Configuration
 ```bash
 # Generate Prysm configuration
@@ -449,6 +459,32 @@ cat data/deposits/deposit_data-*.json | jq '.deposits[0]'
 - **Network Isolation**: Services run in isolated Docker networks
 - **Vault Dev Mode**: In-memory storage with dev root token
 - **Key Generation**: Uses official `ethstaker-deposit-cli` for BLS12-381 key generation
+- **Deposit Validation**: Uses official `ethstaker-deposit-cli` validation for cryptographic correctness
+
+## 🔍 Deposit Data Validation
+
+### Official Validation
+The system uses `ethstaker-deposit-cli`'s official validation functions to ensure cryptographic correctness:
+
+- **Signature Verification**: BLS signature validation for deposit messages
+- **Public Key Validation**: BLS12-381 public key format and length verification
+- **Withdrawal Credentials**: Validation of 0x00/0x01/0x02 withdrawal credential types
+- **Amount Verification**: Deposit amount compliance with network requirements
+- **Root Hash Validation**: Deposit message and data root verification
+- **Network Compatibility**: Fork version and network setting validation
+
+### Usage
+```bash
+# Integrated validation (recommended)
+./validator.sh validate-deposits
+
+# Standalone validation
+cd code && source venv/bin/activate
+python3 utils/validate_deposits_standalone.py ../data/deposits/deposit_data.json
+
+# Network-specific validation
+python3 utils/validate_deposits_standalone.py ../data/deposits/deposit_data.json --network sepolia
+```
 
 ## 🎯 Dynamic Withdrawal Address Support
 
@@ -499,7 +535,8 @@ eth_validator_test/
 │   ├── utils/                           # Utility modules
 │   │   ├── generate_keys.py            # Key generation (ethstaker-deposit-cli, auto-cleanup)
 │   │   ├── deposit_generator.py         # Dynamic deposit generation
-│   │   └── validator_client_config.py  # Client configuration generation
+│   │   ├── validator_client_config.py  # Client configuration generation
+│   │   └── validate_deposits_standalone.py  # Deposit data validation tool
 │   ├── external/                        # External dependencies (git submodules)
 │   │   └── ethstaker-deposit-cli/      # Official Ethereum deposit CLI
 │   └── requirements.txt                 # Python dependencies

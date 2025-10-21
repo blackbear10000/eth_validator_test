@@ -601,7 +601,7 @@ class ExternalValidatorManager:
             # 运行验证脚本（使用独立脚本，不依赖 Vault）
             cmd = [
                 sys.executable, 
-                "validate_deposits_standalone.py",
+                "utils/validate_deposits_standalone.py",
                 deposit_file,
                 "--network", "mainnet"
             ]
