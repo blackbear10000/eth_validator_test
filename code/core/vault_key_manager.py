@@ -493,6 +493,7 @@ class VaultKeyManager:
                 try:
                     print(f"🔍 导入密钥: index={key_info.get('index')}, pubkey={key_info.get('validator_public_key', 'N/A')[:20]}...")
                     print(f"🔍 密钥信息: {key_info}")
+                    print(f"🔍 索引值: {key_info.get('index')} (类型: {type(key_info.get('index'))})")
                     
                     # 创建 ValidatorKey 对象
                     key_data = ValidatorKey(
