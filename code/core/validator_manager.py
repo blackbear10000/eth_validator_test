@@ -170,6 +170,7 @@ class ExternalValidatorManager:
         # Generate keys
         generated_keys, mnemonic = generate_validator_keys(
             count=count,
+            start_index=0,  # Start from index 0
             output_dir=str(keys_dir)
         )
         
