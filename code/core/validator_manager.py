@@ -270,12 +270,23 @@ class ExternalValidatorManager:
             print("🧹 Cleaning Vault keys...")
             try:
                 existing_keys = self.key_manager.list_keys_in_vault()
+                print(f"🔍 Found {len(existing_keys)} keys in Vault: {existing_keys}")
                 for key_name in existing_keys:
-                    if key_name.startswith('validator-'):
-                        self.key_manager.client.delete(f'secret/data/{key_name}')
-                        print(f"🗑️  Removed Vault key: {key_name}")
+                    # 使用正确的 Vault API 删除密钥
+                    try:
+                        # 构建完整的密钥路径
+                        full_path = f"{self.key_manager.key_path_prefix}/{key_name}"
+                        self.key_manager.client.secrets.kv.v2.delete_metadata_and_all_versions(
+                            path=full_path,
+                            mount_point='secret'
+                        )
+                        print(f"🗑️  Removed Vault key: {full_path}")
+                    except Exception as delete_error:
+                        print(f"⚠️  Failed to delete key {key_name}: {delete_error}")
             except Exception as e:
                 print(f"⚠️  Warning: Could not clean Vault keys: {e}")
+                import traceback
+                print(f"🔍 详细错误: {traceback.format_exc()}")
             
             # Clean Web3Signer keys
             print("🧹 Cleaning Web3Signer keys...")

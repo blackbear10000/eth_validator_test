@@ -385,17 +385,26 @@ class VaultKeyManager:
     def list_active_keys_in_vault(self, verbose: bool = True) -> List[str]:
         """列出 Vault 中的活跃密钥"""
         try:
-            # 获取所有未使用的密钥
-            keys = self.list_keys(status='unused')
+            # 先获取所有密钥，不进行状态过滤
+            all_keys = self.list_keys()
             if verbose:
-                print(f"📋 找到 {len(keys)} 个未使用的密钥")
+                print(f"📋 找到 {len(all_keys)} 个密钥")
+                for key in all_keys:
+                    print(f"  - {key.pubkey[:10]}... (status: {key.status})")
+            
+            # 过滤出未使用的密钥
+            unused_keys = [key for key in all_keys if key.status == 'unused']
+            if verbose:
+                print(f"📋 其中 {len(unused_keys)} 个是未使用的密钥")
             
             # 返回公钥列表
-            return [key.pubkey for key in keys]
+            return [key.pubkey for key in unused_keys]
             
         except Exception as e:
             if verbose:
                 print(f"❌ 列出活跃密钥失败: {e}")
+                import traceback
+                print(f"🔍 详细错误: {traceback.format_exc()}")
             return []
     
     def retrieve_key_from_vault(self, pubkey: str) -> Optional[Dict]:
