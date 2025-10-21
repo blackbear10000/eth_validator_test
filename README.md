@@ -409,6 +409,12 @@ If `create-deposits` fails with "No valid validator keys found in Vault":
 
 ### Web3Signer Configuration Issues
 ```bash
+# Check Web3Signer health
+curl http://localhost:9000/upcheck
+
+# Check Web3Signer keys
+curl http://localhost:9000/api/v1/eth2/publicKeys
+
 # Check PostgreSQL connection
 docker exec -it postgres psql -U postgres -d web3signer -c "SELECT version FROM database_version;"
 
@@ -416,6 +422,18 @@ docker exec -it postgres psql -U postgres -d web3signer -c "SELECT version FROM 
 docker-compose down
 docker volume rm eth_validator_test_postgres_data
 docker-compose up -d
+```
+
+### Web3Signer Debugging
+```bash
+# Run Web3Signer diagnostic tool
+python3 debug_web3signer.py
+
+# Check Web3Signer logs
+docker logs web3signer
+
+# Check Vault connection from Web3Signer
+docker exec web3signer curl http://vault:8200/v1/sys/health
 ```
 
 ## 🏭 Production Considerations

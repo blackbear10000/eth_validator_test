@@ -209,7 +209,7 @@ echo "🚀 启动 Prysm 验证者..."
 
 # 检查 Web3Signer 是否运行
 echo "🔍 检查 Web3Signer 连接..."
-curl -f {self.web3signer_url}/health || {{
+curl -f {self.web3signer_url}/upcheck || {{
     echo "❌ Web3Signer 未运行，请先启动 Web3Signer"
     exit 1
 }}
@@ -237,7 +237,7 @@ echo "🚀 启动 Lighthouse 验证者..."
 
 # 检查 Web3Signer 是否运行
 echo "🔍 检查 Web3Signer 连接..."
-curl -f {self.web3signer_url}/health || {{
+curl -f {self.web3signer_url}/upcheck || {{
     echo "❌ Web3Signer 未运行，请先启动 Web3Signer"
     exit 1
 }}
@@ -265,7 +265,7 @@ echo "🚀 启动 Teku 验证者..."
 
 # 检查 Web3Signer 是否运行
 echo "🔍 检查 Web3Signer 连接..."
-curl -f {self.web3signer_url}/health || {{
+curl -f {self.web3signer_url}/upcheck || {{
     echo "❌ Web3Signer 未运行，请先启动 Web3Signer"
     exit 1
 }}
