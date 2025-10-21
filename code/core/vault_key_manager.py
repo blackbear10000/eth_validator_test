@@ -580,13 +580,22 @@ class VaultKeyManager:
         try:
             # 检查 Vault 连接
             if not self._test_vault_connection():
+                if verbose:
+                    print("❌ Vault 连接失败")
                 return []
             
             # 列出所有密钥
+            list_path = self.key_path_prefix
+            if verbose:
+                print(f"🔍 尝试列出路径: {list_path}")
+            
             response = self.client.secrets.kv.v2.list_secrets(
-                path=self.key_path_prefix,
+                path=list_path,
                 mount_point='secret'
             )
+            
+            if verbose:
+                print(f"🔍 Vault 响应: {response}")
             
             if not response or 'data' not in response or 'keys' not in response['data']:
                 if verbose:
@@ -595,13 +604,15 @@ class VaultKeyManager:
             
             key_names = response['data']['keys']
             if verbose:
-                print(f"📦 找到 {len(key_names)} 个密钥")
+                print(f"📦 找到 {len(key_names)} 个密钥: {key_names}")
             
             return key_names
             
         except Exception as e:
             if verbose:
                 print(f"❌ 列出 Vault 密钥失败: {e}")
+                import traceback
+                print(f"🔍 详细错误: {traceback.format_exc()}")
             return []
     
     def retrieve_key_from_vault(self, pubkey: str) -> Optional[Dict]:
