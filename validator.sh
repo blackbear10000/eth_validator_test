@@ -118,42 +118,42 @@ case "$COMMAND" in
     
     test-vault-paths)
         echo "🔍 测试 Vault 路径和密钥访问..."
-        python3 scripts/test_vault_paths.py
+        python3 "$SCRIPT_DIR/scripts/test_vault_paths.py"
         ;;
     
     fix-database)
         echo "🔧 修复数据库问题..."
-        python3 ../scripts/fix_database.py
+        python3 "$SCRIPT_DIR/scripts/fix_database.py"
         ;;
     
     reset-database)
         echo "🔄 完全重置数据库..."
-        python3 ../scripts/reset_database.py
+        python3 "$SCRIPT_DIR/scripts/reset_database.py"
         ;;
     
     manual-fix-database)
         echo "🔧 手动修复数据库..."
-        python3 ../scripts/manual_fix_database.py
+        python3 "$SCRIPT_DIR/scripts/manual_fix_database.py"
         ;;
     
     fix-database-version)
         echo "🔧 修复数据库版本..."
-        python3 ../scripts/fix_database_version.py
+        python3 "$SCRIPT_DIR/scripts/fix_database_version.py"
         ;;
     
     create-database-tables)
         echo "📋 创建数据库表..."
-        python3 ../scripts/create_database_tables.py
+        python3 "$SCRIPT_DIR/scripts/create_database_tables.py"
         ;;
     
     simple-reset)
         echo "🔄 简单重置数据库..."
-        python3 ../scripts/simple_reset.py
+        python3 "$SCRIPT_DIR/scripts/simple_reset.py"
         ;;
     
     direct-reset)
         echo "🔄 直接重置数据库..."
-        python3 ../scripts/direct_reset.py
+        python3 "$SCRIPT_DIR/scripts/direct_reset.py"
         ;;
     
     # Quick deploy workflow
