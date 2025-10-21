@@ -426,7 +426,7 @@ class VaultKeyManager:
             return None
     
     def bulk_import_keys(self, keys_dir: str) -> int:
-        """批量导入密钥到 Vault"""
+        """批量导入密钥到 Vault - 使用 keys_data.json 格式"""
         try:
             import json
             from pathlib import Path
@@ -439,161 +439,55 @@ class VaultKeyManager:
             print(f"🔍 开始导入密钥，目录: {keys_path}")
             print(f"🔍 目录内容: {list(keys_path.iterdir())}")
             
-            imported_count = 0
-            
-            # 查找所有 keystore 文件 (支持多种目录结构)
-            keystore_files = []
-            
-            # 尝试在根目录查找
-            root_keystores = list(keys_path.glob("keystore-*.json"))
-            keystore_files.extend(root_keystores)
-            print(f"🔍 根目录 keystore 文件: {root_keystores}")
-            
-            # 尝试在 keystores 子目录查找
-            keystores_dir = keys_path / "keystores"
-            if keystores_dir.exists():
-                keystore_files.extend(list(keystores_dir.glob("keystore-*.json")))
-            
-            if not keystore_files:
-                print(f"❌ 在 {keys_dir} 中找不到 keystore 文件")
+            # 直接使用 keys_data.json 文件
+            keys_data_file = keys_path / "keys_data.json"
+            if not keys_data_file.exists():
+                print(f"❌ 找不到 keys_data.json 文件: {keys_data_file}")
                 return 0
             
-            print(f"📁 找到 {len(keystore_files)} 个 keystore 文件")
+            print(f"✅ 找到密钥数据文件: {keys_data_file}")
             
-            for keystore_file in keystore_files:
+            with open(keys_data_file, 'r') as f:
+                keys_data = json.load(f)
+            
+            if not isinstance(keys_data, dict) or 'keys' not in keys_data:
+                print(f"❌ 无效的 keys_data.json 格式")
+                return 0
+            
+            keys_list = keys_data.get('keys', [])
+            mnemonic = keys_data.get('mnemonic', '')
+            
+            print(f"🔍 找到 {len(keys_list)} 个密钥，助记词: {mnemonic[:20]}...")
+            
+            imported_count = 0
+            
+            for key_info in keys_list:
                 try:
-                    # 读取 keystore 文件
-                    with open(keystore_file, 'r') as f:
-                        keystore_data = json.load(f)
+                    print(f"🔍 导入密钥: index={key_info.get('index')}, pubkey={key_info.get('validator_public_key', 'N/A')[:20]}...")
                     
-                    # 查找对应的密码文件 (支持多种位置)
-                    password_file = None
-                    keystore_name = keystore_file.stem.split('-')[1] if '-' in keystore_file.stem else keystore_file.stem
-                    
-                    # 尝试多个可能的密码文件位置
-                    possible_password_locations = [
-                        keystore_file.parent / f"password-{keystore_name}.txt",
-                        keys_path / "secrets" / f"password-{keystore_name}.txt",
-                        keys_path / f"password-{keystore_name}.txt"
-                    ]
-                    
-                    for password_loc in possible_password_locations:
-                        if password_loc.exists():
-                            password_file = password_loc
-                            break
-                    
-                    if not password_file:
-                        print(f"⚠️ 跳过 {keystore_file.name}: 找不到密码文件")
-                        continue
-                    
-                    with open(password_file, 'r') as f:
-                        password = f.read().strip()
-                    
-                    # 解密 keystore 获取私钥
-                    from eth_account import Account
-                    account = Account.from_key(Account.decrypt(keystore_data, password))
-                    
-                    # 读取 keys_data.json 获取完整密钥信息
-                    keys_data_file = None
-                    possible_keys_locations = [
-                        keys_path / "keys_data.json",
-                        keys_path / "pubkeys.json",  # 向后兼容
-                        keys_path / ".." / "keys_data.json"
-                    ]
-                    
-                    print(f"🔍 查找密钥信息文件，可能位置: {possible_keys_locations}")
-                    for keys_loc in possible_keys_locations:
-                        if keys_loc.exists():
-                            keys_data_file = keys_loc
-                            print(f"✅ 找到密钥信息文件: {keys_loc}")
-                            break
-                    
-                    if not keys_data_file:
-                        print(f"⚠️ 跳过 {keystore_file.name}: 找不到密钥信息文件")
-                        continue
-                    
-                    with open(keys_data_file, 'r') as f:
-                        keys_data = json.load(f)
-                    print(f"🔍 密钥数据文件内容: {keys_data}")
-                    
-                    # 获取助记词和密钥信息
-                    mnemonic = None
-                    key_info = None
-                    
-                    if isinstance(keys_data, dict) and 'mnemonic' in keys_data:
-                        # 新格式: keys_data.json with mnemonic
-                        mnemonic = keys_data.get('mnemonic')
-                        keys_list = keys_data.get('keys', [])
-                        print(f"🔍 新格式密钥数据，助记词: {mnemonic[:20]}..., 密钥列表长度: {len(keys_list)}")
-                        
-                        # 通过索引匹配密钥
-                        try:
-                            keystore_index = int(keystore_file.stem.split('-')[1])
-                            print(f"🔍 查找索引 {keystore_index} 的密钥")
-                            for k in keys_list:
-                                print(f"🔍 检查密钥: index={k.get('index')}, pubkey={k.get('validator_public_key', 'N/A')[:20]}...")
-                                if k.get('index') == keystore_index:
-                                    key_info = k
-                                    print(f"✅ 找到匹配的密钥: {key_info}")
-                                    break
-                        except (ValueError, IndexError) as e:
-                            print(f"⚠️ 跳过 {keystore_file.name}: 无法解析索引 - {e}")
-                            continue
-                            
-                    elif isinstance(keys_data, list):
-                        # 旧格式: pubkeys.json
-                        try:
-                            keystore_index = int(keystore_file.stem.split('-')[1])
-                            for k in keys_data:
-                                if k.get('index') == keystore_index:
-                                    key_info = k
-                                    break
-                        except (ValueError, IndexError):
-                            print(f"⚠️ 跳过 {keystore_file.name}: 无法解析索引")
-                            continue
-                    
-                    if not key_info:
-                        print(f"⚠️ 跳过 {keystore_file.name}: 找不到对应的密钥信息")
-                        continue
-                    
-                    # 获取密钥信息
-                    validator_pubkey = key_info.get('validator_pubkey') or key_info.get('validator_public_key')
-                    withdrawal_pubkey = key_info.get('withdrawal_pubkey') or key_info.get('withdrawal_public_key')
-                    signing_key_path = key_info.get('signing_key_path', f"m/12381/3600/{keystore_index}/0/0")
-                    index = key_info.get('index', keystore_index)
-                    
-                    if not validator_pubkey:
-                        print(f"⚠️ 跳过 {keystore_file.name}: 找不到公钥信息")
-                        continue
-                    
-                    # 如果没有助记词，使用默认值（向后兼容）
-                    if not mnemonic:
-                        mnemonic = "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about"
-                    
-                    # 创建密钥数据
+                    # 创建 ValidatorKey 对象
                     key_data = ValidatorKey(
-                        pubkey=validator_pubkey,
-                        privkey=account.key.hex(),
-                        withdrawal_pubkey=withdrawal_pubkey,
-                        withdrawal_privkey=account.key.hex(),  # 简化处理
+                        pubkey=key_info.get('validator_public_key', ''),
+                        privkey=key_info.get('validator_private_key', ''),
+                        withdrawal_pubkey=key_info.get('withdrawal_public_key', ''),
+                        withdrawal_privkey=key_info.get('withdrawal_private_key', ''),
                         mnemonic=mnemonic,
-                        index=index,
-                        signing_key_path=signing_key_path,
+                        index=key_info.get('index', 0),
+                        signing_key_path=key_info.get('signing_key_path', ''),
                         batch_id=f"batch-{datetime.now().strftime('%Y%m%d-%H%M%S')}",
                         created_at=datetime.now(timezone.utc).isoformat(),
                         status='unused'
                     )
                     
                     # 存储到 Vault
-                    print(f"🔄 正在导入密钥: {validator_pubkey[:10]}...")
                     if self.store_key(key_data):
                         imported_count += 1
-                        print(f"✅ 导入密钥成功: {validator_pubkey[:10]}...")
+                        print(f"✅ 导入密钥成功: {key_data.pubkey[:10]}...")
                     else:
-                        print(f"❌ 导入密钥失败: {validator_pubkey[:10]}...")
-                    
+                        print(f"❌ 导入密钥失败: {key_data.pubkey[:10]}...")
+                        
                 except Exception as e:
-                    print(f"⚠️ 跳过 {keystore_file.name}: {e}")
+                    print(f"⚠️ 跳过密钥 {key_info.get('index', 'unknown')}: {e}")
                     import traceback
                     print(f"🔍 详细错误: {traceback.format_exc()}")
                     continue
