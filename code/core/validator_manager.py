@@ -323,19 +323,20 @@ class ExternalValidatorManager:
         # List keys in Vault
         print("\n📦 Keys in Vault:")
         try:
-            vault_keys = self.key_manager.list_keys_in_vault()
+            vault_keys = self.key_manager.list_keys()
             if vault_keys:
-                for i, key_id in enumerate(vault_keys, 1):
-                    print(f"  {i}. {key_id}")
-                    # Get key details from Vault
-                    key_data = self.key_manager.retrieve_key_from_vault(key_id)
-                    if key_data:
-                        print(f"     - Public Key: {key_data.get('metadata', {}).get('public_key', 'N/A')}")
-                        print(f"     - Index: {key_data.get('metadata', {}).get('index', 'N/A')}")
+                for i, key in enumerate(vault_keys, 1):
+                    print(f"  {i}. {key.pubkey[:10]}...")
+                    print(f"     - Public Key: {key.pubkey}")
+                    print(f"     - Index: {key.index}")
+                    print(f"     - Status: {key.status}")
+                    print(f"     - Batch ID: {key.batch_id}")
             else:
                 print("  No keys found in Vault")
         except Exception as e:
             print(f"  ❌ Error accessing Vault: {e}")
+            import traceback
+            print(f"🔍 详细错误: {traceback.format_exc()}")
         
         # List local files
         print("\n📁 Local Key Files:")
