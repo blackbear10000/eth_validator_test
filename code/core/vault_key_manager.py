@@ -262,9 +262,14 @@ class VaultKeyManager:
             try:
                 response = self.client.secrets.kv.v2.list_secrets(path=list_path)
             except Exception as e:
-                print(f"❌ 无法列出 Vault 密钥: {e}")
-                print("💡 提示: 确保 Vault 服务正在运行且 KV v2 引擎已启用")
-                return []
+                # 如果路径不存在，说明没有密钥
+                if "InvalidPath" in str(e) or "path not found" in str(e).lower():
+                    print("📦 Vault 中没有密钥")
+                    return []
+                else:
+                    print(f"❌ 无法列出 Vault 密钥: {e}")
+                    print("💡 提示: 确保 Vault 服务正在运行且 KV v2 引擎已启用")
+                    return []
             
             keys = []
             for key_name in response['data']['keys']:
@@ -594,24 +599,35 @@ class VaultKeyManager:
             if verbose:
                 print(f"🔍 尝试列出路径: {list_path}")
             
-            response = self.client.secrets.kv.v2.list_secrets(
-                path=list_path,
-                mount_point='secret'
-            )
-            
-            if verbose:
-                print(f"🔍 Vault 响应: {response}")
-            
-            if not response or 'data' not in response or 'keys' not in response['data']:
+            try:
+                response = self.client.secrets.kv.v2.list_secrets(
+                    path=list_path,
+                    mount_point='secret'
+                )
+                
                 if verbose:
-                    print("📦 Vault 中没有找到密钥")
-                return []
-            
-            key_names = response['data']['keys']
-            if verbose:
-                print(f"📦 找到 {len(key_names)} 个密钥: {key_names}")
-            
-            return key_names
+                    print(f"🔍 Vault 响应: {response}")
+                
+                if not response or 'data' not in response or 'keys' not in response['data']:
+                    if verbose:
+                        print("📦 Vault 中没有找到密钥")
+                    return []
+                
+                key_names = response['data']['keys']
+                if verbose:
+                    print(f"📦 找到 {len(key_names)} 个密钥: {key_names}")
+                
+                return key_names
+                
+            except Exception as list_error:
+                # 如果路径不存在，说明没有密钥
+                if "InvalidPath" in str(list_error) or "path not found" in str(list_error).lower():
+                    if verbose:
+                        print("📦 路径不存在，Vault 中没有密钥")
+                    return []
+                else:
+                    # 其他错误，重新抛出
+                    raise list_error
             
         except Exception as e:
             if verbose:
