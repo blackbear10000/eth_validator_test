@@ -9,6 +9,7 @@ Comprehensive Ethereum validator lifecycle management using Kurtosis, Web3Signer
 # Clone and setup
 git clone <your-repository-url> && cd eth_validator_test
 git submodule update --init --recursive
+mkdir config
 cp config.sample.json config/config.json
 
 # Install dependencies
