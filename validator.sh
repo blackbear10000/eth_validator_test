@@ -126,6 +126,16 @@ case "$COMMAND" in
         python3 "$SCRIPT_DIR/scripts/test_key_format.py"
         ;;
     
+    test-web3signer-config)
+        echo "🔍 测试 Web3Signer 配置和 Vault 连接..."
+        python3 "$SCRIPT_DIR/scripts/test_web3signer_config.py"
+        ;;
+    
+    setup-web3signer-vault)
+        echo "🔧 为 Web3Signer 设置 Vault 密钥存储..."
+        python3 "$SCRIPT_DIR/scripts/setup_web3signer_vault.py"
+        ;;
+    
     clean-keys)
         echo "🧹 清理 Web3Signer keys 目录..."
         python3 "$SCRIPT_DIR/scripts/clean_web3signer_keys.py"

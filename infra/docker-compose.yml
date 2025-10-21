@@ -86,6 +86,9 @@ services:
     container_name: web3signer
     ports:
       - "9000:9000"
+    environment:
+      - VAULT_ADDR=http://vault:8200
+      - VAULT_TOKEN=dev-root-token
     volumes:
       - ./web3signer/config:/config
       - ./web3signer/keys:/keys

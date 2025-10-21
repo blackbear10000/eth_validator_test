@@ -114,7 +114,7 @@ class Web3SignerManager:
         vault_path = f"/v1/secret/data/web3signer-keys/{pubkey_hash}"
         
         # Web3Signer HashiCorp Vault 配置格式
-        # 根据官方文档：https://docs.web3signer.consensys.io/how-to/store-keys/vaults/hashicorp
+        # 根据官方文档：https://docs.web3signer.consensys.io/reference/key-config-file-params
         return {
             "type": "hashicorp",
             "keyType": "BLS",
