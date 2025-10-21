@@ -139,11 +139,14 @@ class VaultKeyManager:
                 )
                 self.client.secrets.kv.v2.delete_metadata_and_all_versions(path=test_path)
                 print("✅ KV v2 权限正常")
+                return True
             except Exception as e:
                 print(f"⚠️ KV v2 权限测试失败: {e}")
+                return False
                 
         except Exception as e:
             print(f"⚠️ Vault 连接测试失败: {e}")
+            return False
     
     def _encrypt_data(self, data: str) -> str:
         """加密数据"""
