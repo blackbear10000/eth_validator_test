@@ -108,19 +108,56 @@ class Web3SignerManager:
         pubkey_hash = hashlib.sha256(pubkey.encode()).hexdigest()[:16]
         vault_path = f"/v1/secret/data/validator-keys/{pubkey_hash}"
         
+        # 为 Web3Signer 创建兼容的 Vault 存储
+        self._store_key_for_web3signer(key_data, pubkey_hash)
+        
         # Web3Signer HashiCorp Vault 配置格式
-        # 注意：Web3Signer 需要正确的 Vault 连接配置
+        # 根据官方文档：https://docs.web3signer.consensys.io/how-to/store-keys/vaults/hashicorp
         return {
             "type": "hashicorp",
             "keyType": "BLS",
             "tlsEnabled": "false",
             "keyPath": vault_path,
-            "keyName": "privkey",  # VaultKeyManager 中存储私钥的字段名
+            "keyName": "value",  # 官方文档使用 "value" 字段名
             "serverHost": "vault",  # 使用 Docker 网络中的服务名
             "serverPort": "8200",
             "timeout": "10000",
             "token": "dev-root-token"
         }
+    
+    def _store_key_for_web3signer(self, key_data: Dict[str, Any], pubkey_hash: str):
+        """为 Web3Signer 存储密钥到 Vault"""
+        try:
+            import requests
+            
+            # 获取私钥（解密）
+            privkey = key_data['data']['privkey']
+            if privkey.startswith('0x'):
+                privkey = privkey[2:]  # 移除 0x 前缀
+            
+            # 为 Web3Signer 创建兼容的 Vault 存储
+            vault_data = {
+                "value": privkey  # Web3Signer 期望的字段名
+            }
+            
+            # 存储到 Vault
+            headers = {"X-Vault-Token": self.vault_token}
+            vault_path = f"/v1/secret/data/validator-keys/{pubkey_hash}"
+            
+            response = requests.post(
+                f"{self.vault_url}{vault_path}",
+                headers=headers,
+                json={"data": vault_data},
+                timeout=10
+            )
+            
+            if response.status_code in [200, 204]:
+                print(f"✅ Web3Signer 密钥已存储到 Vault: {vault_path}")
+            else:
+                print(f"❌ Web3Signer 密钥存储失败: {response.status_code} - {response.text}")
+                
+        except Exception as e:
+            print(f"❌ 存储 Web3Signer 密钥失败: {e}")
     
     def load_keys_to_web3signer(self) -> bool:
         """将 Vault 中的密钥加载到 Web3Signer"""
@@ -146,6 +183,9 @@ class Web3SignerManager:
         # 确保 keys 目录存在
         self.keys_dir.mkdir(parents=True, exist_ok=True)
         
+        # 调试：打印 keys 目录路径
+        print(f"🔍 Keys 目录路径: {self.keys_dir.absolute()}")
+        
         # 为每个密钥创建配置文件
         loaded_count = 0
         for key_data in vault_keys:
@@ -169,8 +209,13 @@ class Web3SignerManager:
                 with open(config_file, 'w') as f:
                     json.dump(config, f, indent=2)
                 
-                print(f"✅ 密钥配置已保存: {config_file}")
-                loaded_count += 1
+                # 验证文件是否真的被创建
+                if config_file.exists():
+                    print(f"✅ 密钥配置已保存: {config_file}")
+                    print(f"   文件大小: {config_file.stat().st_size} bytes")
+                    loaded_count += 1
+                else:
+                    print(f"❌ 文件保存失败: {config_file}")
                 
             except Exception as e:
                 print(f"❌ 处理密钥失败 {key_data['name']}: {e}")

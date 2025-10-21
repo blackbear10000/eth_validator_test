@@ -17,18 +17,20 @@ def clean_web3signer_keys():
         print("❌ keys 目录不存在")
         return False
     
-    # 备份现有文件
-    backup_dir = keys_dir / "backup"
+    # 创建备份目录（在 keys 目录外）
+    backup_dir = Path("infra/web3signer/keys_backup")
     backup_dir.mkdir(exist_ok=True)
     
     # 移动所有文件到备份目录
+    moved_count = 0
     for file in keys_dir.iterdir():
-        if file.is_file() and file.name != "backup":
+        if file.is_file():
             shutil.move(str(file), str(backup_dir / file.name))
             print(f"📦 备份文件: {file.name}")
+            moved_count += 1
     
     print(f"✅ 已清理 {keys_dir} 目录")
-    print(f"📦 备份文件保存在: {backup_dir}")
+    print(f"📦 备份了 {moved_count} 个文件到: {backup_dir}")
     return True
 
 if __name__ == "__main__":
