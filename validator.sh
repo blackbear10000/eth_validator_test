@@ -53,6 +53,10 @@ case "$COMMAND" in
         echo "💰 Creating deposit data..."
         python3 core/validator_manager.py create-deposits "$@"
         ;;
+    create-deposits-with-address)
+        echo "💰 Creating deposit data with custom withdrawal address..."
+        python3 core/validator_manager.py create-deposits-with-address "$@"
+        ;;
     submit-deposits)
         echo "📤 Submitting deposits..."
         python3 core/validator_manager.py submit-deposits "$@"

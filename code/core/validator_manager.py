@@ -281,9 +281,20 @@ class ExternalValidatorManager:
                 try:
                     with open(pubkeys_file, 'r') as f:
                         pubkeys_data = json.load(f)
-                    print(f"  Public Keys: {len(pubkeys_data)} entries")
-                    for pubkey_info in pubkeys_data:
-                        print(f"    - Index {pubkey_info['index']}: {pubkey_info['validator_pubkey'][:20]}...")
+                    
+                    # Handle new format with deprecation notice
+                    if isinstance(pubkeys_data, dict) and 'keys' in pubkeys_data:
+                        keys_list = pubkeys_data['keys']
+                        print(f"  Public Keys: {len(keys_list)} entries")
+                        for pubkey_info in keys_list:
+                            print(f"    - Index {pubkey_info['index']}: {pubkey_info['validator_pubkey'][:20]}...")
+                    elif isinstance(pubkeys_data, list):
+                        # Old format
+                        print(f"  Public Keys: {len(pubkeys_data)} entries")
+                        for pubkey_info in pubkeys_data:
+                            print(f"    - Index {pubkey_info['index']}: {pubkey_info['validator_pubkey'][:20]}...")
+                    else:
+                        print(f"  Public Keys: Unknown format")
                 except Exception as e:
                     print(f"  ❌ Error reading pubkeys.json: {e}")
             
@@ -342,11 +353,16 @@ class ExternalValidatorManager:
             print("❌ No keys data file found. Generate keys first.")
             return None
         
+        # Get withdrawal address (can be overridden)
+        withdrawal_address = self.config.get("withdrawal_address", "0x0000000000000000000000000000000000000001")
+        print(f"🎯 Using withdrawal address: {withdrawal_address}")
+        print("📝 Note: This will create 0x01 type withdrawal credentials (execution address)")
+        
         # Generate deposit data using the loaded validators
         try:
             deposit_data = self.deposit_generator.generate_deposits(
                 count=len(self.external_validators),
-                withdrawal_address=self.config.get("withdrawal_address"),
+                withdrawal_address=withdrawal_address,  # 使用动态指定的提款地址
                 notes="External validator deposit"
             )
             
@@ -567,10 +583,11 @@ def main():
     parser.add_argument("command", choices=[
         "check-services", "generate-keys", "list-keys", "load-validators", "create-deposits", "submit-deposits",
         "start-clients", "wait-activation", "monitor", "test-exit", "test-withdrawal", 
-        "status", "cleanup", "full-test"
+        "status", "cleanup", "full-test", "create-deposits-with-address"
     ], help="Command to execute")
     parser.add_argument("--count", type=int, help="Number of validators")
     parser.add_argument("--config", default="config/config.json", help="Config file")
+    parser.add_argument("--withdrawal-address", help="Withdrawal address for 0x01 type deposits")
     
     args = parser.parse_args()
     
@@ -593,6 +610,20 @@ def main():
         
         elif args.command == "create-deposits":
             manager.create_external_deposits()
+        
+        elif args.command == "create-deposits-with-address":
+            if not args.withdrawal_address:
+                print("❌ --withdrawal-address is required for this command")
+                sys.exit(1)
+            # Temporarily update config with the specified withdrawal address
+            original_address = manager.config.get("withdrawal_address")
+            manager.config["withdrawal_address"] = args.withdrawal_address
+            try:
+                manager.create_external_deposits()
+            finally:
+                # Restore original address
+                if original_address:
+                    manager.config["withdrawal_address"] = original_address
         
         elif args.command == "submit-deposits":
             deposit_file = manager.create_external_deposits()

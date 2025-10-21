@@ -292,6 +292,8 @@ class VaultKeyManager:
                         withdrawal_pubkey=data['withdrawal_pubkey'],
                         withdrawal_privkey=self._decrypt_data(data['withdrawal_privkey']),
                         mnemonic=self._decrypt_data(data['mnemonic']),
+                        index=data.get('index', 0),
+                        signing_key_path=data.get('signing_key_path', f"m/12381/3600/{data.get('index', 0)}/0/0"),
                         batch_id=data['batch_id'],
                         created_at=data['created_at'],
                         status=data['status'],
@@ -590,6 +592,52 @@ class VaultKeyManager:
             print(f"❌ 批量导入失败: {e}")
             return 0
     
+    def list_keys_in_vault(self, verbose: bool = True) -> List[str]:
+        """列出 Vault 中的所有密钥"""
+        try:
+            # 检查 Vault 连接
+            if not self._test_vault_connection():
+                return []
+            
+            # 列出所有密钥
+            response = self.client.secrets.kv.v2.list_secrets(
+                path=self.key_path_prefix,
+                mount_point='secret'
+            )
+            
+            if not response or 'data' not in response or 'keys' not in response['data']:
+                if verbose:
+                    print("📦 Vault 中没有找到密钥")
+                return []
+            
+            key_names = response['data']['keys']
+            if verbose:
+                print(f"📦 找到 {len(key_names)} 个密钥")
+            
+            return key_names
+            
+        except Exception as e:
+            if verbose:
+                print(f"❌ 列出 Vault 密钥失败: {e}")
+            return []
+    
+    def retrieve_key_from_vault(self, pubkey: str) -> Optional[Dict]:
+        """从 Vault 检索密钥详情"""
+        try:
+            path = self._get_key_path(pubkey)
+            response = self.client.secrets.kv.v2.read_secret_version(
+                path=path,
+                mount_point='secret'
+            )
+            
+            if response and 'data' in response and 'data' in response['data']:
+                return response['data']['data']
+            return None
+            
+        except Exception as e:
+            print(f"❌ 检索密钥失败: {e}")
+            return None
+
     def export_keys_for_web3signer(self, output_dir: str) -> int:
         """导出密钥为 Web3Signer 格式"""
         try:

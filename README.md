@@ -78,6 +78,15 @@ cd ../../..
 ./validator.sh backup restore /secure/backup/keystore-backup.zip --password keystore-password
 ```
 
+### Scenario 5: Dynamic Withdrawal Address
+```bash
+# Generate keys without withdrawal address binding
+./validator.sh generate-keys --count 5
+
+# Create deposits with different withdrawal addresses
+./validator.sh create-deposits-with-address --withdrawal-address 0x8943545177806ED17B9F23F0a21ee5948eCaa776
+```
+
 ## 🎯 Command Reference
 
 ### Infrastructure Commands
@@ -96,8 +105,9 @@ cd ../../..
 
 ### Deposit Operations
 ```bash
-./validator.sh create-deposits   # Create deposit data
-./validator.sh submit-deposits   # Submit to network
+./validator.sh create-deposits                    # Create deposit data (default withdrawal address)
+./validator.sh create-deposits-with-address --withdrawal-address 0x1234...  # Create with custom withdrawal address
+./validator.sh submit-deposits                    # Submit to network
 ```
 
 ### Monitoring
@@ -376,6 +386,23 @@ cat data/deposits/deposit_data-*.json | jq '.deposits[0]'
 - **Network Isolation**: Services run in isolated Docker networks
 - **Vault Dev Mode**: In-memory storage with dev root token
 - **Key Generation**: Uses official `ethstaker-deposit-cli` for BLS12-381 key generation
+
+## 🎯 Dynamic Withdrawal Address Support
+
+### Withdrawal Types
+- **0x00 Type (BLS)**: Initial withdrawal using BLS keys (default during key generation)
+- **0x01 Type (Execution)**: Withdrawal to Ethereum execution address (dynamic binding)
+
+### Workflow
+1. **Key Generation**: Generate keys with BLS withdrawal (0x00 type)
+2. **Dynamic Binding**: Create deposits with execution address (0x01 type) when needed
+3. **Flexibility**: Same keys can be used with different withdrawal addresses
+
+### Benefits
+- **Flexibility**: Change withdrawal address without regenerating keys
+- **Security**: Keys generated without binding to specific addresses
+- **Compliance**: Meet different regulatory requirements
+- **Future-proof**: Adapt to changing withdrawal strategies
 
 ## 📁 Project Structure
 

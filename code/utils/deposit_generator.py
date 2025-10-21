@@ -108,19 +108,20 @@ class DepositGenerator:
     
     def _create_deposit_data(self, key: ValidatorKey, withdrawal_address: str) -> Dict[str, Any]:
         """创建单个存款数据使用 ethstaker-deposit-cli Credential"""
-        
+
         try:
             # 获取链设置
             chain_setting = get_chain_setting(self.network or 'mainnet')
-            
+
             # 使用 Credential 类创建存款数据
+            # 动态指定 withdrawal address，支持 0x01 类型提款
             credential = Credential(
                 mnemonic=key.mnemonic,
                 mnemonic_password='',
                 index=key.index,
                 amount=32000000000,  # 32 ETH in Gwei
                 chain_setting=chain_setting,
-                hex_withdrawal_address=withdrawal_address
+                hex_withdrawal_address=withdrawal_address  # 动态绑定提款地址
             )
             
             # 获取完整的存款数据字典

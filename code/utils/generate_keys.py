@@ -35,13 +35,15 @@ def derive_keys_from_mnemonic(mnemonic: str, start_index: int, count: int, netwo
     
     for i in range(start_index, start_index + count):
         # Use official Credential class for proper key derivation
+        # Note: hex_withdrawal_address=None means BLS withdrawal (0x00 type)
+        # This allows for future dynamic binding to execution address (0x01 type)
         credential = Credential(
             mnemonic=mnemonic,
             mnemonic_password='',
             index=i,
             amount=32000000000,  # 32 ETH in Gwei
             chain_setting=chain_setting,
-            hex_withdrawal_address=None  # BLS withdrawal initially
+            hex_withdrawal_address=None  # BLS withdrawal initially, can be changed later
         )
         
         keys.append({
