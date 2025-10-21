@@ -109,13 +109,14 @@ class Web3SignerManager:
         vault_path = f"/v1/secret/data/validator-keys/{pubkey_hash}"
         
         # Web3Signer HashiCorp Vault 配置格式
+        # 注意：Web3Signer 需要正确的 Vault 连接配置
         return {
             "type": "hashicorp",
             "keyType": "BLS",
             "tlsEnabled": "false",
             "keyPath": vault_path,
             "keyName": "privkey",  # VaultKeyManager 中存储私钥的字段名
-            "serverHost": "vault",
+            "serverHost": "vault",  # 使用 Docker 网络中的服务名
             "serverPort": "8200",
             "timeout": "10000",
             "token": "dev-root-token"

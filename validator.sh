@@ -121,6 +121,16 @@ case "$COMMAND" in
         python3 "$SCRIPT_DIR/scripts/test_vault_paths.py"
         ;;
     
+    clean-keys)
+        echo "🧹 清理 Web3Signer keys 目录..."
+        python3 "$SCRIPT_DIR/scripts/clean_web3signer_keys.py"
+        ;;
+    
+    reset-web3signer)
+        echo "🔄 重置 Web3Signer 并重新加载密钥..."
+        python3 "$SCRIPT_DIR/scripts/reset_web3signer.py"
+        ;;
+    
     fix-database)
         echo "🔧 修复数据库问题..."
         python3 "$SCRIPT_DIR/scripts/fix_database.py"
