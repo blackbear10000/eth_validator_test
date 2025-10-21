@@ -116,10 +116,10 @@ class DepositSubmitter:
             
             # 检查余额
             balance = self.web3.eth.get_balance(self.account.address)
-            balance_eth = self.web3.from_wei(balance, 'ether')
+            balance_eth = Web3.from_wei(balance, 'ether')
             print(f"💰 账户余额: {balance_eth:.4f} ETH")
             
-            if balance < self.web3.to_wei(1, 'ether'):
+            if balance < Web3.to_wei(1, 'ether'):
                 print("⚠️  账户余额较低，可能无法完成存款")
             
             return True
@@ -178,11 +178,11 @@ class DepositSubmitter:
             deposit_data_root = to_bytes(hexstr=deposit_data['deposit_data_root'])
             
             # 构建交易
-            gas_price = self.web3.to_wei(20, 'gwei')  # 20 Gwei
+            gas_price = Web3.to_wei(20, 'gwei')  # 20 Gwei
             gas_limit = 200000  # 足够的 gas limit
             
             # 计算存款金额 (32 ETH)
-            deposit_amount = self.web3.to_wei(32, 'ether')
+            deposit_amount = Web3.to_wei(32, 'ether')
             
             # 构建交易
             transaction = self.deposit_contract.functions.deposit(
@@ -201,8 +201,12 @@ class DepositSubmitter:
             # 签名交易
             signed_txn = self.web3.eth.account.sign_transaction(transaction, self.account.key)
             
-            # 发送交易
-            tx_hash = self.web3.eth.send_raw_transaction(signed_txn.rawTransaction)
+            # 发送交易（兼容新旧版本的 Web3.py）
+            raw_transaction = getattr(signed_txn, 'raw_transaction', None) or getattr(signed_txn, 'rawTransaction', None)
+            if raw_transaction is None:
+                raise ValueError("无法获取原始交易数据")
+            
+            tx_hash = self.web3.eth.send_raw_transaction(raw_transaction)
             print(f"📤 交易已发送: {tx_hash.hex()}")
             
             # 等待交易确认
