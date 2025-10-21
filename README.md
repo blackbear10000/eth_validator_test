@@ -182,6 +182,16 @@ python3 utils/validate_deposits_standalone.py ../data/deposits/deposit_data.json
 python3 utils/validate_deposits_standalone.py ../data/deposits/deposit_data.json --network sepolia
 ```
 
+### Deposit Submission
+```bash
+# Submit deposits to network (Kurtosis devnet)
+cd code && source venv/bin/activate
+python3 utils/deposit_submitter.py ../data/deposits/deposit_data.json
+
+# Submit with custom config
+python3 utils/deposit_submitter.py ../data/deposits/deposit_data.json --config ../config/config.json
+```
+
 ### Client Configuration
 ```bash
 # Generate Prysm configuration
@@ -536,7 +546,8 @@ eth_validator_test/
 │   │   ├── generate_keys.py            # Key generation (ethstaker-deposit-cli, auto-cleanup)
 │   │   ├── deposit_generator.py         # Dynamic deposit generation
 │   │   ├── validator_client_config.py  # Client configuration generation
-│   │   └── validate_deposits_standalone.py  # Deposit data validation tool
+│   │   ├── validate_deposits_standalone.py  # Deposit data validation tool
+│   │   └── deposit_submitter.py         # Deposit submission to network
 │   ├── external/                        # External dependencies (git submodules)
 │   │   └── ethstaker-deposit-cli/      # Official Ethereum deposit CLI
 │   └── requirements.txt                 # Python dependencies

@@ -477,21 +477,53 @@ class ExternalValidatorManager:
             print("❌ Deposit file not found")
             return False
         
-        # Submit deposits (simplified - manual process required)
-        print("⚠️  Deposit submission simplified - manual process required")
-        print("📋 To submit deposits manually:")
-        print("   1. Use the generated deposit data file")
-        print("   2. Submit via Ethereum client or web interface")
-        success = True
+        print(f"📁 存款数据文件: {deposit_file}")
         
-        if success:
-            print("✅ External validator deposits submitted")
-            # 标记使用的密钥为 active 状态
-            self._mark_deposited_keys_as_active()
-        else:
-            print("❌ Failed to submit external validator deposits")
-        
-        return success
+        # 使用存款提交工具
+        try:
+            import subprocess
+            import sys
+            import os
+            
+            # 设置环境变量
+            env = os.environ.copy()
+            env['SKIP_VAULT_CHECK'] = 'true'
+            
+            # 运行存款提交脚本
+            cmd = [
+                sys.executable, 
+                "utils/deposit_submitter.py",
+                deposit_file,
+                "--config", "config/config.json"
+            ]
+            
+            print("🚀 开始提交存款到网络...")
+            result = subprocess.run(cmd, capture_output=True, text=True, env=env)
+            
+            # 显示输出
+            if result.stdout:
+                print(result.stdout)
+            if result.stderr:
+                print(result.stderr)
+            
+            success = result.returncode == 0
+            
+            if success:
+                print("✅ 存款提交成功")
+                # 标记使用的密钥为 active 状态
+                self._mark_deposited_keys_as_active()
+            else:
+                print("❌ 存款提交失败")
+            
+            return success
+            
+        except Exception as e:
+            print(f"❌ 提交存款过程出错: {e}")
+            print("📋 手动提交选项:")
+            print("   1. 使用以太坊客户端提交")
+            print("   2. 使用 Web 界面提交")
+            print("   3. 检查网络连接和配置")
+            return False
     
     def _mark_deposited_keys_as_active(self):
         """标记已提交存款的密钥为 active 状态"""
