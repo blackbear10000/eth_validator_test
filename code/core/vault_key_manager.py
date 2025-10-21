@@ -193,8 +193,10 @@ class VaultKeyManager:
         """从 Vault 获取验证者密钥"""
         try:
             path = self._get_key_path(pubkey)
+            print(f"🔍 尝试从路径获取密钥: {path}")
             response = self.client.secrets.kv.v2.read_secret_version(path=path)
             data = response['data']['data']
+            print(f"🔍 成功读取密钥数据，字段: {list(data.keys())}")
             
             # 解密敏感数据
             return ValidatorKey(
@@ -203,6 +205,8 @@ class VaultKeyManager:
                 withdrawal_pubkey=data['withdrawal_pubkey'],
                 withdrawal_privkey=self._decrypt_data(data['withdrawal_privkey']),
                 mnemonic=self._decrypt_data(data['mnemonic']),
+                index=data.get('index', 0),
+                signing_key_path=data.get('signing_key_path', f"m/12381/3600/{data.get('index', 0)}/0/0"),
                 batch_id=data['batch_id'],
                 created_at=data['created_at'],
                 status=data['status'],
@@ -212,6 +216,8 @@ class VaultKeyManager:
             
         except Exception as e:
             print(f"❌ 获取密钥失败: {e}")
+            import traceback
+            print(f"🔍 详细错误: {traceback.format_exc()}")
             return None
     
     def update_key_status(self, pubkey: str, status: str, client_type: str = None, notes: str = None) -> bool:
@@ -410,10 +416,13 @@ class VaultKeyManager:
     def retrieve_key_from_vault(self, pubkey: str) -> Optional[Dict]:
         """从 Vault 检索密钥数据"""
         try:
+            print(f"🔍 尝试获取密钥: {pubkey[:10]}...")
             key_data = self.get_key(pubkey)
             if not key_data:
+                print(f"⚠️  get_key 返回 None for: {pubkey[:10]}...")
                 return None
             
+            print(f"✅ 成功获取密钥数据: {key_data.pubkey[:10]}...")
             # 返回格式化的密钥数据
             return {
                 "metadata": {
@@ -432,6 +441,8 @@ class VaultKeyManager:
             
         except Exception as e:
             print(f"❌ 检索密钥失败: {e}")
+            import traceback
+            print(f"🔍 详细错误: {traceback.format_exc()}")
             return None
     
     def bulk_import_keys(self, keys_dir: str) -> int:
