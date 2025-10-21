@@ -649,7 +649,25 @@ class VaultKeyManager:
             )
             
             if response and 'data' in response and 'data' in response['data']:
-                return response['data']['data']
+                vault_data = response['data']['data']
+                
+                # 返回格式化的密钥数据，包含 metadata 字段
+                return {
+                    "metadata": {
+                        "validator_pubkey": vault_data.get('pubkey'),
+                        "withdrawal_pubkey": vault_data.get('withdrawal_pubkey'),
+                        "index": vault_data.get('index', 0),
+                        "signing_key_path": vault_data.get('signing_key_path', ''),
+                        "batch_id": vault_data.get('batch_id'),
+                        "created_at": vault_data.get('created_at'),
+                        "status": vault_data.get('status'),
+                        "client_type": vault_data.get('client_type'),
+                        "notes": vault_data.get('notes')
+                    },
+                    "private_key": self._decrypt_data(vault_data.get('privkey', '')),
+                    "withdrawal_private_key": self._decrypt_data(vault_data.get('withdrawal_privkey', '')),
+                    "mnemonic": self._decrypt_data(vault_data.get('mnemonic', ''))
+                }
             return None
             
         except Exception as e:
