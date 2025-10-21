@@ -436,13 +436,18 @@ class VaultKeyManager:
                 print(f"❌ 密钥目录不存在: {keys_dir}")
                 return 0
             
+            print(f"🔍 开始导入密钥，目录: {keys_path}")
+            print(f"🔍 目录内容: {list(keys_path.iterdir())}")
+            
             imported_count = 0
             
             # 查找所有 keystore 文件 (支持多种目录结构)
             keystore_files = []
             
             # 尝试在根目录查找
-            keystore_files.extend(list(keys_path.glob("keystore-*.json")))
+            root_keystores = list(keys_path.glob("keystore-*.json"))
+            keystore_files.extend(root_keystores)
+            print(f"🔍 根目录 keystore 文件: {root_keystores}")
             
             # 尝试在 keystores 子目录查找
             keystores_dir = keys_path / "keystores"
@@ -496,9 +501,11 @@ class VaultKeyManager:
                         keys_path / ".." / "keys_data.json"
                     ]
                     
+                    print(f"🔍 查找密钥信息文件，可能位置: {possible_keys_locations}")
                     for keys_loc in possible_keys_locations:
                         if keys_loc.exists():
                             keys_data_file = keys_loc
+                            print(f"✅ 找到密钥信息文件: {keys_loc}")
                             break
                     
                     if not keys_data_file:
@@ -507,6 +514,7 @@ class VaultKeyManager:
                     
                     with open(keys_data_file, 'r') as f:
                         keys_data = json.load(f)
+                    print(f"🔍 密钥数据文件内容: {keys_data}")
                     
                     # 获取助记词和密钥信息
                     mnemonic = None
@@ -516,16 +524,20 @@ class VaultKeyManager:
                         # 新格式: keys_data.json with mnemonic
                         mnemonic = keys_data.get('mnemonic')
                         keys_list = keys_data.get('keys', [])
+                        print(f"🔍 新格式密钥数据，助记词: {mnemonic[:20]}..., 密钥列表长度: {len(keys_list)}")
                         
                         # 通过索引匹配密钥
                         try:
                             keystore_index = int(keystore_file.stem.split('-')[1])
+                            print(f"🔍 查找索引 {keystore_index} 的密钥")
                             for k in keys_list:
+                                print(f"🔍 检查密钥: index={k.get('index')}, pubkey={k.get('validator_public_key', 'N/A')[:20]}...")
                                 if k.get('index') == keystore_index:
                                     key_info = k
+                                    print(f"✅ 找到匹配的密钥: {key_info}")
                                     break
-                        except (ValueError, IndexError):
-                            print(f"⚠️ 跳过 {keystore_file.name}: 无法解析索引")
+                        except (ValueError, IndexError) as e:
+                            print(f"⚠️ 跳过 {keystore_file.name}: 无法解析索引 - {e}")
                             continue
                             
                     elif isinstance(keys_data, list):
@@ -592,6 +604,63 @@ class VaultKeyManager:
             print(f"❌ 批量导入失败: {e}")
             return 0
     
+    def test_import_single_key(self, keys_dir: str) -> bool:
+        """测试导入单个密钥到 Vault"""
+        try:
+            import json
+            from pathlib import Path
+            
+            keys_path = Path(keys_dir)
+            keys_data_file = keys_path / "keys_data.json"
+            
+            if not keys_data_file.exists():
+                print(f"❌ 找不到 keys_data.json: {keys_data_file}")
+                return False
+            
+            with open(keys_data_file, 'r') as f:
+                keys_data = json.load(f)
+            
+            if not isinstance(keys_data, dict) or 'keys' not in keys_data:
+                print(f"❌ 无效的 keys_data.json 格式")
+                return False
+            
+            keys_list = keys_data.get('keys', [])
+            if not keys_list:
+                print(f"❌ 没有找到密钥")
+                return False
+            
+            # 测试导入第一个密钥
+            first_key = keys_list[0]
+            print(f"🔍 测试导入密钥: {first_key}")
+            
+            # 创建测试密钥数据
+            key_data = ValidatorKey(
+                pubkey=first_key.get('validator_public_key', ''),
+                privkey=first_key.get('validator_private_key', ''),
+                withdrawal_pubkey=first_key.get('withdrawal_public_key', ''),
+                withdrawal_privkey=first_key.get('withdrawal_private_key', ''),
+                mnemonic=keys_data.get('mnemonic', ''),
+                index=first_key.get('index', 0),
+                signing_key_path=first_key.get('signing_key_path', ''),
+                batch_id=f"test-batch-{datetime.now().strftime('%Y%m%d-%H%M%S')}",
+                created_at=datetime.now(timezone.utc).isoformat(),
+                status='unused'
+            )
+            
+            # 尝试存储到 Vault
+            if self.store_key(key_data):
+                print(f"✅ 测试导入成功: {key_data.pubkey[:10]}...")
+                return True
+            else:
+                print(f"❌ 测试导入失败")
+                return False
+                
+        except Exception as e:
+            print(f"❌ 测试导入异常: {e}")
+            import traceback
+            print(f"🔍 详细错误: {traceback.format_exc()}")
+            return False
+
     def list_keys_in_vault(self, verbose: bool = True) -> List[str]:
         """列出 Vault 中的所有密钥"""
         try:

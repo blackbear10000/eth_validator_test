@@ -591,7 +591,7 @@ def main():
     parser.add_argument("command", choices=[
         "check-services", "generate-keys", "list-keys", "load-validators", "create-deposits", "submit-deposits",
         "start-clients", "wait-activation", "monitor", "test-exit", "test-withdrawal", 
-        "status", "cleanup", "full-test", "create-deposits-with-address"
+        "status", "cleanup", "full-test", "create-deposits-with-address", "test-import"
     ], help="Command to execute")
     parser.add_argument("--count", type=int, help="Number of validators")
     parser.add_argument("--config", default="config/config.json", help="Config file")
@@ -659,6 +659,15 @@ def main():
         
         elif args.command == "cleanup":
             manager.cleanup_external_validators()
+        
+        elif args.command == "test-import":
+            print("=== Testing Vault Import ===")
+            project_root = Path(__file__).parent.parent.parent
+            keys_dir = project_root / "data" / "keys"
+            if manager.key_manager.test_import_single_key(str(keys_dir)):
+                print("✅ Test import successful")
+            else:
+                print("❌ Test import failed")
         
         elif args.command == "full-test":
             print("=== Running Full External Validator Test ===")

@@ -68,6 +68,12 @@ case "$COMMAND" in
         python3 core/validator_manager.py monitor "$@"
         ;;
     
+    # Testing
+    test-import)
+        echo "🧪 Testing Vault import..."
+        python3 core/validator_manager.py test-import "$@"
+        ;;
+    
     # Quick deploy workflow
     deploy)
         echo "=== Quick Deploy Workflow ==="
