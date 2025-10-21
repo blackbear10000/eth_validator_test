@@ -121,6 +121,11 @@ case "$COMMAND" in
         python3 "$SCRIPT_DIR/scripts/test_vault_paths.py"
         ;;
     
+    test-key-format)
+        echo "🔍 测试密钥格式和存储流程..."
+        python3 "$SCRIPT_DIR/scripts/test_key_format.py"
+        ;;
+    
     clean-keys)
         echo "🧹 清理 Web3Signer keys 目录..."
         python3 "$SCRIPT_DIR/scripts/clean_web3signer_keys.py"

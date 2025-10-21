@@ -147,6 +147,13 @@ class Web3SignerManager:
             if privkey.startswith('0x'):
                 privkey = privkey[2:]  # 移除 0x 前缀
             
+            # 验证私钥格式
+            if len(privkey) != 64:
+                print(f"❌ 私钥格式错误: 长度 {len(privkey)}，期望 64")
+                return
+            
+            print(f"🔍 私钥格式验证: 长度={len(privkey)}, 前缀={privkey[:8]}...")
+            
             # 为 Web3Signer 创建兼容的 Vault 存储
             vault_data = {
                 "value": privkey  # Web3Signer 期望的字段名
@@ -165,10 +172,13 @@ class Web3SignerManager:
             
             if response.status_code in [200, 204]:
                 print(f"✅ Web3Signer 密钥已存储到 Vault: {web3signer_path}")
+                print(f"   存储的数据: {vault_data}")
                 # 更新配置中的路径
                 key_data['web3signer_path'] = web3signer_path
             else:
                 print(f"❌ Web3Signer 密钥存储失败: {response.status_code} - {response.text}")
+                print(f"   请求数据: {vault_data}")
+                print(f"   请求路径: {web3signer_path}")
                 
         except Exception as e:
             print(f"❌ 存储 Web3Signer 密钥失败: {e}")
