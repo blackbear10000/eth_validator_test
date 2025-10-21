@@ -197,9 +197,19 @@ class VaultKeyManager:
                   created_before: str = None) -> List[ValidatorKey]:
         """列出密钥（支持多种过滤条件）"""
         try:
+            # 检查 Vault 连接
+            if not self.client.is_authenticated():
+                print("❌ Vault 认证失败")
+                return []
+            
             # 获取所有密钥的元数据
             list_path = f"{self.key_path_prefix}"
-            response = self.client.secrets.kv.v2.list_secrets(path=list_path)
+            try:
+                response = self.client.secrets.kv.v2.list_secrets(path=list_path)
+            except Exception as e:
+                print(f"❌ 无法列出 Vault 密钥: {e}")
+                print("💡 提示: 确保 Vault 服务正在运行且 KV v2 引擎已启用")
+                return []
             
             keys = []
             for key_name in response['data']['keys']:
@@ -337,8 +347,22 @@ class VaultKeyManager:
             
             imported_count = 0
             
-            # 查找所有 keystore 文件
-            keystore_files = list(keys_path.glob("keystore-*.json"))
+            # 查找所有 keystore 文件 (支持多种目录结构)
+            keystore_files = []
+            
+            # 尝试在根目录查找
+            keystore_files.extend(list(keys_path.glob("keystore-*.json")))
+            
+            # 尝试在 keystores 子目录查找
+            keystores_dir = keys_path / "keystores"
+            if keystores_dir.exists():
+                keystore_files.extend(list(keystores_dir.glob("keystore-*.json")))
+            
+            if not keystore_files:
+                print(f"❌ 在 {keys_dir} 中找不到 keystore 文件")
+                return 0
+            
+            print(f"📁 找到 {len(keystore_files)} 个 keystore 文件")
             
             for keystore_file in keystore_files:
                 try:
@@ -346,9 +370,23 @@ class VaultKeyManager:
                     with open(keystore_file, 'r') as f:
                         keystore_data = json.load(f)
                     
-                    # 读取对应的密码文件
-                    password_file = keystore_file.parent / f"password-{keystore_file.stem.split('-')[1]}.txt"
-                    if not password_file.exists():
+                    # 查找对应的密码文件 (支持多种位置)
+                    password_file = None
+                    keystore_name = keystore_file.stem.split('-')[1] if '-' in keystore_file.stem else keystore_file.stem
+                    
+                    # 尝试多个可能的密码文件位置
+                    possible_password_locations = [
+                        keystore_file.parent / f"password-{keystore_name}.txt",
+                        keys_path / "secrets" / f"password-{keystore_name}.txt",
+                        keys_path / f"password-{keystore_name}.txt"
+                    ]
+                    
+                    for password_loc in possible_password_locations:
+                        if password_loc.exists():
+                            password_file = password_loc
+                            break
+                    
+                    if not password_file:
                         print(f"⚠️ 跳过 {keystore_file.name}: 找不到密码文件")
                         continue
                     
@@ -359,26 +397,44 @@ class VaultKeyManager:
                     from eth_account import Account
                     account = Account.from_key(Account.decrypt(keystore_data, password))
                     
-                    # 读取 pubkeys.json 获取公钥信息
-                    pubkeys_file = keys_path / "pubkeys.json"
-                    if pubkeys_file.exists():
-                        with open(pubkeys_file, 'r') as f:
-                            pubkeys_data = json.load(f)
-                        
-                        # 查找对应的公钥信息
-                        validator_pubkey = None
-                        withdrawal_pubkey = None
+                    # 读取 pubkeys.json 获取公钥信息 (支持多种位置)
+                    pubkeys_file = None
+                    possible_pubkeys_locations = [
+                        keys_path / "pubkeys.json",
+                        keys_path / "keys_data.json",
+                        keys_path / ".." / "pubkeys.json"
+                    ]
+                    
+                    for pubkeys_loc in possible_pubkeys_locations:
+                        if pubkeys_loc.exists():
+                            pubkeys_file = pubkeys_loc
+                            break
+                    
+                    if not pubkeys_file:
+                        print(f"⚠️ 跳过 {keystore_file.name}: 找不到公钥信息文件")
+                        continue
+                    
+                    with open(pubkeys_file, 'r') as f:
+                        pubkeys_data = json.load(f)
+                    
+                    # 查找对应的公钥信息
+                    validator_pubkey = None
+                    withdrawal_pubkey = None
+                    
+                    # 支持不同的数据结构
+                    if isinstance(pubkeys_data, list):
                         for key_info in pubkeys_data:
                             if key_info.get('keystore') == keystore_file.name:
                                 validator_pubkey = key_info.get('validator_public_key')
                                 withdrawal_pubkey = key_info.get('withdrawal_public_key')
                                 break
-                        
-                        if not validator_pubkey:
-                            print(f"⚠️ 跳过 {keystore_file.name}: 找不到公钥信息")
-                            continue
-                    else:
-                        print(f"⚠️ 跳过 {keystore_file.name}: 找不到 pubkeys.json")
+                    elif isinstance(pubkeys_data, dict):
+                        # 如果是字典格式，尝试直接获取
+                        validator_pubkey = pubkeys_data.get('validator_public_key')
+                        withdrawal_pubkey = pubkeys_data.get('withdrawal_public_key')
+                    
+                    if not validator_pubkey:
+                        print(f"⚠️ 跳过 {keystore_file.name}: 找不到公钥信息")
                         continue
                     
                     # 生成助记词（这里使用固定助记词，实际应该从生成过程获取）
@@ -397,12 +453,17 @@ class VaultKeyManager:
                     )
                     
                     # 存储到 Vault
+                    print(f"🔄 正在导入密钥: {validator_pubkey[:10]}...")
                     if self.store_key(key_data):
                         imported_count += 1
-                        print(f"✅ 导入密钥: {validator_pubkey[:10]}...")
+                        print(f"✅ 导入密钥成功: {validator_pubkey[:10]}...")
+                    else:
+                        print(f"❌ 导入密钥失败: {validator_pubkey[:10]}...")
                     
                 except Exception as e:
                     print(f"⚠️ 跳过 {keystore_file.name}: {e}")
+                    import traceback
+                    print(f"🔍 详细错误: {traceback.format_exc()}")
                     continue
             
             return imported_count
