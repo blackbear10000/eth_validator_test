@@ -126,6 +126,11 @@ case "$COMMAND" in
         python3 ../scripts/reset_database.py
         ;;
     
+    manual-fix-database)
+        echo "🔧 手动修复数据库..."
+        python3 ../scripts/manual_fix_database.py
+        ;;
+    
     # Quick deploy workflow
     deploy)
         echo "=== Quick Deploy Workflow ==="
@@ -192,6 +197,7 @@ function show_help() {
     echo "  web3signer-troubleshoot Web3Signer troubleshooting guide"
     echo "  fix-database           Fix PostgreSQL database issues"
     echo "  reset-database         Complete database reset (destructive)"
+    echo "  manual-fix-database    Manual database table recreation"
     echo ""
     echo "Monitoring:"
     echo "  monitor            Monitor validator performance"

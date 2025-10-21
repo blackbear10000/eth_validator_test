@@ -36,15 +36,17 @@ def reset_database():
     
     # 1. 停止所有服务
     print("🛑 停止所有服务...")
-    run_command("docker-compose down", "停止 Docker 服务")
+    run_command("cd infra && docker-compose down", "停止 Docker 服务")
     
     # 2. 删除数据库卷
     print("🗑️  删除数据库卷...")
-    run_command("docker volume rm eth_validator_test_postgres_data", "删除 PostgreSQL 数据卷")
+    # 先检查实际的卷名称
+    run_command("docker volume ls | grep postgres", "检查 PostgreSQL 卷")
+    run_command("docker volume rm infra_postgres_data", "删除 PostgreSQL 数据卷")
     
     # 3. 重新启动服务
     print("🚀 重新启动服务...")
-    if not run_command("docker-compose up -d", "启动 Docker 服务"):
+    if not run_command("cd infra && docker-compose up -d", "启动 Docker 服务"):
         print("❌ 服务启动失败")
         return False
     

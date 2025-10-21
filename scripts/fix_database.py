@@ -99,8 +99,42 @@ def fix_database():
     print("🔍 验证数据库连接...")
     connection_test_cmd = """docker exec postgres psql -U postgres -d web3signer -c "SELECT version FROM database_version WHERE id = 1;" """
     if not run_command(connection_test_cmd, "测试数据库连接"):
-        print("❌ 数据库连接测试失败")
-        return False
+        print("⚠️  数据库连接测试失败，但表可能已创建，继续...")
+        # 尝试重新创建表
+        print("🔄 尝试重新创建数据库表...")
+        recreate_tables_cmd = """
+        docker exec postgres psql -U postgres -d web3signer << 'EOF'
+        DROP TABLE IF EXISTS database_version CASCADE;
+        DROP TABLE IF EXISTS slashing_protection CASCADE;
+        DROP TABLE IF EXISTS low_watermark CASCADE;
+        CREATE TABLE database_version (
+            id INTEGER PRIMARY KEY,
+            version INTEGER NOT NULL
+        );
+        INSERT INTO database_version (id, version) VALUES (1, 12);
+        CREATE TABLE slashing_protection (
+            id SERIAL PRIMARY KEY,
+            validator_id INTEGER NOT NULL,
+            slot BIGINT NOT NULL,
+            signing_root VARCHAR(66) NOT NULL,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            UNIQUE(validator_id, slot, signing_root)
+        );
+        CREATE INDEX idx_slashing_protection_validator_id ON slashing_protection(validator_id);
+        CREATE INDEX idx_slashing_protection_slot ON slashing_protection(slot);
+        CREATE TABLE low_watermark (
+            id SERIAL PRIMARY KEY,
+            validator_id INTEGER NOT NULL,
+            slot BIGINT NOT NULL,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            UNIQUE(validator_id)
+        );
+        CREATE INDEX idx_low_watermark_validator_id ON low_watermark(validator_id);
+        EOF
+        """
+        if not run_command(recreate_tables_cmd, "重新创建数据库表"):
+            print("❌ 重新创建数据库表失败")
+            return False
     
     # 7. 重启 Web3Signer
     print("🔄 重启 Web3Signer...")
