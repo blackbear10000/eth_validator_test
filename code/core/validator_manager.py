@@ -178,6 +178,17 @@ class ExternalValidatorManager:
         print("🔐 The mnemonic has been saved to the keys directory for backup purposes.")
         print("🚨 NEVER share or commit the mnemonic to version control!")
         
+        # Clean up existing keys in Vault first
+        print("🧹 Cleaning up existing keys in Vault...")
+        try:
+            existing_keys = self.key_manager.list_keys_in_vault()
+            for key_name in existing_keys:
+                if key_name.startswith('validator-'):
+                    self.key_manager.client.delete(f'secret/data/{key_name}')
+                    print(f"🗑️  Removed old key: {key_name}")
+        except Exception as e:
+            print(f"⚠️  Warning: Could not clean up old keys: {e}")
+        
         # Import keys to Vault
         print("Importing keys to Vault...")
         imported_count = self.key_manager.bulk_import_keys(str(keys_dir))
@@ -229,6 +240,57 @@ class ExternalValidatorManager:
         except Exception as e:
             print(f"❌ Error loading validators from Vault: {e}")
             return False
+    
+    def clean_all_keys(self):
+        """清理所有密钥（本地文件和 Vault）"""
+        try:
+            project_root = Path(__file__).parent.parent.parent
+            keys_dir = project_root / "data" / "keys"
+            
+            print("=== Cleaning All Keys ===")
+            
+            # Clean local files
+            print("🧹 Cleaning local key files...")
+            for file_pattern in ['keystore-*.json', 'password-*.txt', 'keys_data.json', 'pubkeys.json', 'mnemonic.txt']:
+                for file_path in keys_dir.glob(file_pattern):
+                    if file_path.is_file():
+                        file_path.unlink()
+                        print(f"🗑️  Removed: {file_path.name}")
+            
+            # Clean subdirectories
+            for subdir in ['keystores', 'secrets']:
+                subdir_path = keys_dir / subdir
+                if subdir_path.exists():
+                    for file_path in subdir_path.glob('*'):
+                        if file_path.is_file():
+                            file_path.unlink()
+                            print(f"🗑️  Removed: {subdir}/{file_path.name}")
+            
+            # Clean Vault keys
+            print("🧹 Cleaning Vault keys...")
+            try:
+                existing_keys = self.key_manager.list_keys_in_vault()
+                for key_name in existing_keys:
+                    if key_name.startswith('validator-'):
+                        self.key_manager.client.delete(f'secret/data/{key_name}')
+                        print(f"🗑️  Removed Vault key: {key_name}")
+            except Exception as e:
+                print(f"⚠️  Warning: Could not clean Vault keys: {e}")
+            
+            # Clean Web3Signer keys
+            print("🧹 Cleaning Web3Signer keys...")
+            web3signer_keys_dir = project_root / "infra" / "web3signer" / "keys"
+            if web3signer_keys_dir.exists():
+                for file_path in web3signer_keys_dir.glob('vault-signing-key-*.yaml'):
+                    file_path.unlink()
+                    print(f"🗑️  Removed: {file_path.name}")
+            
+            print("✅ All keys cleaned successfully")
+            
+        except Exception as e:
+            print(f"❌ Clean failed: {e}")
+            import traceback
+            print(f"🔍 详细错误: {traceback.format_exc()}")
     
     def ensure_external_validators_loaded(self) -> bool:
         """Ensure external validators are loaded, either from memory or Vault"""
@@ -701,6 +763,10 @@ def main():
             manager.test_external_withdrawal()
             
             print("✅ Full external validator test completed")
+    
+    elif args.command == "clean":
+        print("=== Cleaning All Keys ===")
+        manager.clean_all_keys()
     
     except KeyboardInterrupt:
         print("\n⚠️ Operation interrupted by user")

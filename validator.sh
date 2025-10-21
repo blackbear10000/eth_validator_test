@@ -73,6 +73,10 @@ case "$COMMAND" in
         echo "🧪 Testing Vault import..."
         python3 core/validator_manager.py test-import "$@"
         ;;
+    clean)
+        echo "🧹 Cleaning all keys (local files and Vault)..."
+        python3 core/validator_manager.py clean "$@"
+        ;;
     
     # Quick deploy workflow
     deploy)

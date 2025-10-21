@@ -135,6 +135,23 @@ def save_keys_locally(keys: List[Dict[str, Any]], output_dir: str, mnemonic: str
     # Save secrets for password management
     secrets_dir = os.path.join(output_dir, 'secrets')
     os.makedirs(secrets_dir, exist_ok=True)
+    
+    # Clean up existing files to avoid conflicts
+    print("🧹 Cleaning up existing key files...")
+    for file_pattern in ['keystore-*.json', 'password-*.txt', 'keys_data.json', 'pubkeys.json', 'mnemonic.txt']:
+        for file_path in Path(output_dir).glob(file_pattern):
+            if file_path.is_file():
+                file_path.unlink()
+                print(f"🗑️  Removed: {file_path.name}")
+    
+    # Clean up subdirectories
+    for subdir in ['keystores', 'secrets']:
+        subdir_path = Path(output_dir) / subdir
+        if subdir_path.exists():
+            for file_path in subdir_path.glob('*'):
+                if file_path.is_file():
+                    file_path.unlink()
+                    print(f"🗑️  Removed: {subdir}/{file_path.name}")
 
     # Create complete keys data with mnemonic
     keys_data = {
@@ -167,6 +184,9 @@ def save_keys_locally(keys: List[Dict[str, Any]], output_dir: str, mnemonic: str
         
         # Save keystore
         keystore_path = os.path.join(keystores_dir, f'keystore-{index:04d}.json')
+        # 如果文件已存在，先删除
+        if os.path.exists(keystore_path):
+            os.remove(keystore_path)
         keystore.save(keystore_path)
 
         # Save password
