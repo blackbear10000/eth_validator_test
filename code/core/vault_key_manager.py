@@ -68,6 +68,24 @@ class VaultKeyManager:
                 print("2. 设置环境变量：export VAULT_TOKEN=dev-root-token")
                 print("3. 或者直接使用：python3 scripts/vault_key_manager.py list --vault-token dev-root-token")
                 raise Exception("请检查 VAULT_TOKEN 或启动 Vault 服务")
+            
+            # 检查并启用 KV v2 引擎
+            try:
+                # 检查 KV v2 引擎是否已启用
+                mounts = self.client.sys.list_mounted_secrets_engines()
+                if f"{self.mount_point}/" not in mounts:
+                    print(f"🔧 启用 KV v2 引擎: {self.mount_point}")
+                    self.client.sys.enable_secrets_engine(
+                        backend_type='kv',
+                        path=self.mount_point,
+                        options={'version': '2'}
+                    )
+                else:
+                    print(f"✅ KV v2 引擎已启用: {self.mount_point}")
+            except Exception as e:
+                print(f"⚠️ KV v2 引擎检查失败: {e}")
+                # 继续执行，可能引擎已经存在
+                
         except Exception as e:
             if "Connection refused" in str(e) or "Max retries exceeded" in str(e):
                 print("❌ 无法连接到 Vault 服务")
@@ -80,6 +98,9 @@ class VaultKeyManager:
         
         # 生成加密密钥（用于本地加密）
         self._init_encryption_key()
+        
+        # 测试 Vault 连接
+        self._test_vault_connection()
     
     def _init_encryption_key(self):
         """初始化加密密钥"""
@@ -98,6 +119,28 @@ class VaultKeyManager:
             )
         
         self.cipher = Fernet(self.encryption_key)
+    
+    def _test_vault_connection(self):
+        """测试 Vault 连接和权限"""
+        try:
+            # 测试基本连接
+            health = self.client.sys.read_health_status()
+            print(f"✅ Vault 连接正常: {health.get('version', 'unknown')}")
+            
+            # 测试 KV v2 权限
+            test_path = f"{self.key_path_prefix}/test"
+            try:
+                self.client.secrets.kv.v2.create_or_update_secret(
+                    path=test_path,
+                    secret={'test': 'value'}
+                )
+                self.client.secrets.kv.v2.delete_metadata_and_all_versions(path=test_path)
+                print("✅ KV v2 权限正常")
+            except Exception as e:
+                print(f"⚠️ KV v2 权限测试失败: {e}")
+                
+        except Exception as e:
+            print(f"⚠️ Vault 连接测试失败: {e}")
     
     def _encrypt_data(self, data: str) -> str:
         """加密数据"""
@@ -423,18 +466,32 @@ class VaultKeyManager:
                     
                     # 支持不同的数据结构
                     if isinstance(pubkeys_data, list):
-                        for key_info in pubkeys_data:
-                            if key_info.get('keystore') == keystore_file.name:
-                                validator_pubkey = key_info.get('validator_public_key')
-                                withdrawal_pubkey = key_info.get('withdrawal_public_key')
-                                break
+                        # 尝试通过索引匹配 (keystore-0000.json -> index 0)
+                        try:
+                            keystore_index = int(keystore_file.stem.split('-')[1])
+                            for key_info in pubkeys_data:
+                                if key_info.get('index') == keystore_index:
+                                    validator_pubkey = key_info.get('validator_pubkey')
+                                    withdrawal_pubkey = key_info.get('withdrawal_pubkey')
+                                    break
+                        except (ValueError, IndexError):
+                            # 如果索引匹配失败，尝试通过文件名匹配
+                            for key_info in pubkeys_data:
+                                if key_info.get('keystore') == keystore_file.name:
+                                    validator_pubkey = key_info.get('validator_pubkey') or key_info.get('validator_public_key')
+                                    withdrawal_pubkey = key_info.get('withdrawal_pubkey') or key_info.get('withdrawal_public_key')
+                                    break
                     elif isinstance(pubkeys_data, dict):
                         # 如果是字典格式，尝试直接获取
-                        validator_pubkey = pubkeys_data.get('validator_public_key')
-                        withdrawal_pubkey = pubkeys_data.get('withdrawal_public_key')
+                        validator_pubkey = pubkeys_data.get('validator_pubkey') or pubkeys_data.get('validator_public_key')
+                        withdrawal_pubkey = pubkeys_data.get('withdrawal_pubkey') or pubkeys_data.get('withdrawal_public_key')
                     
                     if not validator_pubkey:
                         print(f"⚠️ 跳过 {keystore_file.name}: 找不到公钥信息")
+                        print(f"🔍 调试信息: keystore_index={keystore_index if 'keystore_index' in locals() else 'N/A'}")
+                        print(f"🔍 调试信息: pubkeys_data 类型={type(pubkeys_data)}, 长度={len(pubkeys_data) if isinstance(pubkeys_data, list) else 'N/A'}")
+                        if isinstance(pubkeys_data, list) and len(pubkeys_data) > 0:
+                            print(f"🔍 调试信息: 第一个条目: {pubkeys_data[0]}")
                         continue
                     
                     # 生成助记词（这里使用固定助记词，实际应该从生成过程获取）
