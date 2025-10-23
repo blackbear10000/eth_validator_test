@@ -155,6 +155,16 @@ case "$COMMAND" in
         python3 "$SCRIPT_DIR/scripts/test_deposit_network.py"
         ;;
     
+    diagnose-web3signer)
+        echo "🔍 诊断 Web3Signer 连接问题..."
+        python3 "$SCRIPT_DIR/scripts/diagnose_web3signer.py"
+        ;;
+    
+    test-haproxy)
+        echo "🔍 测试 HAProxy 配置..."
+        python3 "$SCRIPT_DIR/scripts/test_haproxy_config.py"
+        ;;
+    
     setup-web3signer-vault)
         echo "🔧 为 Web3Signer 设置 Vault 密钥存储..."
         python3 "$SCRIPT_DIR/scripts/setup_web3signer_vault.py"
