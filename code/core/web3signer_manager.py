@@ -257,21 +257,47 @@ class Web3SignerManager:
         """重启 Web3Signer 容器"""
         try:
             import subprocess
-            result = subprocess.run(
-                ["docker", "restart", "web3signer"],
+            # 重启 web3signer-1
+            print("🔄 重启 web3signer-1...")
+            result1 = subprocess.run(
+                ["docker", "restart", "web3signer-1"],
                 capture_output=True,
                 text=True,
                 timeout=30
             )
             
-            if result.returncode == 0:
-                print("✅ Web3Signer 重启成功")
+            if result1.returncode == 0:
+                print("✅ web3signer-1 重启成功")
+                time.sleep(5)  # 等待启动
+            else:
+                print(f"⚠️  web3signer-1 重启失败: {result1.stderr}")
+            
+            # 重启 web3signer-2
+            print("🔄 重启 web3signer-2...")
+            result2 = subprocess.run(
+                ["docker", "restart", "web3signer-2"],
+                capture_output=True,
+                text=True,
+                timeout=30
+            )
+            
+            if result2.returncode == 0:
+                print("✅ web3signer-2 重启成功")
+                time.sleep(5)  # 等待启动
+            else:
+                print(f"⚠️  web3signer-2 重启失败: {result2.stderr}")
+            
+            # 设置结果
+            result = result1 if result1.returncode != 0 else result2
+            
+            if result1.returncode == 0 and result2.returncode == 0:
+                print("✅ Web3Signer 集群重启成功")
                 # 等待 Web3Signer 启动
                 print("⏳ 等待 Web3Signer 启动...")
                 time.sleep(10)
                 return self._test_web3signer_connection()
             else:
-                print(f"❌ Web3Signer 重启失败: {result.stderr}")
+                print(f"❌ Web3Signer 重启失败")
                 return False
                 
         except Exception as e:
