@@ -26,7 +26,9 @@ class Web3SignerManager:
         self.web3signer_url = web3signer_url
         self.vault_url = vault_url
         self.vault_token = vault_token
-        self.keys_dir = Path("infra/web3signer/keys")
+        # 使用绝对路径，确保无论从哪里运行都能找到正确的目录
+        project_root = Path(__file__).parent.parent.parent
+        self.keys_dir = project_root / "infra" / "web3signer" / "keys"
         
     def _test_web3signer_connection(self) -> bool:
         """测试 Web3Signer 连接"""
