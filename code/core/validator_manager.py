@@ -217,7 +217,7 @@ class ExternalValidatorManager:
             # Load keys to Web3Signer
             print("Loading keys to Web3Signer...")
             try:
-                from .web3signer_manager import Web3SignerManager
+                from core.web3signer_manager import Web3SignerManager
                 web3signer_manager = Web3SignerManager()
                 if web3signer_manager.load_keys_to_web3signer():
                     print("✅ Keys loaded to Web3Signer successfully")
@@ -281,7 +281,7 @@ class ExternalValidatorManager:
                 
                 # 同步到 Web3Signer
                 try:
-                    from .web3signer_manager import Web3SignerManager
+                    from core.web3signer_manager import Web3SignerManager
                     web3signer_manager = Web3SignerManager()
                     if web3signer_manager.sync_active_keys():
                         print("✅ 密钥已同步到 Web3Signer")
