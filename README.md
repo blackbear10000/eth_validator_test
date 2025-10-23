@@ -146,6 +146,7 @@ export VAULT_TOKEN=dev-root-token
 ./validator.sh test-import    # Test Vault key import
 ./validator.sh diagnose-web3signer  # Diagnose Web3Signer connection issues
 ./validator.sh test-haproxy        # Test HAProxy configuration
+./validator.sh test-web3signer-startup  # Test Web3Signer startup without keys
 ./validator.sh validate-deposits  # Validate deposit data using ethstaker-deposit-cli
 ```
 
