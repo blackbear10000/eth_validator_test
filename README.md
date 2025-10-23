@@ -20,33 +20,42 @@ cd ../../..
 export VAULT_TOKEN=dev-root-token
 ```
 
-### Deploy Your First Validators
+### Deploy Your First Validators (New Bulk Workflow)
 ```bash
 # 1. Start infrastructure
 ./validator.sh start
 
-# 2. Generate 5 validators
-./validator.sh generate-keys --count 5
+# 2. Initialize key pool (generate 1000 keys upfront)
+./validator.sh init-pool --count 1000
 
-# 3. Create deposits
+# 3. Activate first batch of validators
+./validator.sh activate-keys --count 5
+
+# 4. Create deposits (uses only active keys)
 ./validator.sh create-deposits
 
-# 4. Validate deposits (optional)
+# 5. Validate deposits (optional)
 ./validator.sh validate-deposits
 
-# 5. Submit to network
+# 6. Submit to network
 ./validator.sh submit-deposits
 
-# 6. Monitor
+# 7. Monitor
 ./validator.sh monitor
+
+# 8. Later, activate more validators as needed
+./validator.sh activate-keys --count 10
+./validator.sh create-deposits
+./validator.sh submit-deposits
 ```
 
 ## 📋 Common Scenarios
 
-### Scenario 1: Deploy 50 Validators
+### Scenario 1: Deploy 50 Validators (New Bulk Workflow)
 ```bash
 ./validator.sh start
-./validator.sh generate-keys --count 50
+./validator.sh init-pool --count 1000  # Generate 1000 keys upfront
+./validator.sh activate-keys --count 50  # Activate 50 from pool
 ./validator.sh list-keys  # Get pubkeys for backup
 ./validator.sh backup mnemonic 0x1234... 0x5678... --name batch-50
 ./validator.sh create-deposits
@@ -57,8 +66,8 @@ export VAULT_TOKEN=dev-root-token
 
 ### Scenario 2: Add More Validators Later
 ```bash
-# Generate additional keys (will use existing mnemonic from Vault)
-./validator.sh generate-keys --count 10
+# Activate more keys from existing pool
+./validator.sh activate-keys --count 10
 ./validator.sh create-deposits
 ./validator.sh submit-deposits
 ```
@@ -67,7 +76,8 @@ export VAULT_TOKEN=dev-root-token
 ```bash
 # Clean all existing keys and start fresh
 ./validator.sh clean
-./validator.sh generate-keys --count 5
+./validator.sh init-pool --count 1000  # Initialize new pool
+./validator.sh activate-keys --count 5  # Activate first batch
 ./validator.sh create-deposits
 ./validator.sh submit-deposits
 ```
@@ -113,7 +123,10 @@ export VAULT_TOKEN=dev-root-token
 
 ### Key Management
 ```bash
-./validator.sh generate-keys  # Generate new keys
+./validator.sh generate-keys  # Generate new keys (legacy mode)
+./validator.sh init-pool      # Initialize key pool (bulk generation)
+./validator.sh activate-keys  # Activate keys from pool
+./validator.sh pool-status    # Check key pool status
 ./validator.sh list-keys      # List all keys
 ./validator.sh backup         # Backup keys
 ./validator.sh clean         # Clean all keys (local files and Vault)
@@ -144,8 +157,15 @@ export VAULT_TOKEN=dev-root-token
 ### Infrastructure Stack
 - **Vault** (port 8200): Secure key storage with KV v2 engine
 - **PostgreSQL** (port 5432): Slashing protection database for Web3Signer
-- **Web3Signer** (port 9000): Remote signing service for external validators
+- **Web3Signer** (ports 9000, 9001): Dual remote signing services for high availability
+- **HAProxy** (port 9002): Load balancer for Web3Signer instances
 - **Kurtosis Devnet**: Accelerated testnet with 4s slots for fast testing
+
+### High Availability Architecture
+- **Dual Web3Signer**: Two instances sharing one PostgreSQL database
+- **Zero-downtime key management**: Add/remove keys without service interruption
+- **Automatic failover**: HAProxy handles instance failures gracefully
+- **Bulk key generation**: Pre-generate large pools of keys for instant activation
 
 ### Workflow
 ```

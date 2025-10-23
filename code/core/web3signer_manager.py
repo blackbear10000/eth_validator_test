@@ -12,6 +12,7 @@ import requests
 from pathlib import Path
 from typing import List, Dict, Any, Optional
 import time
+from datetime import datetime
 
 class Web3SignerManager:
     """Web3Signer 密钥管理器"""
@@ -101,17 +102,14 @@ class Web3SignerManager:
             return []
     
     def create_web3signer_key_config(self, key_data: Dict[str, Any]) -> Dict[str, str]:
-        """为单个密钥创建 Web3Signer 配置"""
-        # 计算与 VaultKeyManager 一致的路径
-        import hashlib
+        """为单个密钥创建 Web3Signer 配置 - 使用完整公钥作为路径"""
         pubkey = key_data['pubkey']
-        pubkey_hash = hashlib.sha256(pubkey.encode()).hexdigest()[:16]
         
         # 为 Web3Signer 创建兼容的 Vault 存储
-        self._store_key_for_web3signer(key_data, pubkey_hash)
+        self._store_key_for_web3signer(key_data, pubkey)
         
-        # 使用 Web3Signer 专用路径
-        vault_path = f"/v1/secret/data/web3signer-keys/{pubkey_hash}"
+        # 使用完整公钥作为路径
+        vault_path = f"/v1/secret/data/web3signer-keys/{pubkey}"
         
         # Web3Signer HashiCorp Vault 配置格式
         # 根据官方文档：https://docs.web3signer.consensys.io/reference/key-config-file-params
@@ -127,8 +125,8 @@ class Web3SignerManager:
             "token": "dev-root-token"
         }
     
-    def _store_key_for_web3signer(self, key_data: Dict[str, Any], pubkey_hash: str):
-        """为 Web3Signer 存储密钥到 Vault"""
+    def _store_key_for_web3signer(self, key_data: Dict[str, Any], pubkey: str):
+        """为 Web3Signer 存储密钥到 Vault - 使用完整公钥作为路径"""
         try:
             import requests
             
@@ -137,9 +135,9 @@ class Web3SignerManager:
             vault_manager = VaultKeyManager(self.vault_url, self.vault_token)
             
             # 获取完整的密钥数据
-            full_key_data = vault_manager.get_key(key_data['pubkey'])
+            full_key_data = vault_manager.get_key(pubkey)
             if not full_key_data:
-                print(f"❌ 无法获取密钥数据: {key_data['pubkey'][:10]}...")
+                print(f"❌ 无法获取密钥数据: {pubkey[:10]}...")
                 return
             
             # 获取私钥（已经是解密后的格式）
@@ -159,9 +157,9 @@ class Web3SignerManager:
                 "value": privkey  # Web3Signer 期望的字段名
             }
             
-            # 存储到 Vault（使用 Web3Signer 专用路径）
+            # 存储到 Vault（使用完整公钥作为路径）
             headers = {"X-Vault-Token": self.vault_token}
-            web3signer_path = f"/v1/secret/data/web3signer-keys/{pubkey_hash}"
+            web3signer_path = f"/v1/secret/data/web3signer-keys/{pubkey}"
             
             response = requests.post(
                 f"{self.vault_url}{web3signer_path}",
@@ -230,10 +228,10 @@ class Web3SignerManager:
                 print(f"   Vault 路径: {config['keyPath']}")
                 print(f"   字段名: {config['keyName']}")
                 
-                # 保存配置文件 (Web3Signer 需要 JSON 格式)
-                config_file = self.keys_dir / f"vault-signing-key-{pubkey}.json"
+                # 保存配置文件 (Web3Signer 需要 YAML 格式)
+                config_file = self.keys_dir / f"vault-{pubkey[:16]}.yaml"
                 with open(config_file, 'w') as f:
-                    json.dump(config, f, indent=2)
+                    yaml.dump(config, f, default_flow_style=False, sort_keys=False)
                 
                 # 验证文件是否真的被创建
                 if config_file.exists():
@@ -303,6 +301,238 @@ class Web3SignerManager:
             print("❌ 密钥加载失败")
             return False
     
+    def sync_active_keys(self) -> bool:
+        """同步活跃密钥到 Web3Signer - 只为 status='active' 的密钥生成配置"""
+        print("🔄 同步活跃密钥到 Web3Signer...")
+        
+        # 检查连接
+        if not self._test_web3signer_connection():
+            print("❌ Web3Signer 连接失败")
+            return False
+        
+        if not self._test_vault_connection():
+            print("❌ Vault 连接失败")
+            return False
+        
+        # 获取活跃密钥
+        from vault_key_manager import VaultKeyManager
+        vault_manager = VaultKeyManager(self.vault_url, self.vault_token)
+        active_keys = vault_manager.list_keys(status='active')
+        
+        if not active_keys:
+            print("❌ 没有找到活跃密钥")
+            return False
+        
+        print(f"📋 找到 {len(active_keys)} 个活跃密钥需要同步")
+        
+        # 确保 keys 目录存在
+        self.keys_dir.mkdir(parents=True, exist_ok=True)
+        
+        # 为每个活跃密钥创建配置文件
+        synced_count = 0
+        for key in active_keys:
+            try:
+                pubkey = key.pubkey
+                if not pubkey:
+                    print(f"⚠️  跳过无效密钥: {key.pubkey[:10]}...")
+                    continue
+                
+                # 创建 Web3Signer 密钥配置
+                key_data = {
+                    'pubkey': key.pubkey,
+                    'data': {
+                        'pubkey': key.pubkey,
+                        'privkey': key.privkey,
+                        'withdrawal_pubkey': key.withdrawal_pubkey,
+                        'withdrawal_privkey': key.withdrawal_privkey,
+                        'mnemonic': key.mnemonic,
+                        'index': key.index,
+                        'signing_key_path': key.signing_key_path,
+                        'batch_id': key.batch_id,
+                        'created_at': key.created_at,
+                        'status': key.status,
+                        'client_type': key.client_type,
+                        'notes': key.notes
+                    }
+                }
+                
+                config = self.create_web3signer_key_config(key_data)
+                
+                # 保存配置文件 (YAML 格式)
+                config_file = self.keys_dir / f"vault-{pubkey[:16]}.yaml"
+                with open(config_file, 'w') as f:
+                    yaml.dump(config, f, default_flow_style=False, sort_keys=False)
+                
+                if config_file.exists():
+                    print(f"✅ 活跃密钥配置已保存: {config_file}")
+                    synced_count += 1
+                else:
+                    print(f"❌ 文件保存失败: {config_file}")
+                
+            except Exception as e:
+                print(f"❌ 处理密钥失败 {key.pubkey[:10]}...: {e}")
+        
+        print(f"📊 成功同步 {synced_count}/{len(active_keys)} 个活跃密钥")
+        
+        # 重启 Web3Signer 以加载新密钥
+        if synced_count > 0:
+            print("🔄 重启 Web3Signer 以加载新密钥...")
+            return self._restart_web3signer()
+        
+        return synced_count > 0
+    
+    def activate_keys(self, pubkeys: List[str]) -> bool:
+        """激活指定的密钥并生成 Web3Signer 配置"""
+        print(f"🔧 激活 {len(pubkeys)} 个密钥...")
+        
+        try:
+            from vault_key_manager import VaultKeyManager
+            vault_manager = VaultKeyManager(self.vault_url, self.vault_token)
+            
+            # 批量更新密钥状态为 'active'
+            success_count = 0
+            for pubkey in pubkeys:
+                if vault_manager.mark_key_as_active(pubkey, 'web3signer', f"激活于 {datetime.now().isoformat()}"):
+                    success_count += 1
+                    print(f"✅ 密钥已激活: {pubkey[:10]}...")
+                else:
+                    print(f"❌ 密钥激活失败: {pubkey[:10]}...")
+            
+            if success_count > 0:
+                # 同步活跃密钥到 Web3Signer
+                return self.sync_active_keys()
+            
+            return False
+            
+        except Exception as e:
+            print(f"❌ 激活密钥失败: {e}")
+            return False
+    
+    def deactivate_keys(self, pubkeys: List[str]) -> bool:
+        """停用指定的密钥并移除 Web3Signer 配置"""
+        print(f"🔧 停用 {len(pubkeys)} 个密钥...")
+        
+        try:
+            from vault_key_manager import VaultKeyManager
+            vault_manager = VaultKeyManager(self.vault_url, self.vault_token)
+            
+            # 批量更新密钥状态为 'retired'
+            success_count = 0
+            for pubkey in pubkeys:
+                if vault_manager.mark_key_as_retired(pubkey, f"停用于 {datetime.now().isoformat()}"):
+                    success_count += 1
+                    print(f"✅ 密钥已停用: {pubkey[:10]}...")
+                    
+                    # 移除对应的配置文件
+                    config_file = self.keys_dir / f"vault-{pubkey[:16]}.yaml"
+                    if config_file.exists():
+                        config_file.unlink()
+                        print(f"🗑️  配置文件已删除: {config_file}")
+                else:
+                    print(f"❌ 密钥停用失败: {pubkey[:10]}...")
+            
+            if success_count > 0:
+                # 重启 Web3Signer 以移除停用的密钥
+                print("🔄 重启 Web3Signer 以移除停用的密钥...")
+                return self._restart_web3signer()
+            
+            return False
+            
+        except Exception as e:
+            print(f"❌ 停用密钥失败: {e}")
+            return False
+    
+    def remove_inactive_key_configs(self) -> int:
+        """移除非活跃密钥的配置文件"""
+        print("🧹 清理非活跃密钥的配置文件...")
+        
+        try:
+            from vault_key_manager import VaultKeyManager
+            vault_manager = VaultKeyManager(self.vault_url, self.vault_token)
+            
+            # 获取所有活跃密钥
+            active_keys = vault_manager.list_keys(status='active')
+            active_pubkeys = {key.pubkey for key in active_keys}
+            
+            # 检查 keys 目录中的所有配置文件
+            removed_count = 0
+            for config_file in self.keys_dir.glob("vault-*.yaml"):
+                # 从文件名提取公钥前缀
+                filename = config_file.stem  # vault-{pubkey[:16]}
+                if filename.startswith("vault-"):
+                    pubkey_prefix = filename[6:]  # 移除 "vault-" 前缀
+                    
+                    # 检查是否有对应的活跃密钥
+                    found_active = False
+                    for active_pubkey in active_pubkeys:
+                        if active_pubkey.startswith(pubkey_prefix):
+                            found_active = True
+                            break
+                    
+                    if not found_active:
+                        config_file.unlink()
+                        print(f"🗑️  已删除非活跃密钥配置: {config_file}")
+                        removed_count += 1
+            
+            print(f"📊 清理了 {removed_count} 个非活跃密钥配置文件")
+            return removed_count
+            
+        except Exception as e:
+            print(f"❌ 清理配置文件失败: {e}")
+            return 0
+    
+    def reload_web3signers(self) -> bool:
+        """优雅地重新加载所有 Web3Signer 实例"""
+        print("🔄 重新加载 Web3Signer 实例...")
+        
+        try:
+            import subprocess
+            
+            # 重启 web3signer-1
+            print("🔄 重启 web3signer-1...")
+            result1 = subprocess.run(
+                ["docker", "restart", "web3signer-1"],
+                capture_output=True,
+                text=True,
+                timeout=30
+            )
+            
+            if result1.returncode == 0:
+                print("✅ web3signer-1 重启成功")
+                time.sleep(5)  # 等待启动
+            else:
+                print(f"⚠️  web3signer-1 重启失败: {result1.stderr}")
+            
+            # 重启 web3signer-2
+            print("🔄 重启 web3signer-2...")
+            result2 = subprocess.run(
+                ["docker", "restart", "web3signer-2"],
+                capture_output=True,
+                text=True,
+                timeout=30
+            )
+            
+            if result2.returncode == 0:
+                print("✅ web3signer-2 重启成功")
+                time.sleep(5)  # 等待启动
+            else:
+                print(f"⚠️  web3signer-2 重启失败: {result2.stderr}")
+            
+            # 验证两个实例都正常运行
+            success1 = self._test_web3signer_connection()
+            success2 = self._test_web3signer_connection()  # 测试第二个实例
+            
+            if success1 and success2:
+                print("✅ 所有 Web3Signer 实例运行正常")
+                return True
+            else:
+                print("❌ 部分 Web3Signer 实例运行异常")
+                return False
+                
+        except Exception as e:
+            print(f"❌ 重新加载 Web3Signer 失败: {e}")
+            return False
+
     def status(self) -> Dict[str, Any]:
         """获取 Web3Signer 状态"""
         status = {
@@ -320,8 +550,12 @@ def main():
     import argparse
     
     parser = argparse.ArgumentParser(description="Web3Signer 密钥管理器")
-    parser.add_argument("command", choices=["load", "status", "verify"], 
-                       help="命令: load(加载密钥), status(状态), verify(验证)")
+    parser.add_argument("command", choices=["load", "status", "verify", "sync", "activate", "deactivate", "clean"], 
+                       help="命令: load(加载密钥), status(状态), verify(验证), sync(同步活跃密钥), activate(激活密钥), deactivate(停用密钥), clean(清理配置)")
+    
+    # 为 activate 和 deactivate 命令添加参数
+    parser.add_argument("--pubkeys", nargs="+", help="要激活/停用的公钥列表")
+    parser.add_argument("--count", type=int, help="要激活的密钥数量")
     
     args = parser.parse_args()
     
@@ -356,6 +590,50 @@ def main():
         else:
             print("❌ 密钥验证失败")
             sys.exit(1)
+    
+    elif args.command == "sync":
+        success = manager.sync_active_keys()
+        if success:
+            print("✅ 活跃密钥同步完成")
+        else:
+            print("❌ 活跃密钥同步失败")
+            sys.exit(1)
+    
+    elif args.command == "activate":
+        if args.pubkeys:
+            success = manager.activate_keys(args.pubkeys)
+        elif args.count:
+            # 获取指定数量的未使用密钥
+            from vault_key_manager import VaultKeyManager
+            vault_manager = VaultKeyManager(manager.vault_url, manager.vault_token)
+            unused_keys = vault_manager.get_unused_keys(args.count)
+            pubkeys = [key.pubkey for key in unused_keys]
+            success = manager.activate_keys(pubkeys)
+        else:
+            print("❌ 请指定 --pubkeys 或 --count 参数")
+            sys.exit(1)
+        
+        if success:
+            print("✅ 密钥激活完成")
+        else:
+            print("❌ 密钥激活失败")
+            sys.exit(1)
+    
+    elif args.command == "deactivate":
+        if not args.pubkeys:
+            print("❌ 请指定要停用的公钥 --pubkeys")
+            sys.exit(1)
+        
+        success = manager.deactivate_keys(args.pubkeys)
+        if success:
+            print("✅ 密钥停用完成")
+        else:
+            print("❌ 密钥停用失败")
+            sys.exit(1)
+    
+    elif args.command == "clean":
+        removed_count = manager.remove_inactive_key_configs()
+        print(f"✅ 清理完成，删除了 {removed_count} 个配置文件")
 
 
 if __name__ == "__main__":

@@ -12,3 +12,6 @@ http-listen-port: 9000
 metrics-enabled: true
 metrics-host: "0.0.0.0"
 metrics-port: 9001
+
+# network settings
+eth2.network: "minimal"

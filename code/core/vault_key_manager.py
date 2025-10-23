@@ -674,6 +674,71 @@ class VaultKeyManager:
             print(f"❌ 检索密钥失败: {e}")
             return None
 
+    def export_key_for_web3signer(self, pubkey: str) -> Optional[str]:
+        """为 Web3Signer 导出单个密钥的私钥（无 0x 前缀）"""
+        try:
+            key_data = self.get_key(pubkey)
+            if not key_data:
+                print(f"❌ 无法获取密钥: {pubkey[:10]}...")
+                return None
+            
+            # 获取私钥并移除 0x 前缀
+            privkey = key_data.privkey
+            if privkey.startswith('0x'):
+                privkey = privkey[2:]
+            
+            # 验证私钥格式
+            if len(privkey) != 64:
+                print(f"❌ 私钥格式错误: 长度 {len(privkey)}，期望 64")
+                return None
+            
+            print(f"✅ 导出 Web3Signer 私钥: {pubkey[:10]}...")
+            return privkey
+            
+        except Exception as e:
+            print(f"❌ 导出 Web3Signer 私钥失败: {e}")
+            return None
+    
+    def list_keys_by_status(self, status: str) -> List[ValidatorKey]:
+        """按状态列出密钥 - 优化查询"""
+        return self.list_keys(status=status)
+    
+    def bulk_activate_keys(self, pubkeys: List[str], notes: str = None) -> int:
+        """批量激活密钥"""
+        try:
+            success_count = 0
+            for pubkey in pubkeys:
+                if self.mark_key_as_active(pubkey, 'web3signer', notes):
+                    success_count += 1
+                    print(f"✅ 密钥已激活: {pubkey[:10]}...")
+                else:
+                    print(f"❌ 密钥激活失败: {pubkey[:10]}...")
+            
+            print(f"📊 批量激活完成: {success_count}/{len(pubkeys)} 个密钥")
+            return success_count
+            
+        except Exception as e:
+            print(f"❌ 批量激活密钥失败: {e}")
+            return 0
+    
+    def bulk_retire_keys(self, pubkeys: List[str], notes: str = None) -> int:
+        """批量停用密钥"""
+        try:
+            success_count = 0
+            for pubkey in pubkeys:
+                if self.mark_key_as_retired(pubkey, notes):
+                    success_count += 1
+                    print(f"✅ 密钥已停用: {pubkey[:10]}...")
+                else:
+                    print(f"❌ 密钥停用失败: {pubkey[:10]}...")
+            
+            print(f"📊 批量停用完成: {success_count}/{len(pubkeys)} 个密钥")
+            return success_count
+            
+        except Exception as e:
+            print(f"❌ 批量停用密钥失败: {e}")
+            return 0
+
     def export_keys_for_web3signer(self, output_dir: str) -> int:
         """导出密钥为 Web3Signer 格式"""
         try:

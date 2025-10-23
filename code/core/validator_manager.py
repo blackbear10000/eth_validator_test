@@ -152,12 +152,17 @@ class ExternalValidatorManager:
         
         return True
     
-    def generate_external_keys(self, count: int = None) -> List[str]:
-        """Generate keys for external validators"""
+    def generate_external_keys(self, count: int = None, bulk_mode: bool = False) -> List[str]:
+        """Generate keys for external validators - supports bulk generation workflow"""
         if count is None:
             count = self.config.get("external_validator_count", 5)
         
-        print(f"=== Generating {count} External Validator Keys ===")
+        # For bulk mode, default to larger batches
+        if bulk_mode and count < 100:
+            count = 1000  # Default bulk size
+            print(f"🔄 批量模式：生成 {count} 个验证者密钥")
+        else:
+            print(f"=== Generating {count} External Validator Keys ===")
         
         # Generate keys using generate_keys module
         from utils.generate_keys import generate_validator_keys
@@ -195,27 +200,33 @@ class ExternalValidatorManager:
         imported_count = self.key_manager.bulk_import_keys(str(keys_dir))
         print(f"✅ Imported {imported_count} keys to Vault")
         
-        # Export keys to Web3Signer format
-        print("Exporting keys to Web3Signer...")
-        project_root = Path(__file__).parent.parent.parent
-        web3signer_keys_dir = project_root / "infra" / "web3signer" / "keys"
-        web3signer_keys_dir.mkdir(parents=True, exist_ok=True)
-        exported_count = self.key_manager.export_keys_for_web3signer(str(web3signer_keys_dir))
-        print(f"✅ Exported {exported_count} keys to Web3Signer format")
-        
-        # Load keys to Web3Signer
-        print("Loading keys to Web3Signer...")
-        try:
-            from web3signer_manager import Web3SignerManager
-            web3signer_manager = Web3SignerManager()
-            if web3signer_manager.load_keys_to_web3signer():
-                print("✅ Keys loaded to Web3Signer successfully")
-                web3signer_manager.verify_keys_loaded()
-            else:
-                print("❌ Failed to load keys to Web3Signer")
-        except Exception as e:
-            print(f"⚠️  Web3Signer loading failed: {e}")
-            print("💡 Run './validator.sh load-keys' manually to load keys")
+        # In bulk mode, do NOT generate Web3Signer configs yet
+        if bulk_mode:
+            print("📋 批量模式：密钥已导入 Vault，状态为 'unused'")
+            print("💡 使用 './validator.sh activate-keys --count N' 来激活指定数量的密钥")
+            print("💡 使用 './validator.sh pool-status' 查看密钥池状态")
+        else:
+            # Legacy mode: Export keys to Web3Signer format and load immediately
+            print("Exporting keys to Web3Signer...")
+            project_root = Path(__file__).parent.parent.parent
+            web3signer_keys_dir = project_root / "infra" / "web3signer" / "keys"
+            web3signer_keys_dir.mkdir(parents=True, exist_ok=True)
+            exported_count = self.key_manager.export_keys_for_web3signer(str(web3signer_keys_dir))
+            print(f"✅ Exported {exported_count} keys to Web3Signer format")
+            
+            # Load keys to Web3Signer
+            print("Loading keys to Web3Signer...")
+            try:
+                from web3signer_manager import Web3SignerManager
+                web3signer_manager = Web3SignerManager()
+                if web3signer_manager.load_keys_to_web3signer():
+                    print("✅ Keys loaded to Web3Signer successfully")
+                    web3signer_manager.verify_keys_loaded()
+                else:
+                    print("❌ Failed to load keys to Web3Signer")
+            except Exception as e:
+                print(f"⚠️  Web3Signer loading failed: {e}")
+                print("💡 Run './validator.sh load-keys' manually to load keys")
         
         # Get public keys from generated keys
         public_keys = [key["validator_public_key"] for key in generated_keys]
@@ -223,6 +234,96 @@ class ExternalValidatorManager:
         
         print(f"✅ Generated {len(self.external_validators)} external validator keys")
         return self.external_validators
+    
+    def init_key_pool(self, count: int = 1000) -> bool:
+        """Initialize a large pool of validator keys for bulk operations"""
+        print(f"🏗️  初始化密钥池：生成 {count} 个验证者密钥...")
+        
+        try:
+            # Generate keys in bulk mode
+            generated_keys = self.generate_external_keys(count=count, bulk_mode=True)
+            
+            if generated_keys:
+                print(f"✅ 密钥池初始化完成：{len(generated_keys)} 个密钥已准备就绪")
+                print("📊 密钥状态：")
+                print(f"   - 未使用: {len(generated_keys)}")
+                print(f"   - 活跃: 0")
+                print(f"   - 已停用: 0")
+                return True
+            else:
+                print("❌ 密钥池初始化失败")
+                return False
+                
+        except Exception as e:
+            print(f"❌ 密钥池初始化失败: {e}")
+            return False
+    
+    def activate_keys_from_pool(self, count: int) -> List[str]:
+        """从密钥池中激活指定数量的密钥"""
+        print(f"🔧 从密钥池激活 {count} 个密钥...")
+        
+        try:
+            # 获取未使用的密钥
+            unused_keys = self.key_manager.get_unused_keys(count)
+            if len(unused_keys) < count:
+                print(f"❌ 可用密钥不足：需要 {count} 个，只有 {len(unused_keys)} 个")
+                return []
+            
+            # 激活密钥
+            pubkeys = [key.pubkey for key in unused_keys]
+            success_count = self.key_manager.bulk_activate_keys(
+                pubkeys, 
+                f"批量激活于 {time.strftime('%Y-%m-%d %H:%M:%S')}"
+            )
+            
+            if success_count > 0:
+                print(f"✅ 成功激活 {success_count} 个密钥")
+                
+                # 同步到 Web3Signer
+                try:
+                    from web3signer_manager import Web3SignerManager
+                    web3signer_manager = Web3SignerManager()
+                    if web3signer_manager.sync_active_keys():
+                        print("✅ 密钥已同步到 Web3Signer")
+                    else:
+                        print("⚠️  密钥同步到 Web3Signer 失败")
+                except Exception as e:
+                    print(f"⚠️  Web3Signer 同步失败: {e}")
+                
+                return pubkeys[:success_count]
+            else:
+                print("❌ 密钥激活失败")
+                return []
+                
+        except Exception as e:
+            print(f"❌ 激活密钥失败: {e}")
+            return []
+    
+    def get_pool_status(self) -> Dict[str, int]:
+        """获取密钥池状态"""
+        try:
+            all_keys = self.key_manager.list_keys()
+            
+            status = {
+                'unused': 0,
+                'active': 0,
+                'retired': 0,
+                'total': len(all_keys)
+            }
+            
+            for key in all_keys:
+                if key.status == 'unused':
+                    status['unused'] += 1
+                elif key.status == 'active':
+                    status['active'] += 1
+                elif key.status == 'retired':
+                    status['retired'] += 1
+            
+            return status
+            
+        except Exception as e:
+            print(f"❌ 获取密钥池状态失败: {e}")
+            return {'unused': 0, 'active': 0, 'retired': 0, 'total': 0}
     
     def load_external_validators_from_vault(self) -> bool:
         """Load existing external validators from Vault"""
@@ -943,7 +1044,8 @@ def main():
     parser.add_argument("command", choices=[
         "check-services", "generate-keys", "list-keys", "load-validators", "create-deposits", "submit-deposits",
         "start-clients", "wait-activation", "monitor", "test-exit", "test-withdrawal", 
-        "status", "cleanup", "full-test", "create-deposits-with-address", "test-import", "clean", "check-status", "validate-deposits"
+        "status", "cleanup", "full-test", "create-deposits-with-address", "test-import", "clean", "check-status", "validate-deposits",
+        "init-pool", "activate-keys", "pool-status"
     ], help="Command to execute")
     parser.add_argument("--count", type=int, help="Number of validators")
     parser.add_argument("--config", default="config/config.json", help="Config file")
@@ -1031,6 +1133,35 @@ def main():
                 print("✅ Test import successful")
             else:
                 print("❌ Test import failed")
+        
+        elif args.command == "init-pool":
+            print("=== Initialize Key Pool ===")
+            count = args.count or 1000
+            success = manager.init_key_pool(count)
+            if success:
+                print("✅ Key pool initialized successfully")
+            else:
+                print("❌ Key pool initialization failed")
+                sys.exit(1)
+        
+        elif args.command == "activate-keys":
+            print("=== Activate Keys from Pool ===")
+            count = args.count or 10
+            activated_keys = manager.activate_keys_from_pool(count)
+            if activated_keys:
+                print(f"✅ Successfully activated {len(activated_keys)} keys")
+            else:
+                print("❌ Key activation failed")
+                sys.exit(1)
+        
+        elif args.command == "pool-status":
+            print("=== Key Pool Status ===")
+            status = manager.get_pool_status()
+            print(f"📊 Key Pool Status:")
+            print(f"   Total keys: {status['total']}")
+            print(f"   Unused: {status['unused']}")
+            print(f"   Active: {status['active']}")
+            print(f"   Retired: {status['retired']}")
         
         elif args.command == "full-test":
             print("=== Running Full External Validator Test ===")

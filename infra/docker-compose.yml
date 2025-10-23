@@ -81,9 +81,9 @@ services:
       timeout: 5s
       retries: 5
 
-  web3signer:
+  web3signer-1:
     image: consensys/web3signer:25.9.1
-    container_name: web3signer
+    container_name: web3signer-1
     ports:
       - "9000:9000"
     environment:
@@ -109,6 +109,57 @@ services:
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:9000/upcheck"]
       interval: 15s
+      timeout: 3s
+      retries: 3
+
+  web3signer-2:
+    image: consensys/web3signer:25.9.1
+    container_name: web3signer-2
+    ports:
+      - "9001:9000"
+    environment:
+      - VAULT_ADDR=http://vault:8200
+      - VAULT_TOKEN=dev-root-token
+    volumes:
+      - ./web3signer/config:/config
+      - ./web3signer/keys:/keys
+    networks:
+      - eth_validator_network
+    depends_on:
+      vault:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+    command: >
+      --config-file=/config/config.yaml
+      eth2
+      --slashing-protection-db-url=jdbc:postgresql://postgres:5432/web3signer
+      --slashing-protection-db-username=postgres
+      --slashing-protection-db-password=password
+      --slashing-protection-pruning-enabled=true
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/upcheck"]
+      interval: 15s
+      timeout: 3s
+      retries: 3
+
+  haproxy:
+    image: haproxy:2.9
+    container_name: web3signer-lb
+    ports:
+      - "9002:9002"
+    volumes:
+      - ./web3signer/haproxy.cfg:/usr/local/etc/haproxy/haproxy.cfg:ro
+    networks:
+      - eth_validator_network
+    depends_on:
+      web3signer-1:
+        condition: service_healthy
+      web3signer-2:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9002/upcheck"]
+      interval: 10s
       timeout: 3s
       retries: 3
 

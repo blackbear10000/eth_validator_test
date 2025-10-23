@@ -48,6 +48,20 @@ case "$COMMAND" in
         python3 core/backup_system.py "$@"
         ;;
     
+    # Pool management commands
+    init-pool)
+        echo "🏗️  Initializing key pool..."
+        python3 core/validator_manager.py init-pool "$@"
+        ;;
+    activate-keys)
+        echo "🔧 Activating keys from pool..."
+        python3 core/validator_manager.py activate-keys "$@"
+        ;;
+    pool-status)
+        echo "📊 Checking key pool status..."
+        python3 core/validator_manager.py pool-status "$@"
+        ;;
+    
     # Deposit operations
     create-deposits)
         echo "💰 Creating deposit data..."

@@ -5,7 +5,7 @@
 type: "hashicorp"
 keyType: "BLS"
 tlsEnabled: "false"
-: "/v1/secret/data/web3signerSigningKey"
+keyPath: "/v1/secret/data/validator-keys"
 keyName: "value"
 serverHost: "vault"
 serverPort: "8200"
