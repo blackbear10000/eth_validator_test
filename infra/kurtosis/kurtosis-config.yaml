@@ -15,17 +15,17 @@ participants:
     vc_type: lighthouse
     # 不加 geth 专参
 
-  # 3) Geth × Lighthouse —— 常规 HTTP API
-  - el_type: geth
-    cl_type: lighthouse
-    vc_type: lighthouse
-    el_extra_params:
-      - "--http.api=admin,engine,net,eth,web3,debug,txpool"
+  # # 3) Geth × Lighthouse —— 常规 HTTP API
+  # - el_type: geth
+  #   cl_type: lighthouse
+  #   vc_type: lighthouse
+  #   el_extra_params:
+  #     - "--http.api=admin,engine,net,eth,web3,debug,txpool"
 
-  # 4) Reth × Prysm —— 常规
-  - el_type: reth
-    cl_type: prysm
-    vc_type: prysm
+  # # 4) Reth × Prysm —— 常规
+  # - el_type: reth
+  #   cl_type: prysm
+  #   vc_type: prysm
 
 # ⬆️ 不固定镜像：省略 el_image/cl_image/vc_image，让包使用其测试过的默认镜像组合
 # ⬆️ 不加 el_extra_params：避免把 geth 专属参数误用到 reth
