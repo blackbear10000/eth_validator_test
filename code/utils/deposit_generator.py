@@ -112,8 +112,17 @@ class DepositGenerator:
         try:
             # 获取链设置
             if self.network == 'kurtosis':
-                # Kurtosis 使用 minimal 预设
-                chain_setting = get_chain_setting('minimal')
+                # Kurtosis 使用自定义网络配置
+                from ethstaker_deposit.settings import get_devnet_chain_setting
+                chain_setting = get_devnet_chain_setting(
+                    network_name='kurtosis',
+                    genesis_fork_version='0x00000000',  # minimal preset fork version
+                    exit_fork_version='0x00000000',     # minimal preset exit version
+                    genesis_validator_root=None,       # 使用默认值
+                    multiplier=1,
+                    min_activation_amount=32,
+                    min_deposit_amount=1
+                )
             else:
                 chain_setting = get_chain_setting(self.network or 'mainnet')
 

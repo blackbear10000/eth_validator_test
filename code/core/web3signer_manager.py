@@ -17,7 +17,7 @@ from datetime import datetime
 class Web3SignerManager:
     """Web3Signer 密钥管理器"""
     
-    def __init__(self, web3signer_url: str = "http://localhost:9000", 
+    def __init__(self, web3signer_url: str = "http://localhost:9002", 
                  vault_url: str = "http://localhost:8200",
                  vault_token: str = "dev-root-token"):
         self.web3signer_url = web3signer_url

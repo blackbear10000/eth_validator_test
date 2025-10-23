@@ -37,7 +37,7 @@ class ExternalValidatorManager:
         # Initialize managers
         self.key_manager = VaultKeyManager()
         # Pass network setting to deposit generator
-        network = self.config.get('network', 'mainnet')
+        network = self.config.get('network', 'kurtosis')
         self.deposit_generator = DepositGenerator(network=network)
         
         # External validator tracking
@@ -518,11 +518,24 @@ class ExternalValidatorManager:
             print("  No Web3Signer key files found")
     
     def create_external_deposits(self) -> str:
-        """Create deposit data for external validators"""
+        """Create deposit data for active external validators only"""
         print("=== Creating External Validator Deposits ===")
         
-        if not self.ensure_external_validators_loaded():
-            print("❌ No external validators found. Generate keys first.")
+        # Get only active keys from Vault
+        try:
+            active_keys = self.key_manager.list_keys(status='active')
+            if not active_keys:
+                print("❌ No active validators found. Activate keys first using:")
+                print("   ./validator.sh activate-keys --count N")
+                return None
+            
+            print(f"📋 Found {len(active_keys)} active validators")
+            
+            # Update external_validators list with only active keys
+            self.external_validators = [key.pubkey for key in active_keys]
+            
+        except Exception as e:
+            print(f"❌ Failed to get active validators: {e}")
             return None
         
         # Create deposit data
@@ -568,6 +581,10 @@ class ExternalValidatorManager:
                 notes="External validator deposit"
             )
             
+            if not deposit_data:
+                print("❌ No deposit data generated")
+                return None
+            
             # Validate deposit data before saving
             if self._validate_deposit_data(deposit_data):
                 # Save deposit data to file
@@ -575,6 +592,15 @@ class ExternalValidatorManager:
                     json.dump(deposit_data, f, indent=2)
                 
                 print(f"✅ Created deposit data: {deposit_file}")
+                
+                # 同时复制一份到标准位置供submit-deposits使用
+                standard_deposit_file = project_root / "data" / "deposits" / "deposit_data.json"
+                standard_deposit_file.parent.mkdir(parents=True, exist_ok=True)
+                
+                import shutil
+                shutil.copy2(deposit_file, standard_deposit_file)
+                print(f"📋 Copied to standard location: {standard_deposit_file}")
+                
                 return deposit_file
             else:
                 print("❌ Deposit data validation failed")
