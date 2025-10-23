@@ -61,7 +61,7 @@ class Web3SignerManager:
         """从 Vault 获取所有验证者密钥"""
         try:
             # 直接使用 VaultKeyManager 来获取密钥，确保路径一致
-            from .vault_key_manager import VaultKeyManager
+            from core.vault_key_manager import VaultKeyManager
             
             vault_manager = VaultKeyManager(self.vault_url, self.vault_token)
             
@@ -131,7 +131,7 @@ class Web3SignerManager:
             import requests
             
             # 从 VaultKeyManager 获取原始私钥数据
-            from .vault_key_manager import VaultKeyManager
+            from core.vault_key_manager import VaultKeyManager
             vault_manager = VaultKeyManager(self.vault_url, self.vault_token)
             
             # 获取完整的密钥数据
@@ -341,7 +341,7 @@ class Web3SignerManager:
             return False
         
         # 获取活跃密钥
-        from .vault_key_manager import VaultKeyManager
+        from core.vault_key_manager import VaultKeyManager
         vault_manager = VaultKeyManager(self.vault_url, self.vault_token)
         active_keys = vault_manager.list_keys(status='active')
         
@@ -412,7 +412,7 @@ class Web3SignerManager:
         print(f"🔧 激活 {len(pubkeys)} 个密钥...")
         
         try:
-            from .vault_key_manager import VaultKeyManager
+            from core.vault_key_manager import VaultKeyManager
             vault_manager = VaultKeyManager(self.vault_url, self.vault_token)
             
             # 批量更新密钥状态为 'active'
@@ -439,7 +439,7 @@ class Web3SignerManager:
         print(f"🔧 停用 {len(pubkeys)} 个密钥...")
         
         try:
-            from .vault_key_manager import VaultKeyManager
+            from core.vault_key_manager import VaultKeyManager
             vault_manager = VaultKeyManager(self.vault_url, self.vault_token)
             
             # 批量更新密钥状态为 'retired'
@@ -473,7 +473,7 @@ class Web3SignerManager:
         print("🧹 清理非活跃密钥的配置文件...")
         
         try:
-            from .vault_key_manager import VaultKeyManager
+            from core.vault_key_manager import VaultKeyManager
             vault_manager = VaultKeyManager(self.vault_url, self.vault_token)
             
             # 获取所有活跃密钥
@@ -630,7 +630,7 @@ def main():
             success = manager.activate_keys(args.pubkeys)
         elif args.count:
             # 获取指定数量的未使用密钥
-            from .vault_key_manager import VaultKeyManager
+            from core.vault_key_manager import VaultKeyManager
             vault_manager = VaultKeyManager(manager.vault_url, manager.vault_token)
             unused_keys = vault_manager.get_unused_keys(args.count)
             pubkeys = [key.pubkey for key in unused_keys]

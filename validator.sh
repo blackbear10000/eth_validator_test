@@ -120,7 +120,7 @@ case "$COMMAND" in
         python3 utils/web3signer_workflow.py deploy --count ${2:-5} --client ${3:-prysm}
         ;;
     
-    web3signer-status)
+    web3signer-workflow-status)
         echo "📊 Web3Signer 系统状态..."
         python3 utils/web3signer_workflow.py status
         ;;
@@ -266,6 +266,8 @@ case "$COMMAND" in
         echo "Web3Signer Integration:"
         echo "  load-keys              Load validator keys to Web3Signer"
         echo "  web3signer-status      Check Web3Signer status and loaded keys"
+    echo "  web3signer-workflow-status Check Web3Signer workflow status"
+        echo "  web3signer-workflow-status Check Web3Signer workflow status"
         echo "  verify-keys            Verify keys are loaded in Web3Signer"
         echo "  web3signer-deploy      Complete Web3Signer deployment workflow"
         echo "  web3signer-troubleshoot Web3Signer troubleshooting guide"
@@ -317,6 +319,7 @@ function show_help() {
     echo "Web3Signer Integration:"
     echo "  load-keys              Load validator keys to Web3Signer"
     echo "  web3signer-status      Check Web3Signer status and loaded keys"
+    echo "  web3signer-workflow-status Check Web3Signer workflow status"
     echo "  verify-keys            Verify keys are loaded in Web3Signer"
     echo "  web3signer-deploy      Complete Web3Signer deployment workflow"
     echo "  web3signer-troubleshoot Web3Signer troubleshooting guide"
