@@ -14,6 +14,9 @@ from typing import List, Dict, Any, Optional
 import time
 from datetime import datetime
 
+# Add the code directory to the path
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
 class Web3SignerManager:
     """Web3Signer 密钥管理器"""
     
@@ -128,8 +131,6 @@ class Web3SignerManager:
     def _store_key_for_web3signer(self, key_data: Dict[str, Any], pubkey: str):
         """为 Web3Signer 存储密钥到 Vault - 使用完整公钥作为路径"""
         try:
-            import requests
-            
             # 从 VaultKeyManager 获取原始私钥数据
             from core.vault_key_manager import VaultKeyManager
             vault_manager = VaultKeyManager(self.vault_url, self.vault_token)
