@@ -70,51 +70,100 @@ def get_kurtosis_prysm_ports() -> dict:
             "kurtosis", "enclave", "inspect", "eth-devnet"
         ], capture_output=True, text=True, check=True)
         
-        # 解析输出，查找 Prysm 服务
+        # 使用与 detect_kurtosis_ports.py 相同的解析逻辑
+        services = {}
         lines = result.stdout.strip().split('\n')
-        in_services_section = False
         
+        # 查找 User Services 部分
+        in_services_section = False
         for line in lines:
             if "User Services" in line:
                 in_services_section = True
                 continue
             
             if in_services_section and line.strip():
+                # 解析服务行
                 if "UUID" in line and "Name" in line and "Ports" in line:
                     continue  # 跳过表头
                 
                 if line.strip().startswith("="):
                     break  # 遇到下一个部分，结束
                 
-                # 查找 Prysm 服务
-                if 'prysm' in line.lower() and 'cl-' in line.lower():
-                    print(f"📋 找到 Prysm 服务: {line[:100]}...")
-                    
-                    # 解析端口信息
-                    parts = line.split()
-                    for i, part in enumerate(parts):
-                        if part == 'rpc:':
-                            if i + 1 < len(parts):
-                                port_mapping = parts[i + 1]
-                                if "->" in port_mapping:
-                                    # 提取映射的端口号
-                                    # 格式: 4000/tcp -> 127.0.0.1:33523
-                                    mapped_address = port_mapping.split("->")[-1].strip()
-                                    if ":" in mapped_address:
-                                        local_port = mapped_address.split(":")[-1]
-                                        print(f"   RPC 端口映射: {port_mapping}")
-                                        print(f"   容器端口: 4000")
-                                        print(f"   宿主机端口: {local_port}")
-                                        return {
-                                            "rpc_port": int(local_port),
-                                            "mapping": port_mapping
-                                        }
+                # 解析服务信息
+                service_info = _parse_service_line(line)
+                if service_info:
+                    services[service_info['name']] = service_info
+        
+        # 查找 Prysm 服务
+        for service_name, service_info in services.items():
+            if 'prysm' in service_name.lower() and 'cl-' in service_name.lower():
+                print(f"📋 找到 Prysm 服务: {service_name}")
+                ports = service_info.get('ports', {})
+                print(f"   端口: {list(ports.keys())}")
+                
+                # 查找 rpc 端口
+                for port_name, port_info in ports.items():
+                    if port_name == 'rpc':
+                        port = port_info.get('number')
+                        if port:
+                            print(f"   RPC 端口映射: {port_info.get('mapping', 'N/A')}")
+                            print(f"   容器端口: 4000")
+                            print(f"   宿主机端口: {port}")
+                            return {
+                                "rpc_port": port,
+                                "mapping": port_info.get('mapping', 'N/A')
+                            }
         
         return {}
         
     except Exception as e:
         print(f"❌ 获取 Kurtosis 端口信息失败: {e}")
         return {}
+
+def _parse_service_line(line: str) -> dict:
+    """解析单个服务行（与 detect_kurtosis_ports.py 相同的逻辑）"""
+    try:
+        import re
+        
+        # 匹配格式: UUID Name Ports Status
+        pattern = r'^([a-f0-9]{12})\s+([^\s]+(?:\s+[^\s]+)*?)\s+(.*?)\s+(RUNNING|STOPPED)$'
+        match = re.match(pattern, line)
+        
+        if not match:
+            return None
+        
+        uuid = match.group(1)
+        service_name = match.group(2)
+        ports_text = match.group(3)
+        status = match.group(4)
+        
+        # 解析端口信息
+        ports = {}
+        port_pattern = r'(\w+):\s*(\d+)/(\w+)\s*->\s*([^\s]+)'
+        port_matches = re.findall(port_pattern, ports_text)
+        
+        for port_name, internal_port, protocol, external_mapping in port_matches:
+            if ":" in external_mapping:
+                local_port = external_mapping.split(":")[-1]
+                try:
+                    ports[port_name] = {
+                        "number": int(local_port),
+                        "mapping": f"{port_name}: {internal_port}/{protocol} -> {external_mapping}",
+                        "internal_port": int(internal_port),
+                        "protocol": protocol
+                    }
+                except ValueError:
+                    pass
+        
+        return {
+            "name": service_name,
+            "uuid": uuid,
+            "ports": ports,
+            "status": status
+        }
+        
+    except Exception as e:
+        return None
 
 def main():
     """主函数"""
