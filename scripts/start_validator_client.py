@@ -380,7 +380,7 @@ def main():
     parser.add_argument("--config-only", action="store_true", 
                        help="仅生成配置，不启动客户端")
     parser.add_argument("--chain-config-file", 
-                       default="/Users/yuanshuai/Documents/Github/eth_validator_test/infra/kurtosis/network-config.yaml",
+                       default="./infra/kurtosis/network-config.yaml",
                        help="网络配置文件路径")
     parser.add_argument("--fee-recipient", 
                        default="0x8943545177806ED17B9F23F0a21ee5948eCaa776",
