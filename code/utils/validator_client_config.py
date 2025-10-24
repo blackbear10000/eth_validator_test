@@ -125,11 +125,9 @@ class ValidatorClientConfig:
         grpc_address = self._convert_http_to_grpc(beacon_node_url)
         
         prysm_config = {
-            "wallet-dir": "/data/wallet",
-            "wallet-password-file": "/data/wallet-password.txt",
             "beacon-rpc-provider": grpc_address,
-            "web3signer-url": self.web3signer_url,
-            "web3signer-public-keys": pubkeys,
+            "validators-external-signer-url": self.web3signer_url,
+            "validators-external-signer-public-keys": ",".join(pubkeys),
             "suggested-fee-recipient": "0x0000000000000000000000000000000000000000",  # 需要用户设置
             "enable-external-slashing-protection": True,
             "slashing-protection-db-url": "postgres://user:password@localhost:5432/slashing_protection",
@@ -290,6 +288,7 @@ curl -f {self.web3signer_url}/upcheck || {{
 echo "🔧 启动验证者..."
 prysm validator \\
     --config-file={config_file} \\
+    --web \\
     --accept-terms-of-use
 
 echo "✅ Prysm 验证者已启动"

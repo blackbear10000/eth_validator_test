@@ -233,6 +233,11 @@ case "$COMMAND" in
         echo "🔍 调试多行端口解析..."
         python3 "$SCRIPT_DIR/scripts/debug_multiline_parsing.py"
         ;;
+
+    manage-keys)
+        echo "🔑 管理验证者密钥..."
+        python3 "$SCRIPT_DIR/scripts/manage_validator_keys.py" "$@"
+        ;;
     
     test-vault-paths)
         echo "🔍 测试 Vault 路径和密钥访问..."
