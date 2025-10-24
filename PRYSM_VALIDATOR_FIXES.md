@@ -39,8 +39,6 @@ prysm validator \
     --validators-external-signer-public-keys=0x1234...,0x5678... \
     --suggested-fee-recipient=0x8943545177806ED17B9F23F0a21ee5948eCaa776 \
     --chain-config-file=/path/to/network-config.yaml \
-    --enable-external-slashing-protection \
-    --slashing-protection-db-url=postgres://user:password@localhost:5432/slashing_protection \
     --graffiti=Prysm-20251024 \
     --log-format=json \
     --log-level=info \
@@ -49,6 +47,8 @@ prysm validator \
     --http-port=7500 \
     --accept-terms-of-use
 ```
+
+**注意：** 移除了 `--enable-minimal-slashing-protection` 参数，因为 Web3Signer 已经配置了 slash protection，避免双重保护可能产生的冲突。
 
 ## 修改的文件
 

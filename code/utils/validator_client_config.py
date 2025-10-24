@@ -148,8 +148,6 @@ class ValidatorClientConfig:
             "validators-external-signer-public-keys": pubkeys,
             "suggested-fee-recipient": fee_recipient,
             "chain-config-file": chain_config_file,
-            "enable-external-slashing-protection": True,
-            "slashing-protection-db-url": "postgres://user:password@localhost:5432/slashing_protection",
             "graffiti": f"Prysm-{datetime.now().strftime('%Y%m%d')}",
             "log-format": "json",
             "log-level": "info",
@@ -328,8 +326,6 @@ prysm validator \\
     --validators-external-signer-public-keys={','.join(pubkeys)} \\
     --suggested-fee-recipient={fee_recipient} \\
     --chain-config-file={chain_config_file} \\
-    --enable-external-slashing-protection \\
-    --slashing-protection-db-url=postgres://user:password@localhost:5432/slashing_protection \\
     --graffiti=Prysm-{datetime.now().strftime('%Y%m%d')} \\
     --log-format=json \\
     --log-level=info \\
