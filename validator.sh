@@ -294,6 +294,11 @@ case "$COMMAND" in
         python3 "$SCRIPT_DIR/scripts/fix_web3signer_connection.py" --restart
         ;;
     
+    analyze-prysm-web3signer)
+        echo "🔍 分析 Prysm-Web3Signer 连接问题..."
+        python3 "$SCRIPT_DIR/scripts/analyze_prysm_web3signer_issue.py"
+        ;;
+    
     test-haproxy)
         echo "🔍 测试 HAProxy 配置..."
         python3 "$SCRIPT_DIR/scripts/test_haproxy_config.py"
