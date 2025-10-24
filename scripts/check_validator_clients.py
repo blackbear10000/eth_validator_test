@@ -51,6 +51,28 @@ class ValidatorClientChecker:
                 
         except (subprocess.CalledProcessError, FileNotFoundError, subprocess.TimeoutExpired):
             print("❌ Prysm 未安装或不在 PATH 中")
+            
+            # 尝试其他可能的路径
+            print("🔍 尝试其他路径...")
+            alternative_paths = [
+                "/usr/local/bin/prysm",
+                "/usr/bin/prysm",
+                "./prysm.sh"
+            ]
+            
+            for alt_path in alternative_paths:
+                if os.path.exists(alt_path):
+                    try:
+                        result = subprocess.run([alt_path, '--version'], 
+                                              capture_output=True, text=True, timeout=10)
+                        if result.returncode == 0:
+                            status["installed"] = True
+                            status["version"] = result.stdout.strip()
+                            status["path"] = alt_path
+                            print(f"✅ 在 {alt_path} 找到 Prysm: {status['version']}")
+                            break
+                    except Exception as e:
+                        print(f"⚠️  {alt_path} 运行失败: {e}")
         
         # 提供安装命令
         if not status["installed"]:

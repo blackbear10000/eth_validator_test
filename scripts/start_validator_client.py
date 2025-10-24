@@ -121,15 +121,39 @@ class ValidatorClientStarter:
         
         try:
             # 检查 Prysm 是否已安装
+            prysm_path = None
             result = subprocess.run(['prysm', '--version'], 
                                   capture_output=True, text=True)
-            if result.returncode != 0:
+            if result.returncode == 0:
+                prysm_path = 'prysm'
+            else:
+                # 尝试其他可能的路径
+                alternative_paths = [
+                    "/usr/local/bin/prysm",
+                    "/usr/bin/prysm",
+                    "./prysm.sh"
+                ]
+                
+                for alt_path in alternative_paths:
+                    if os.path.exists(alt_path):
+                        try:
+                            result = subprocess.run([alt_path, '--version'], 
+                                                  capture_output=True, text=True)
+                            if result.returncode == 0:
+                                prysm_path = alt_path
+                                break
+                        except Exception:
+                            continue
+            
+            if not prysm_path:
                 print("❌ Prysm 未安装或不在 PATH 中")
                 print("💡 请先安装 Prysm:")
                 print("   1. 运行: ./validator.sh check-clients")
                 print("   2. 运行: ./validator.sh install-commands")
                 print("   3. 按照提示安装 Prysm")
                 return False
+            
+            print(f"✅ 找到 Prysm: {prysm_path}")
             
             # 启动 Prysm 验证者
             start_script = Path(config_path) / "start-validator.sh"

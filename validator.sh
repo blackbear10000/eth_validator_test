@@ -174,6 +174,11 @@ case "$COMMAND" in
         python3 "$SCRIPT_DIR/scripts/check_validator_clients.py" --install-commands
         ;;
     
+    debug-prysm)
+        echo "🔍 调试 Prysm 安装问题..."
+        python3 "$SCRIPT_DIR/scripts/debug_prysm_installation.py"
+        ;;
+    
     test-vault-paths)
         echo "🔍 测试 Vault 路径和密钥访问..."
         python3 "$SCRIPT_DIR/scripts/test_vault_paths.py"
