@@ -198,6 +198,11 @@ case "$COMMAND" in
         echo "🔍 智能选择 Beacon API..."
         python3 "$SCRIPT_DIR/scripts/select_beacon_api.py"
         ;;
+
+    test-grpc-conversion)
+        echo "🧪 测试 gRPC 转换逻辑..."
+        python3 "$SCRIPT_DIR/scripts/test_grpc_conversion.py"
+        ;;
     
     test-vault-paths)
         echo "🔍 测试 Vault 路径和密钥访问..."

@@ -45,13 +45,14 @@ class ValidatorClientConfig:
             host = beacon_url.replace("http://", "").split(":")[0]
             if ":" in beacon_url:
                 port = beacon_url.split(":")[-1]
-                # 智能判断：如果是 Lighthouse 的 HTTP API，需要转换为 gRPC
-                # Lighthouse HTTP API 通常在高端口，gRPC 在低端口
-                if int(port) > 5000:  # 可能是 Lighthouse HTTP API
-                    # 尝试使用标准 gRPC 端口
-                    return f"{host}:4000"
+                # 对于 Lighthouse HTTP API，我们需要找到对应的 gRPC 端口
+                # 这里我们需要从 Kurtosis 端口配置中查找
+                grpc_port = self._find_grpc_port_for_lighthouse(host, port)
+                if grpc_port:
+                    return f"{host}:{grpc_port}"
                 else:
-                    # 使用检测到的端口
+                    # 如果找不到对应的 gRPC 端口，使用检测到的端口
+                    print(f"⚠️  未找到 Lighthouse gRPC 端口，使用 HTTP 端口: {port}")
                     return f"{host}:{port}"
             else:
                 return f"{host}:4000"
@@ -65,6 +66,40 @@ class ValidatorClientConfig:
         else:
             # 如果已经是 gRPC 格式，直接返回
             return beacon_url
+    
+    def _find_grpc_port_for_lighthouse(self, host: str, http_port: str) -> str:
+        """查找 Lighthouse 对应的 gRPC 端口"""
+        try:
+            # 尝试从 Kurtosis 端口配置中查找
+            import json
+            from pathlib import Path
+            
+            config_file = Path("config/kurtosis_ports.json")
+            if config_file.exists():
+                with open(config_file, 'r') as f:
+                    ports_data = json.load(f)
+                
+                beacon_ports = ports_data.get("beacon", {})
+                # 查找 Prysm 的 gRPC 端口
+                if "prysm" in beacon_ports:
+                    prysm_url = beacon_ports["prysm"]
+                    if ":" in prysm_url:
+                        grpc_port = prysm_url.split(":")[-1]
+                        print(f"🔍 找到 Prysm gRPC 端口: {grpc_port}")
+                        return grpc_port
+                
+                # 如果没有 Prysm，尝试查找其他 gRPC 端口
+                for client_type, url in beacon_ports.items():
+                    if url and "://" not in url and ":" in url:
+                        # 这可能是 gRPC 格式
+                        grpc_port = url.split(":")[-1]
+                        if int(grpc_port) < 5000:  # gRPC 通常在低端口
+                            print(f"🔍 找到 {client_type} gRPC 端口: {grpc_port}")
+                            return grpc_port
+        except Exception as e:
+            print(f"⚠️  查找 gRPC 端口失败: {e}")
+        
+        return None
         
     def generate_prysm_config(self, 
                              pubkeys: List[str],
