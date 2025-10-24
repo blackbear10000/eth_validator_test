@@ -311,6 +311,17 @@ class KurtosisPortDetector:
         
         for client_type, url in beacon_ports.items():
             try:
+                # 如果是 gRPC 格式 (localhost:port)，跳过 HTTP 测试
+                if "://" not in url and ":" in url:
+                    print(f"🔍 跳过 gRPC 端口测试: {client_type} -> {url}")
+                    working_endpoints[client_type] = url
+                    print(f"✅ {client_type} Beacon API 可用: {url}")
+                    continue
+                
+                # 确保 URL 有协议前缀
+                if not url.startswith(('http://', 'https://')):
+                    url = f"http://{url}"
+                
                 # 测试健康检查端点
                 health_url = f"{url}/eth/v1/node/health"
                 response = requests.get(health_url, timeout=5)
