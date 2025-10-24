@@ -107,7 +107,8 @@ class ValidatorClientConfig:
                              beacon_node_url: str = "http://localhost:3500",
                              output_dir: str = "configs/prysm",
                              chain_config_file: str = None,
-                             fee_recipient: str = "0x8943545177806ED17B9F23F0a21ee5948eCaa776") -> str:
+                             fee_recipient: str = "0x8943545177806ED17B9F23F0a21ee5948eCaa776",
+                             enable_key_persistence: bool = True) -> str:
         """生成 Prysm 验证者配置"""
         
         print(f"🔧 生成 Prysm 配置...")
@@ -122,18 +123,29 @@ class ValidatorClientConfig:
         with open(web3signer_file, 'w') as f:
             yaml.dump(web3signer_config, f, default_flow_style=False)
         
-        # 2. 生成 Prysm 验证者配置
+        # 2. 生成公钥持久化文件（如果启用）
+        key_persistence_file = None
+        if enable_key_persistence:
+            key_persistence_file = output_path / "validator-keys.txt"
+            with open(key_persistence_file, 'w') as f:
+                for pubkey in pubkeys:
+                    f.write(f"{pubkey}\n")
+            print(f"📝 公钥持久化文件已创建: {key_persistence_file}")
+        
+        # 3. 生成 Prysm 验证者配置
         # 从 HTTP URL 转换为 gRPC 地址
         grpc_address = self._convert_http_to_grpc(beacon_node_url)
         
         # 设置默认的网络配置文件路径
         if chain_config_file is None:
-            chain_config_file = "/Users/yuanshuai/Documents/Github/eth_validator_test/infra/kurtosis/network-config.yaml"
+            chain_config_file = "/infra/kurtosis/network-config.yaml"
         
+        # 注意：Prysm 不支持 YAML 配置文件，所有参数都通过命令行传递
+        # 这个配置文件仅用于记录配置信息，不会被 Prysm 直接使用
         prysm_config = {
             "beacon-rpc-provider": grpc_address,
             "validators-external-signer-url": self.web3signer_url,
-            "validators-external-signer-public-keys": pubkeys,  # 使用数组格式
+            "validators-external-signer-public-keys": pubkeys,
             "suggested-fee-recipient": fee_recipient,
             "chain-config-file": chain_config_file,
             "enable-external-slashing-protection": True,
@@ -141,15 +153,18 @@ class ValidatorClientConfig:
             "graffiti": f"Prysm-{datetime.now().strftime('%Y%m%d')}",
             "log-format": "json",
             "log-level": "info",
-            "monitoring-port": 8082  # 避免端口冲突，使用整数类型
+            "monitoring-port": 8082,
+            "web": True,
+            "http-port": 7500,
+            "accept-terms-of-use": True
         }
         
         config_file = output_path / "validator-config.yaml"
         with open(config_file, 'w') as f:
             yaml.dump(prysm_config, f, default_flow_style=False)
         
-        # 3. 生成启动脚本
-        start_script = self._generate_prysm_start_script(pubkeys, config_file, chain_config_file, fee_recipient)
+        # 4. 生成启动脚本
+        start_script = self._generate_prysm_start_script(pubkeys, config_file, chain_config_file, fee_recipient, grpc_address, key_persistence_file)
         script_file = output_path / "start-validator.sh"
         with open(script_file, 'w') as f:
             f.write(start_script)
@@ -274,7 +289,7 @@ class ValidatorClientConfig:
             }
         }
     
-    def _generate_prysm_start_script(self, pubkeys: List[str], config_file: Path, chain_config_file: str = None, fee_recipient: str = "0x8943545177806ED17B9F23F0a21ee5948eCaa776") -> str:
+    def _generate_prysm_start_script(self, pubkeys: List[str], config_file: Path, chain_config_file: str = None, fee_recipient: str = "0x8943545177806ED17B9F23F0a21ee5948eCaa776", beacon_rpc_provider: str = "127.0.0.1:4000", key_persistence_file: str = None) -> str:
         """生成 Prysm 启动脚本"""
         # 设置默认的网络配置文件路径
         if chain_config_file is None:
@@ -308,16 +323,26 @@ curl -f {self.web3signer_url}/upcheck || {{
 # 启动 Prysm 验证者
 echo "🔧 启动验证者..."
 prysm validator \\
-    --config-file={config_file} \\
-    --chain-config-file={chain_config_file} \\
+    --beacon-rpc-provider={beacon_rpc_provider} \\
+    --validators-external-signer-url={self.web3signer_url} \\
+    --validators-external-signer-public-keys={','.join(pubkeys)} \\
     --suggested-fee-recipient={fee_recipient} \\
+    --chain-config-file={chain_config_file} \\
+    --enable-external-slashing-protection \\
+    --slashing-protection-db-url=postgres://user:password@localhost:5432/slashing_protection \\
+    --graffiti=Prysm-{datetime.now().strftime('%Y%m%d')} \\
+    --log-format=json \\
+    --log-level=info \\
+    --monitoring-port=8082 \\
     --web \\
     --http-port=7500 \\
-    --accept-terms-of-use
+    --accept-terms-of-use{f' \\\n    --validators-external-signer-key-file={key_persistence_file}' if key_persistence_file else ''}
 
 echo "✅ Prysm 验证者已启动"
 echo "📋 使用网络配置: {chain_config_file}"
 echo "💰 费用接收者: {fee_recipient}"
+echo "🔗 Web3Signer URL: {self.web3signer_url}"
+{f'echo "📝 公钥持久化文件: {key_persistence_file}"' if key_persistence_file else 'echo "📝 公钥持久化: 未启用"'}
 """
     
     def _generate_lighthouse_start_script(self, pubkeys: List[str], config_file: Path) -> str:
