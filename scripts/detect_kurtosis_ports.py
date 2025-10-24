@@ -85,8 +85,10 @@ class KurtosisPortDetector:
                     if service_info:
                         current_service = service_info['name']
                         services[current_service] = service_info
-                elif current_service and line.strip().startswith(' '):
+                        print(f"🔍 开始解析服务: {current_service}")
+                elif current_service and (line.strip().startswith(' ') or line.strip().startswith('rpc:') or line.strip().startswith('metrics:') or line.strip().startswith('profiling:')):
                     # 这是当前服务的端口信息行
+                    print(f"🔍 解析额外端口行: {line.strip()[:50]}...")
                     self._parse_additional_ports(line, services[current_service])
         
         print(f"🔍 解析到 {len(services)} 个服务")
