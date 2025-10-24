@@ -74,31 +74,36 @@ def create_deposits_for_active_keys(fork_version: str, count: int = None,
         generator = DepositGenerator(network='kurtosis', fork_version=fork_version)
         print(f"✅ 存款生成器已创建，Fork version: {generator.fork_version}")
         
-        # 5. 为每个激活的密钥创建存款数据
-        deposit_data = []
-        success_count = 0
+        # 5. 为激活的密钥创建存款数据
+        print(f"🔧 为 {len(active_keys)} 个激活的密钥创建存款数据...")
         
-        for i, key in enumerate(active_keys, 1):
-            print(f"🔧 处理密钥 {i}/{len(active_keys)}: {key.pubkey[:10]}...")
+        try:
+            # 使用 DepositGenerator 的 generate_deposits 方法
+            # 但我们需要先创建一个临时的密钥列表来匹配方法签名
+            deposit_data = []
+            success_count = 0
             
-            try:
-                # 创建存款数据
-                deposit_info = generator.create_deposit_data(
-                    key=key,
-                    withdrawal_address=withdrawal_address,
-                    notes=f"Kurtosis deposit for active key {i}"
-                )
+            for i, key in enumerate(active_keys, 1):
+                print(f"🔧 处理密钥 {i}/{len(active_keys)}: {key.pubkey[:10]}...")
                 
-                if deposit_info:
-                    deposit_data.append(deposit_info)
-                    success_count += 1
-                    print(f"   ✅ 存款数据已创建")
-                else:
-                    print(f"   ❌ 存款数据创建失败")
+                try:
+                    # 使用私有方法 _create_deposit_data 为单个密钥创建存款数据
+                    deposit_info = generator._create_deposit_data(key, withdrawal_address)
                     
-            except Exception as e:
-                print(f"   ❌ 处理密钥失败: {e}")
-                continue
+                    if deposit_info:
+                        deposit_data.append(deposit_info)
+                        success_count += 1
+                        print(f"   ✅ 存款数据已创建")
+                    else:
+                        print(f"   ❌ 存款数据创建失败")
+                        
+                except Exception as e:
+                    print(f"   ❌ 处理密钥失败: {e}")
+                    continue
+                    
+        except Exception as e:
+            print(f"❌ 创建存款数据失败: {e}")
+            return False
         
         if not deposit_data:
             print("❌ 没有成功创建任何存款数据")
