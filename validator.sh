@@ -329,6 +329,11 @@ case "$COMMAND" in
         python3 "$SCRIPT_DIR/scripts/fix_web3signer_network_config.py"
         ;;
     
+    fix-web3signer-database)
+        echo "🔧 使用 Web3Signer 官方迁移文件修复数据库..."
+        python3 "$SCRIPT_DIR/scripts/fix_web3signer_database_official.py"
+        ;;
+    
     test-haproxy)
         echo "🔍 测试 HAProxy 配置..."
         python3 "$SCRIPT_DIR/scripts/test_haproxy_config.py"
