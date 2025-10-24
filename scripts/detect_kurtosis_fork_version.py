@@ -10,7 +10,9 @@ import requests
 from pathlib import Path
 
 # Add project root to path
-sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+sys.path.append(project_root)
+sys.path.append(os.path.join(project_root, 'code'))
 
 def detect_kurtosis_fork_version():
     """Detect the actual fork version from Kurtosis network"""
@@ -121,7 +123,9 @@ import os
 from pathlib import Path
 
 # Add project root to path
-sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+sys.path.append(project_root)
+sys.path.append(os.path.join(project_root, 'code'))
 
 from code.utils.deposit_generator import DepositGenerator as BaseDepositGenerator
 from code.external.ethstaker_deposit.settings import get_devnet_chain_setting

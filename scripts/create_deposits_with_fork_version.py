@@ -10,7 +10,9 @@ import argparse
 from pathlib import Path
 
 # Add project root to path
-sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+sys.path.append(project_root)
+sys.path.append(os.path.join(project_root, 'code'))
 
 def create_deposits_with_custom_fork_version(fork_version: str, count: int = 5, 
                                            withdrawal_address: str = None):
@@ -18,8 +20,14 @@ def create_deposits_with_custom_fork_version(fork_version: str, count: int = 5,
     print(f"🔧 Creating deposits with fork version: {fork_version}")
     
     try:
-        from code.utils.deposit_generator import DepositGenerator
-        from code.core.validator_manager import ExternalValidatorManager
+        # Try different import paths
+        try:
+            from code.utils.deposit_generator import DepositGenerator
+            from code.core.validator_manager import ExternalValidatorManager
+        except ImportError:
+            # Fallback import paths
+            from utils.deposit_generator import DepositGenerator
+            from core.validator_manager import ExternalValidatorManager
         
         # Create deposit generator with custom fork version
         generator = DepositGenerator(network='kurtosis', fork_version=fork_version)
