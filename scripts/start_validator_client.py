@@ -46,15 +46,7 @@ class ValidatorClientStarter:
         print("🔍 检测 Kurtosis 网络端口...")
         
         try:
-            # 尝试从配置文件加载
-            config_file = Path(project_root) / "config" / "kurtosis_ports.json"
-            if config_file.exists():
-                with open(config_file, 'r') as f:
-                    ports = json.load(f)
-                    print("✅ 从配置文件加载端口信息")
-                    return ports
-            
-            # 动态检测端口
+            # 总是重新检测端口，确保使用最新的端口信息
             from scripts.detect_kurtosis_ports import KurtosisPortDetector
             detector = KurtosisPortDetector()
             ports = detector.detect_all_ports()

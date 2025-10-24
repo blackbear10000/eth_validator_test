@@ -189,6 +189,11 @@ case "$COMMAND" in
         python3 "$SCRIPT_DIR/scripts/detect_prysm_grpc_port.py"
         ;;
     
+    clear-port-cache)
+        echo "🧹 清除端口缓存..."
+        python3 "$SCRIPT_DIR/scripts/clear_port_cache.py"
+        ;;
+    
     test-vault-paths)
         echo "🔍 测试 Vault 路径和密钥访问..."
         python3 "$SCRIPT_DIR/scripts/test_vault_paths.py"
