@@ -136,7 +136,7 @@ class ValidatorClientStarter:
             print(f"❌ 获取验证者密钥失败: {e}")
             return []
     
-    def generate_client_config(self, client_type: str, pubkeys: List[str]) -> str:
+    def generate_client_config(self, client_type: str, pubkeys: List[str], chain_config_file: str = None, fee_recipient: str = "0x8943545177806ED17B9F23F0a21ee5948eCaa776") -> str:
         """生成客户端配置"""
         print(f"🔧 生成 {client_type} 客户端配置...")
         
@@ -148,7 +148,7 @@ class ValidatorClientStarter:
         
         if client_type == "prysm":
             config_path = self.config_generator.generate_prysm_config(
-                pubkeys, beacon_url, output_dir
+                pubkeys, beacon_url, output_dir, chain_config_file, fee_recipient
             )
         elif client_type == "lighthouse":
             config_path = self.config_generator.generate_lighthouse_config(
@@ -287,7 +287,7 @@ class ValidatorClientStarter:
             print(f"❌ 启动 Teku 时出错: {e}")
             return False
     
-    def start_validator_client(self, client_type: str, pubkeys: List[str] = None) -> bool:
+    def start_validator_client(self, client_type: str, pubkeys: List[str] = None, chain_config_file: str = None, fee_recipient: str = "0x8943545177806ED17B9F23F0a21ee5948eCaa776") -> bool:
         """启动验证者客户端"""
         print(f"🚀 启动 {client_type} 验证者客户端...")
         
@@ -300,7 +300,7 @@ class ValidatorClientStarter:
         
         # 生成配置
         try:
-            config_path = self.generate_client_config(client_type, pubkeys)
+            config_path = self.generate_client_config(client_type, pubkeys, chain_config_file, fee_recipient)
         except Exception as e:
             print(f"❌ 生成配置失败: {e}")
             return False
@@ -379,6 +379,12 @@ def main():
                        help="检查服务状态")
     parser.add_argument("--config-only", action="store_true", 
                        help="仅生成配置，不启动客户端")
+    parser.add_argument("--chain-config-file", 
+                       default="/Users/yuanshuai/Documents/Github/eth_validator_test/infra/kurtosis/network-config.yaml",
+                       help="网络配置文件路径")
+    parser.add_argument("--fee-recipient", 
+                       default="0x8943545177806ED17B9F23F0a21ee5948eCaa776",
+                       help="费用接收者地址")
     
     args = parser.parse_args()
     
@@ -405,7 +411,7 @@ def main():
             return False
         
         try:
-            config_path = starter.generate_client_config(args.client, pubkeys)
+            config_path = starter.generate_client_config(args.client, pubkeys, args.chain_config_file, args.fee_recipient)
             print(f"✅ 配置已生成: {config_path}")
             return True
         except Exception as e:
@@ -413,12 +419,14 @@ def main():
             return False
     
     # 启动验证者客户端
-    success = starter.start_validator_client(args.client, args.pubkeys)
+    success = starter.start_validator_client(args.client, args.pubkeys, args.chain_config_file, args.fee_recipient)
     
     if success:
         print(f"\n🎉 {args.client} 验证者客户端启动成功!")
         print("📋 验证者现在正在使用 Web3Signer 进行签名")
         print("🔗 Web3Signer URL:", starter.web3signer_url)
+        print(f"📋 网络配置文件: {args.chain_config_file}")
+        print(f"💰 费用接收者: {args.fee_recipient}")
     else:
         print(f"\n❌ {args.client} 验证者客户端启动失败")
     

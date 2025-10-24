@@ -105,7 +105,9 @@ class ValidatorClientConfig:
     def generate_prysm_config(self, 
                              pubkeys: List[str],
                              beacon_node_url: str = "http://localhost:3500",
-                             output_dir: str = "configs/prysm") -> str:
+                             output_dir: str = "configs/prysm",
+                             chain_config_file: str = None,
+                             fee_recipient: str = "0x8943545177806ED17B9F23F0a21ee5948eCaa776") -> str:
         """生成 Prysm 验证者配置"""
         
         print(f"🔧 生成 Prysm 配置...")
@@ -124,11 +126,16 @@ class ValidatorClientConfig:
         # 从 HTTP URL 转换为 gRPC 地址
         grpc_address = self._convert_http_to_grpc(beacon_node_url)
         
+        # 设置默认的网络配置文件路径
+        if chain_config_file is None:
+            chain_config_file = "/Users/yuanshuai/Documents/Github/eth_validator_test/infra/kurtosis/network-config.yaml"
+        
         prysm_config = {
             "beacon-rpc-provider": grpc_address,
             "validators-external-signer-url": self.web3signer_url,
             "validators-external-signer-public-keys": pubkeys,  # 使用数组格式
-            "suggested-fee-recipient": "0x0000000000000000000000000000000000000000",  # 需要用户设置
+            "suggested-fee-recipient": fee_recipient,
+            "chain-config-file": chain_config_file,
             "enable-external-slashing-protection": True,
             "slashing-protection-db-url": "postgres://user:password@localhost:5432/slashing_protection",
             "graffiti": f"Prysm-{datetime.now().strftime('%Y%m%d')}",
@@ -142,13 +149,15 @@ class ValidatorClientConfig:
             yaml.dump(prysm_config, f, default_flow_style=False)
         
         # 3. 生成启动脚本
-        start_script = self._generate_prysm_start_script(pubkeys, config_file)
+        start_script = self._generate_prysm_start_script(pubkeys, config_file, chain_config_file, fee_recipient)
         script_file = output_path / "start-validator.sh"
         with open(script_file, 'w') as f:
             f.write(start_script)
         os.chmod(script_file, 0o755)
         
         print(f"✅ Prysm 配置已生成: {output_path}")
+        print(f"📋 网络配置文件: {chain_config_file}")
+        print(f"💰 费用接收者: {fee_recipient}")
         return str(output_path)
     
     def generate_lighthouse_config(self, 
@@ -265,17 +274,29 @@ class ValidatorClientConfig:
             }
         }
     
-    def _generate_prysm_start_script(self, pubkeys: List[str], config_file: Path) -> str:
+    def _generate_prysm_start_script(self, pubkeys: List[str], config_file: Path, chain_config_file: str = None, fee_recipient: str = "0x8943545177806ED17B9F23F0a21ee5948eCaa776") -> str:
         """生成 Prysm 启动脚本"""
+        # 设置默认的网络配置文件路径
+        if chain_config_file is None:
+            chain_config_file = "/Users/yuanshuai/Documents/Github/eth_validator_test/infra/kurtosis/network-config.yaml"
+        
         return f"""#!/bin/bash
 
 # Prysm 验证者启动脚本
 # 生成时间: {datetime.now().isoformat()}
 # 验证者数量: {len(pubkeys)}
+# 网络配置文件: {chain_config_file}
+# 费用接收者: {fee_recipient}
 
 set -e
 
 echo "🚀 启动 Prysm 验证者..."
+
+# 检查网络配置文件是否存在
+if [ ! -f "{chain_config_file}" ]; then
+    echo "❌ 网络配置文件不存在: {chain_config_file}"
+    exit 1
+fi
 
 # 检查 Web3Signer 是否运行
 echo "🔍 检查 Web3Signer 连接..."
@@ -288,11 +309,15 @@ curl -f {self.web3signer_url}/upcheck || {{
 echo "🔧 启动验证者..."
 prysm validator \\
     --config-file={config_file} \\
+    --chain-config-file={chain_config_file} \\
+    --suggested-fee-recipient={fee_recipient} \\
     --web \\
     --http-port=7500 \\
     --accept-terms-of-use
 
 echo "✅ Prysm 验证者已启动"
+echo "📋 使用网络配置: {chain_config_file}"
+echo "💰 费用接收者: {fee_recipient}"
 """
     
     def _generate_lighthouse_start_script(self, pubkeys: List[str], config_file: Path) -> str:
