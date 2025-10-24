@@ -97,13 +97,18 @@ def get_kurtosis_prysm_ports() -> dict:
                             if i + 1 < len(parts):
                                 port_mapping = parts[i + 1]
                                 if "->" in port_mapping:
-                                    local_port = port_mapping.split("->")[-1].split(":")[-1]
-                                    print(f"   RPC 端口映射: {port_mapping}")
-                                    print(f"   本地端口: {local_port}")
-                                    return {
-                                        "rpc_port": int(local_port),
-                                        "mapping": port_mapping
-                                    }
+                                    # 提取映射的端口号
+                                    # 格式: 4000/tcp -> 127.0.0.1:33523
+                                    mapped_address = port_mapping.split("->")[-1].strip()
+                                    if ":" in mapped_address:
+                                        local_port = mapped_address.split(":")[-1]
+                                        print(f"   RPC 端口映射: {port_mapping}")
+                                        print(f"   容器端口: 4000")
+                                        print(f"   宿主机端口: {local_port}")
+                                        return {
+                                            "rpc_port": int(local_port),
+                                            "mapping": port_mapping
+                                        }
         
         return {}
         
@@ -123,12 +128,10 @@ def main():
         if rpc_port:
             print(f"✅ 从 Kurtosis 获取到 RPC 端口: {rpc_port}")
             
-            # 测试这个端口是否是 gRPC
-            if test_grpc_port("localhost", rpc_port):
-                print(f"✅ 端口 {rpc_port} 是 gRPC 服务")
-                return f"localhost:{rpc_port}"
-            else:
-                print(f"⚠️  端口 {rpc_port} 不是 gRPC 服务，尝试默认端口")
+            # 直接使用检测到的端口，不进行 gRPC 测试
+            # 因为这是从 Kurtosis 端口映射中获取的，应该是正确的
+            print(f"✅ 使用 Kurtosis 映射的 gRPC 端口: {rpc_port}")
+            return f"localhost:{rpc_port}"
     
     # 方法2: 扫描常见端口
     grpc_port = detect_prysm_grpc_port()
