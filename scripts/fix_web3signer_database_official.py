@@ -89,7 +89,11 @@ def run_database_migration(migration_files):
         print(f"\n📋 运行迁移 {i}/{len(migration_files)}: {file_path.name}")
         
         try:
-            # 使用 Docker 执行 psql 命令
+            # 方法1: 通过 stdin 传递 SQL 内容
+            with open(file_path, 'r', encoding='utf-8') as f:
+                sql_content = f.read()
+            
+            # 使用 Docker 执行 psql 命令，通过 stdin 传递 SQL 内容
             cmd = [
                 "docker", "exec", "-i", "postgres",
                 "psql",
@@ -97,27 +101,64 @@ def run_database_migration(migration_files):
                 "--host=localhost",
                 "--port=5432",
                 "--dbname=web3signer",
-                "--username=postgres",
-                f"--file={file_path}"
+                "--username=postgres"
             ]
             
             print(f"🔧 执行命令: {' '.join(cmd)}")
+            print(f"📄 SQL 文件内容长度: {len(sql_content)} 字符")
             
-            result = subprocess.run(cmd, capture_output=True, text=True, timeout=60)
+            result = subprocess.run(cmd, input=sql_content, capture_output=True, text=True, timeout=60)
             
             if result.returncode == 0:
                 print(f"✅ 迁移 {file_path.name} 成功")
                 success_count += 1
             else:
-                print(f"❌ 迁移 {file_path.name} 失败")
+                print(f"❌ 迁移 {file_path.name} 失败 (stdin 方式)")
                 print(f"   错误输出: {result.stderr}")
                 print(f"   标准输出: {result.stdout}")
                 
-                # 某些迁移可能已经执行过，继续执行其他迁移
-                if "already exists" in result.stderr or "duplicate key" in result.stderr:
-                    print(f"⚠️  迁移 {file_path.name} 可能已经执行过，继续下一个")
-                    success_count += 1
-                else:
+                # 尝试备选方案：复制文件到容器内
+                print(f"🔄 尝试备选方案：复制文件到容器内...")
+                try:
+                    # 复制文件到容器内
+                    copy_cmd = ["docker", "cp", str(file_path), "postgres:/tmp/"]
+                    copy_result = subprocess.run(copy_cmd, capture_output=True, text=True, timeout=30)
+                    
+                    if copy_result.returncode == 0:
+                        # 使用容器内的文件路径
+                        container_file = f"/tmp/{file_path.name}"
+                        cmd2 = [
+                            "docker", "exec", "-i", "postgres",
+                            "psql",
+                            "--echo-all",
+                            "--host=localhost",
+                            "--port=5432",
+                            "--dbname=web3signer",
+                            "--username=postgres",
+                            f"--file={container_file}"
+                        ]
+                        
+                        print(f"🔧 备选命令: {' '.join(cmd2)}")
+                        result2 = subprocess.run(cmd2, capture_output=True, text=True, timeout=60)
+                        
+                        if result2.returncode == 0:
+                            print(f"✅ 迁移 {file_path.name} 成功 (备选方案)")
+                            success_count += 1
+                        else:
+                            print(f"❌ 迁移 {file_path.name} 失败 (备选方案)")
+                            print(f"   错误输出: {result2.stderr}")
+                            print(f"   标准输出: {result2.stdout}")
+                            
+                            # 某些迁移可能已经执行过，继续执行其他迁移
+                            if "already exists" in result2.stderr or "duplicate key" in result2.stderr:
+                                print(f"⚠️  迁移 {file_path.name} 可能已经执行过，继续下一个")
+                                success_count += 1
+                    else:
+                        print(f"❌ 复制文件到容器失败: {copy_result.stderr}")
+                        print(f"❌ 迁移 {file_path.name} 出现严重错误")
+                        
+                except Exception as e:
+                    print(f"❌ 备选方案失败: {e}")
                     print(f"❌ 迁移 {file_path.name} 出现严重错误")
                     
         except subprocess.TimeoutExpired:
