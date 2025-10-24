@@ -228,6 +228,11 @@ case "$COMMAND" in
         echo "🧪 测试端口检测结果..."
         python3 "$SCRIPT_DIR/scripts/test_port_detection_result.py"
         ;;
+
+    debug-multiline-parsing)
+        echo "🔍 调试多行端口解析..."
+        python3 "$SCRIPT_DIR/scripts/debug_multiline_parsing.py"
+        ;;
     
     test-vault-paths)
         echo "🔍 测试 Vault 路径和密钥访问..."
