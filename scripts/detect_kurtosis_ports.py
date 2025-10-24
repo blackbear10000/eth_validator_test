@@ -40,50 +40,9 @@ class KurtosisPortDetector:
             ], capture_output=True, text=True, check=True)
             
             print(f"🔍 Kurtosis 输出长度: {len(result.stdout)} 字符")
-            print(f"🔍 输出前 200 字符: {result.stdout[:200]}")
             
-            # 尝试多种解析方法
-            try:
-                # 方法1: 直接解析整个输出
-                if result.stdout.strip().startswith('{'):
-                    return json.loads(result.stdout.strip())
-            except:
-                pass
-            
-            try:
-                # 方法2: 查找 JSON 部分
-                lines = result.stdout.strip().split('\n')
-                json_start = False
-                json_lines = []
-                
-                for line in lines:
-                    if line.strip().startswith('{'):
-                        json_start = True
-                    if json_start:
-                        json_lines.append(line)
-                
-                if json_lines:
-                    json_str = '\n'.join(json_lines)
-                    print(f"🔍 提取的 JSON: {json_str[:200]}...")
-                    return json.loads(json_str)
-            except Exception as e:
-                print(f"⚠️  JSON 解析失败: {e}")
-            
-            try:
-                # 方法3: 查找包含 "services" 的行
-                lines = result.stdout.strip().split('\n')
-                for i, line in enumerate(lines):
-                    if '"services"' in line:
-                        # 从这一行开始解析
-                        json_lines = lines[i:]
-                        json_str = '\n'.join(json_lines)
-                        print(f"🔍 从 services 开始的 JSON: {json_str[:200]}...")
-                        return json.loads(json_str)
-            except Exception as e:
-                print(f"⚠️  从 services 解析失败: {e}")
-            
-            print("❌ 无法解析 Kurtosis 输出")
-            return None
+            # 解析表格格式的输出
+            return self._parse_table_output(result.stdout)
             
         except subprocess.CalledProcessError as e:
             print(f"❌ 无法获取 enclave 信息: {e}")
@@ -93,6 +52,89 @@ class KurtosisPortDetector:
             return None
         except Exception as e:
             print(f"❌ 解析 enclave 信息失败: {e}")
+            return None
+    
+    def _parse_table_output(self, output: str) -> Dict:
+        """解析 Kurtosis 表格格式输出"""
+        print("🔍 解析表格格式输出...")
+        
+        services = {}
+        lines = output.strip().split('\n')
+        
+        # 查找 User Services 部分
+        in_services_section = False
+        for line in lines:
+            if "User Services" in line:
+                in_services_section = True
+                continue
+            
+            if in_services_section and line.strip():
+                # 解析服务行
+                if "UUID" in line and "Name" in line and "Ports" in line:
+                    continue  # 跳过表头
+                
+                if line.strip().startswith("="):
+                    break  # 遇到下一个部分，结束
+                
+                # 解析服务信息
+                service_info = self._parse_service_line(line)
+                if service_info:
+                    services[service_info['name']] = service_info
+        
+        print(f"🔍 解析到 {len(services)} 个服务")
+        return {"services": services}
+    
+    def _parse_service_line(self, line: str) -> Optional[Dict]:
+        """解析单个服务行"""
+        try:
+            # 分割 UUID、Name、Ports、Status
+            parts = line.split()
+            if len(parts) < 4:
+                return None
+            
+            # 提取 UUID
+            uuid = parts[0]
+            
+            # 提取服务名称（可能包含多个单词）
+            name_parts = []
+            ports_start = -1
+            
+            for i, part in enumerate(parts[1:], 1):
+                if "http:" in part or "tcp:" in part or "udp:" in part:
+                    ports_start = i
+                    break
+                name_parts.append(part)
+            
+            if ports_start == -1:
+                return None
+            
+            service_name = " ".join(name_parts)
+            
+            # 提取端口信息
+            ports = {}
+            port_parts = parts[ports_start:]
+            
+            for i in range(0, len(port_parts), 2):
+                if i + 1 < len(port_parts):
+                    port_name = port_parts[i].rstrip(':')
+                    port_mapping = port_parts[i + 1]
+                    
+                    # 解析端口映射 "http: 3500/tcp -> http://127.0.0.1:33522"
+                    if "->" in port_mapping:
+                        local_port = port_mapping.split("->")[-1].split(":")[-1]
+                        ports[port_name] = {
+                            "number": int(local_port),
+                            "mapping": port_mapping
+                        }
+            
+            return {
+                "name": service_name,
+                "uuid": uuid,
+                "ports": ports
+            }
+            
+        except Exception as e:
+            print(f"⚠️  解析服务行失败: {line[:50]}... - {e}")
             return None
     
     def detect_beacon_ports(self) -> Dict[str, str]:
@@ -120,30 +162,30 @@ class KurtosisPortDetector:
                 ports = service_info.get('ports', {})
                 print(f"   端口: {list(ports.keys())}")
                 
-                # 查找 Prysm Beacon API
-                if 'prysm' in service_name.lower():
+                # 查找 Prysm Beacon API (cl-1-prysm-geth)
+                if 'prysm' in service_name.lower() and 'cl-' in service_name.lower():
                     for port_name, port_info in ports.items():
-                        if 'beacon' in port_name.lower() or 'api' in port_name.lower():
+                        if port_name == 'http':  # Prysm 使用 http 端口作为 Beacon API
                             port = port_info.get('number')
                             if port:
                                 beacon_ports['prysm'] = f"http://localhost:{port}"
                                 print(f"✅ 找到 Prysm Beacon API: {beacon_ports['prysm']}")
                                 break
                 
-                # 查找 Lighthouse Beacon API
-                elif 'lighthouse' in service_name.lower():
+                # 查找 Lighthouse Beacon API (cl-2-lighthouse-reth)
+                elif 'lighthouse' in service_name.lower() and 'cl-' in service_name.lower():
                     for port_name, port_info in ports.items():
-                        if 'beacon' in port_name.lower() or 'api' in port_name.lower():
+                        if port_name == 'http':  # Lighthouse 使用 http 端口作为 Beacon API
                             port = port_info.get('number')
                             if port:
                                 beacon_ports['lighthouse'] = f"http://localhost:{port}"
                                 print(f"✅ 找到 Lighthouse Beacon API: {beacon_ports['lighthouse']}")
                                 break
                 
-                # 查找 Teku Beacon API
-                elif 'teku' in service_name.lower():
+                # 查找 Teku Beacon API (如果有的话)
+                elif 'teku' in service_name.lower() and 'cl-' in service_name.lower():
                     for port_name, port_info in ports.items():
-                        if 'beacon' in port_name.lower() or 'api' in port_name.lower():
+                        if port_name == 'http':  # Teku 使用 http 端口作为 Beacon API
                             port = port_info.get('number')
                             if port:
                                 beacon_ports['teku'] = f"http://localhost:{port}"
@@ -170,27 +212,36 @@ class KurtosisPortDetector:
         try:
             services = enclave_info.get('services', {})
             
-            # 查找 Geth Execution API
+            # 查找 Execution API 服务
             for service_name, service_info in services.items():
-                if 'geth' in service_name.lower() and 'execution' in service_name.lower():
-                    ports = service_info.get('ports', {})
-                    if 'http-rpc' in ports:
-                        port = ports['http-rpc'].get('number')
-                        if port:
-                            execution_ports['geth'] = f"http://localhost:{port}"
-                            print(f"✅ 找到 Geth Execution API: {execution_ports['geth']}")
+                print(f"🔍 检查 Execution 服务: {service_name}")
+                ports = service_info.get('ports', {})
+                print(f"   端口: {list(ports.keys())}")
                 
-                # 查找 Reth Execution API
-                elif 'reth' in service_name.lower() and 'execution' in service_name.lower():
-                    ports = service_info.get('ports', {})
-                    if 'http-rpc' in ports:
-                        port = ports['http-rpc'].get('number')
-                        if port:
-                            execution_ports['reth'] = f"http://localhost:{port}"
-                            print(f"✅ 找到 Reth Execution API: {execution_ports['reth']}")
+                # 查找 Geth Execution API (el-1-geth-prysm)
+                if 'geth' in service_name.lower() and 'el-' in service_name.lower():
+                    for port_name, port_info in ports.items():
+                        if port_name == 'rpc':  # Geth 使用 rpc 端口作为 HTTP API
+                            port = port_info.get('number')
+                            if port:
+                                execution_ports['geth'] = f"http://localhost:{port}"
+                                print(f"✅ 找到 Geth Execution API: {execution_ports['geth']}")
+                                break
+                
+                # 查找 Reth Execution API (el-2-reth-lighthouse)
+                elif 'reth' in service_name.lower() and 'el-' in service_name.lower():
+                    for port_name, port_info in ports.items():
+                        if port_name == 'rpc':  # Reth 使用 rpc 端口作为 HTTP API
+                            port = port_info.get('number')
+                            if port:
+                                execution_ports['reth'] = f"http://localhost:{port}"
+                                print(f"✅ 找到 Reth Execution API: {execution_ports['reth']}")
+                                break
         
         except Exception as e:
             print(f"❌ 检测 Execution 端口失败: {e}")
+            import traceback
+            print(f"详细错误: {traceback.format_exc()}")
         
         return execution_ports
     
