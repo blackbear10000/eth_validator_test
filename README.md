@@ -134,6 +134,30 @@ export VAULT_TOKEN=dev-root-token
 python3 scripts/detect_kurtosis_fork_version.py
 ```
 
+### Scenario 7: Start Validator Client with Web3Signer (Kurtosis Compatible)
+```bash
+# 1. Detect Kurtosis network ports dynamically
+./validator.sh detect-kurtosis-ports
+
+# 2. Check all services are running (including Kurtosis)
+./validator.sh check-services
+
+# 3. Load keys to Web3Signer
+./validator.sh load-keys
+
+# 4. Start validator client (auto-detects Kurtosis ports)
+./validator.sh start-validator prysm
+
+# 5. Monitor validator performance
+./validator.sh monitor
+
+# Alternative: Start Lighthouse validator
+./validator.sh start-validator lighthouse
+
+# Alternative: Start Teku validator  
+./validator.sh start-validator teku
+```
+
 ## 🎯 Command Reference
 
 ### Infrastructure Commands
@@ -162,6 +186,16 @@ python3 scripts/detect_kurtosis_fork_version.py
 ./validator.sh create-deposits-with-address --withdrawal-address 0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266  # Create with custom withdrawal address
 ./validator.sh validate-deposits                  # Validate deposit data using ethstaker-deposit-cli
 ./validator.sh submit-deposits                    # Submit existing deposit_data.json to network (auto-copied to standard location)
+```
+
+### Validator Client Operations
+```bash
+./validator.sh detect-kurtosis-ports  # Detect Kurtosis network ports dynamically
+./validator.sh check-services        # Check all services status
+./validator.sh start-validator prysm        # Start Prysm validator client
+./validator.sh start-validator lighthouse  # Start Lighthouse validator client
+./validator.sh start-validator teku        # Start Teku validator client
+./validator.sh start-validator prysm --config-only  # Generate config only
 ```
 
 ### Monitoring & Testing

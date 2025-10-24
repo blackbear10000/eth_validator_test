@@ -134,6 +134,21 @@ case "$COMMAND" in
         python3 utils/web3signer_workflow.py troubleshoot
         ;;
     
+    start-validator)
+        echo "🚀 启动 Validator Client..."
+        python3 "$SCRIPT_DIR/scripts/start_validator_client.py" "$@"
+        ;;
+    
+    check-services)
+        echo "🔍 检查服务状态..."
+        python3 "$SCRIPT_DIR/scripts/start_validator_client.py" --check-services
+        ;;
+    
+    detect-kurtosis-ports)
+        echo "🔍 检测 Kurtosis 网络端口..."
+        python3 "$SCRIPT_DIR/scripts/detect_kurtosis_ports.py" --save
+        ;;
+    
     test-vault-paths)
         echo "🔍 测试 Vault 路径和密钥访问..."
         python3 "$SCRIPT_DIR/scripts/test_vault_paths.py"
