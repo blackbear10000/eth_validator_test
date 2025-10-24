@@ -71,6 +71,26 @@ case "$COMMAND" in
         echo "💰 Creating deposit data with custom fork version..."
         python3 "$SCRIPT_DIR/scripts/create_deposits_with_fork_version.py" "$@"
         ;;
+    
+    create-deposits-for-active-keys)
+        echo "💰 Creating deposit data for active keys..."
+        python3 "$SCRIPT_DIR/scripts/create_deposits_for_active_keys.py" "$@"
+        ;;
+    
+    check-active-keys)
+        echo "🔍 Checking active keys status..."
+        python3 "$SCRIPT_DIR/scripts/create_deposits_for_active_keys.py" --check-status
+        ;;
+    
+    consistent-workflow)
+        echo "🚀 Running consistent workflow (activate keys + create deposits)..."
+        python3 "$SCRIPT_DIR/scripts/consistent_workflow.py" "$@"
+        ;;
+    
+    check-workflow-status)
+        echo "🔍 Checking workflow status..."
+        python3 "$SCRIPT_DIR/scripts/consistent_workflow.py" --check-status
+        ;;
     create-deposits-with-address)
         echo "💰 Creating deposit data with custom withdrawal address..."
         python3 core/validator_manager.py create-deposits-with-address "$@"

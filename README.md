@@ -29,11 +29,11 @@ export VAULT_TOKEN=dev-root-token
 ./validator.sh init-pool --count 10
 
 # 3. Activate first batch of validators
-./validator.sh activate-keys --count 2
+./validator.sh activate-keys --count 4
 
 # 4. Create deposits (uses only active keys)
 # ./validator.sh create-deposits
-./validator.sh create-deposits-with-fork-version --fork-version 0x10000038 --count 2 --withdrawal-address 0x8943545177806ED17B9F23F0a21ee5948eCaa776
+./validator.sh create-deposits-with-fork-version --fork-version 0x10000038 --count 4 --withdrawal-address 0x8943545177806ED17B9F23F0a21ee5948eCaa776
 
 # 5. Validate deposits (optional)
 ./validator.sh validate-deposits
