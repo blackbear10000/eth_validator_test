@@ -94,7 +94,7 @@ class ValidatorClientConfig:
             "graffiti": f"Prysm-{datetime.now().strftime('%Y%m%d')}",
             "log-format": "json",
             "log-level": "info",
-            "monitoring-port": "8082"  # 避免端口冲突
+            "monitoring-port": 8082  # 避免端口冲突，使用整数类型
         }
         
         config_file = output_path / "validator-config.yaml"
