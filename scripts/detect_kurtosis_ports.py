@@ -39,19 +39,50 @@ class KurtosisPortDetector:
                 "kurtosis", "enclave", "inspect", self.enclave_name
             ], capture_output=True, text=True, check=True)
             
-            # 解析 JSON 输出
-            lines = result.stdout.strip().split('\n')
-            json_start = False
-            json_lines = []
+            print(f"🔍 Kurtosis 输出长度: {len(result.stdout)} 字符")
+            print(f"🔍 输出前 200 字符: {result.stdout[:200]}")
             
-            for line in lines:
-                if line.strip().startswith('{'):
-                    json_start = True
-                if json_start:
-                    json_lines.append(line)
+            # 尝试多种解析方法
+            try:
+                # 方法1: 直接解析整个输出
+                if result.stdout.strip().startswith('{'):
+                    return json.loads(result.stdout.strip())
+            except:
+                pass
             
-            if json_lines:
-                return json.loads('\n'.join(json_lines))
+            try:
+                # 方法2: 查找 JSON 部分
+                lines = result.stdout.strip().split('\n')
+                json_start = False
+                json_lines = []
+                
+                for line in lines:
+                    if line.strip().startswith('{'):
+                        json_start = True
+                    if json_start:
+                        json_lines.append(line)
+                
+                if json_lines:
+                    json_str = '\n'.join(json_lines)
+                    print(f"🔍 提取的 JSON: {json_str[:200]}...")
+                    return json.loads(json_str)
+            except Exception as e:
+                print(f"⚠️  JSON 解析失败: {e}")
+            
+            try:
+                # 方法3: 查找包含 "services" 的行
+                lines = result.stdout.strip().split('\n')
+                for i, line in enumerate(lines):
+                    if '"services"' in line:
+                        # 从这一行开始解析
+                        json_lines = lines[i:]
+                        json_str = '\n'.join(json_lines)
+                        print(f"🔍 从 services 开始的 JSON: {json_str[:200]}...")
+                        return json.loads(json_str)
+            except Exception as e:
+                print(f"⚠️  从 services 解析失败: {e}")
+            
+            print("❌ 无法解析 Kurtosis 输出")
             return None
             
         except subprocess.CalledProcessError as e:
@@ -77,37 +108,52 @@ class KurtosisPortDetector:
         
         try:
             services = enclave_info.get('services', {})
+            print(f"🔍 找到 {len(services)} 个服务")
             
-            # 查找 Prysm Beacon API
+            # 打印所有服务名称以便调试
+            for service_name in services.keys():
+                print(f"   📋 服务: {service_name}")
+            
+            # 查找 Beacon API 服务
             for service_name, service_info in services.items():
-                if 'prysm' in service_name.lower() and 'beacon' in service_name.lower():
-                    ports = service_info.get('ports', {})
-                    if 'beacon-api' in ports:
-                        port = ports['beacon-api'].get('number')
-                        if port:
-                            beacon_ports['prysm'] = f"http://localhost:{port}"
-                            print(f"✅ 找到 Prysm Beacon API: {beacon_ports['prysm']}")
+                print(f"🔍 检查服务: {service_name}")
+                ports = service_info.get('ports', {})
+                print(f"   端口: {list(ports.keys())}")
+                
+                # 查找 Prysm Beacon API
+                if 'prysm' in service_name.lower():
+                    for port_name, port_info in ports.items():
+                        if 'beacon' in port_name.lower() or 'api' in port_name.lower():
+                            port = port_info.get('number')
+                            if port:
+                                beacon_ports['prysm'] = f"http://localhost:{port}"
+                                print(f"✅ 找到 Prysm Beacon API: {beacon_ports['prysm']}")
+                                break
                 
                 # 查找 Lighthouse Beacon API
-                elif 'lighthouse' in service_name.lower() and 'beacon' in service_name.lower():
-                    ports = service_info.get('ports', {})
-                    if 'beacon-api' in ports:
-                        port = ports['beacon-api'].get('number')
-                        if port:
-                            beacon_ports['lighthouse'] = f"http://localhost:{port}"
-                            print(f"✅ 找到 Lighthouse Beacon API: {beacon_ports['lighthouse']}")
+                elif 'lighthouse' in service_name.lower():
+                    for port_name, port_info in ports.items():
+                        if 'beacon' in port_name.lower() or 'api' in port_name.lower():
+                            port = port_info.get('number')
+                            if port:
+                                beacon_ports['lighthouse'] = f"http://localhost:{port}"
+                                print(f"✅ 找到 Lighthouse Beacon API: {beacon_ports['lighthouse']}")
+                                break
                 
                 # 查找 Teku Beacon API
-                elif 'teku' in service_name.lower() and 'beacon' in service_name.lower():
-                    ports = service_info.get('ports', {})
-                    if 'beacon-api' in ports:
-                        port = ports['beacon-api'].get('number')
-                        if port:
-                            beacon_ports['teku'] = f"http://localhost:{port}"
-                            print(f"✅ 找到 Teku Beacon API: {beacon_ports['teku']}")
+                elif 'teku' in service_name.lower():
+                    for port_name, port_info in ports.items():
+                        if 'beacon' in port_name.lower() or 'api' in port_name.lower():
+                            port = port_info.get('number')
+                            if port:
+                                beacon_ports['teku'] = f"http://localhost:{port}"
+                                print(f"✅ 找到 Teku Beacon API: {beacon_ports['teku']}")
+                                break
         
         except Exception as e:
             print(f"❌ 检测 Beacon 端口失败: {e}")
+            import traceback
+            print(f"详细错误: {traceback.format_exc()}")
         
         return beacon_ports
     

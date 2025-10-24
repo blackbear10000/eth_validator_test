@@ -154,6 +154,11 @@ case "$COMMAND" in
         python3 "$SCRIPT_DIR/scripts/setup_kurtosis_alternative.py"
         ;;
     
+    debug-kurtosis)
+        echo "🔍 调试 Kurtosis 输出格式..."
+        python3 "$SCRIPT_DIR/scripts/debug_kurtosis_output.py"
+        ;;
+    
     test-vault-paths)
         echo "🔍 测试 Vault 路径和密钥访问..."
         python3 "$SCRIPT_DIR/scripts/test_vault_paths.py"
