@@ -193,6 +193,11 @@ case "$COMMAND" in
         echo "🧹 清除端口缓存..."
         python3 "$SCRIPT_DIR/scripts/clear_port_cache.py"
         ;;
+
+    select-beacon-api)
+        echo "🔍 智能选择 Beacon API..."
+        python3 "$SCRIPT_DIR/scripts/select_beacon_api.py"
+        ;;
     
     test-vault-paths)
         echo "🔍 测试 Vault 路径和密钥访问..."

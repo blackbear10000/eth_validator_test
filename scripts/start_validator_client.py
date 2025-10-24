@@ -34,18 +34,59 @@ class ValidatorClientStarter:
         # 动态检测 Kurtosis 端口
         self.kurtosis_ports = self._detect_kurtosis_ports()
         
-        # Beacon 节点配置（动态检测）
+        # Beacon 节点配置（智能选择可用的 API）
         detected_beacon = self.kurtosis_ports.get("beacon", {})
+        
+        # 智能选择最佳的 beacon API
+        available_beacon = self._select_best_beacon_api(detected_beacon)
+        
+        # 所有 validator client 都使用同一个可用的 beacon API
         self.beacon_urls = {
-            "prysm": detected_beacon.get("prysm", "http://localhost:3500"),
-            "lighthouse": detected_beacon.get("lighthouse", "http://localhost:5052"), 
-            "teku": detected_beacon.get("teku", "http://localhost:5051")
+            "prysm": available_beacon,
+            "lighthouse": available_beacon, 
+            "teku": available_beacon
         }
         
-        # 打印检测到的端口信息
-        print(f"🔍 检测到的 Beacon 端口:")
-        for client_type, url in self.beacon_urls.items():
-            print(f"   {client_type}: {url}")
+        print(f"🔍 统一使用 Beacon API: {available_beacon}")
+    
+    def _select_best_beacon_api(self, detected_beacon: Dict[str, str]) -> str:
+        """智能选择最佳的 beacon API"""
+        print("🔍 选择最佳的 Beacon API...")
+        
+        # 优先级顺序：Prysm > Lighthouse > Teku
+        priority_order = ["prysm", "lighthouse", "teku"]
+        
+        for client_type in priority_order:
+            if client_type in detected_beacon and detected_beacon[client_type]:
+                api_url = detected_beacon[client_type]
+                print(f"🧪 测试 {client_type} Beacon API: {api_url}")
+                
+                if self._test_beacon_api(api_url):
+                    print(f"✅ {client_type} Beacon API 可用: {api_url}")
+                    return api_url
+                else:
+                    print(f"❌ {client_type} Beacon API 不可用: {api_url}")
+        
+        # 如果没有找到可用的 API，返回第一个可用的
+        for client_type, api_url in detected_beacon.items():
+            if api_url:
+                print(f"⚠️  使用第一个可用的 API: {client_type} -> {api_url}")
+                return api_url
+        
+        # 最后使用默认配置
+        print("⚠️  使用默认 Beacon API")
+        return "http://localhost:3500"
+    
+    def _test_beacon_api(self, url: str) -> bool:
+        """测试 beacon API 是否可用"""
+        try:
+            import requests
+            # 测试健康检查端点
+            health_url = f"{url}/eth/v1/node/health"
+            response = requests.get(health_url, timeout=5)
+            return response.status_code == 200
+        except:
+            return False
     
     def _detect_kurtosis_ports(self) -> Dict[str, Dict[str, str]]:
         """动态检测 Kurtosis 网络端口"""

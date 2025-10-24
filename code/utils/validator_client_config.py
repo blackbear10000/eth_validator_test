@@ -43,10 +43,16 @@ class ValidatorClientConfig:
         # 从 HTTP URL 转换为 gRPC 地址
         if beacon_url.startswith("http://"):
             host = beacon_url.replace("http://", "").split(":")[0]
-            # 使用检测到的实际端口，而不是硬编码的 4000
             if ":" in beacon_url:
                 port = beacon_url.split(":")[-1]
-                return f"{host}:{port}"
+                # 智能判断：如果是 Lighthouse 的 HTTP API，需要转换为 gRPC
+                # Lighthouse HTTP API 通常在高端口，gRPC 在低端口
+                if int(port) > 5000:  # 可能是 Lighthouse HTTP API
+                    # 尝试使用标准 gRPC 端口
+                    return f"{host}:4000"
+                else:
+                    # 使用检测到的端口
+                    return f"{host}:{port}"
             else:
                 return f"{host}:4000"
         elif beacon_url.startswith("https://"):
