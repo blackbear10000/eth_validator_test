@@ -238,6 +238,11 @@ case "$COMMAND" in
         echo "🔑 管理验证者密钥..."
         python3 "$SCRIPT_DIR/scripts/manage_validator_keys.py" "$@"
         ;;
+
+    check-beacon-sync)
+        echo "🔍 检查 Beacon 链同步状态..."
+        python3 "$SCRIPT_DIR/scripts/check_beacon_sync.py"
+        ;;
     
     test-vault-paths)
         echo "🔍 测试 Vault 路径和密钥访问..."
