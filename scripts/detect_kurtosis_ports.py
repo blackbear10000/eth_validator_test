@@ -62,6 +62,8 @@ class KurtosisPortDetector:
         
         # 查找 User Services 部分
         in_services_section = False
+        current_service = None
+        
         for line in lines:
             if "User Services" in line:
                 in_services_section = True
@@ -75,13 +77,52 @@ class KurtosisPortDetector:
                 if line.strip().startswith("="):
                     break  # 遇到下一个部分，结束
                 
-                # 解析服务信息
-                service_info = self._parse_service_line(line)
-                if service_info:
-                    services[service_info['name']] = service_info
+                # 检查是否是新的服务行（包含 UUID）
+                if re.match(r'^[a-f0-9]{12}\s+', line):
+                    # 这是新的服务行
+                    service_info = self._parse_service_line(line)
+                    if service_info:
+                        current_service = service_info['name']
+                        services[current_service] = service_info
+                elif current_service and line.strip().startswith(' '):
+                    # 这是当前服务的端口信息行
+                    self._parse_additional_ports(line, services[current_service])
         
         print(f"🔍 解析到 {len(services)} 个服务")
         return {"services": services}
+    
+    def _parse_additional_ports(self, line: str, service_info: Dict):
+        """解析额外的端口信息行"""
+        try:
+            # 解析端口信息
+            ports = {}
+            
+            # 查找所有端口映射
+            port_pattern = r'(\w+):\s*(\d+)/(\w+)\s*->\s*([^\s]+)'
+            port_matches = re.findall(port_pattern, line)
+            
+            for port_name, internal_port, protocol, external_mapping in port_matches:
+                # 从外部映射中提取本地端口
+                if ":" in external_mapping:
+                    local_port = external_mapping.split(":")[-1]
+                    try:
+                        ports[port_name] = {
+                            "number": int(local_port),
+                            "mapping": f"{port_name}: {internal_port}/{protocol} -> {external_mapping}",
+                            "internal_port": int(internal_port),
+                            "protocol": protocol
+                        }
+                        print(f"   额外端口 {port_name}: {local_port}")
+                    except ValueError:
+                        print(f"   ⚠️  无效端口号: {local_port}")
+            
+            # 将新端口添加到现有端口
+            if 'ports' not in service_info:
+                service_info['ports'] = {}
+            service_info['ports'].update(ports)
+            
+        except Exception as e:
+            print(f"⚠️  解析额外端口失败: {line[:50]}... - {e}")
     
     def _parse_service_line(self, line: str) -> Optional[Dict]:
         """解析单个服务行"""
