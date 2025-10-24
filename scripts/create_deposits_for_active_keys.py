@@ -23,8 +23,30 @@ def create_deposits_for_active_keys(fork_version: str, count: int = None,
     print(f"📋 Fork version: {fork_version}")
     
     try:
-        from code.core.vault_key_manager import VaultKeyManager
-        from code.utils.deposit_generator import DepositGenerator
+        # Add project root to path
+        project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        if project_root not in sys.path:
+            sys.path.insert(0, project_root)
+        code_path = os.path.join(project_root, 'code')
+        if code_path not in sys.path:
+            sys.path.insert(0, code_path)
+        
+        # Import modules
+        import importlib.util
+        
+        # Import VaultKeyManager
+        vault_module_path = os.path.join(project_root, 'code', 'core', 'vault_key_manager.py')
+        spec = importlib.util.spec_from_file_location("vault_key_manager", vault_module_path)
+        vault_module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(vault_module)
+        VaultKeyManager = vault_module.VaultKeyManager
+        
+        # Import DepositGenerator
+        deposit_module_path = os.path.join(project_root, 'code', 'utils', 'deposit_generator.py')
+        spec = importlib.util.spec_from_file_location("deposit_generator", deposit_module_path)
+        deposit_module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(deposit_module)
+        DepositGenerator = deposit_module.DepositGenerator
         
         # 1. 获取已激活的密钥
         vault_manager = VaultKeyManager()
@@ -131,7 +153,21 @@ def check_active_keys_status() -> Dict[str, Any]:
     print("🔍 检查已激活密钥状态...")
     
     try:
-        from code.core.vault_key_manager import VaultKeyManager
+        # Add project root to path
+        project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        if project_root not in sys.path:
+            sys.path.insert(0, project_root)
+        code_path = os.path.join(project_root, 'code')
+        if code_path not in sys.path:
+            sys.path.insert(0, code_path)
+        
+        # Import VaultKeyManager using importlib
+        import importlib.util
+        vault_module_path = os.path.join(project_root, 'code', 'core', 'vault_key_manager.py')
+        spec = importlib.util.spec_from_file_location("vault_key_manager", vault_module_path)
+        vault_module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(vault_module)
+        VaultKeyManager = vault_module.VaultKeyManager
         
         vault_manager = VaultKeyManager()
         active_keys = vault_manager.list_keys(status='active')
@@ -168,7 +204,7 @@ def check_active_keys_status() -> Dict[str, Any]:
 def main():
     """主函数"""
     parser = argparse.ArgumentParser(description="为已激活的密钥创建存款数据")
-    parser.add_argument("--fork-version", required=True, help="Fork version (e.g., 0x10000038)")
+    parser.add_argument("--fork-version", help="Fork version (e.g., 0x10000038)")
     parser.add_argument("--count", type=int, help="使用的密钥数量（默认使用所有激活的密钥）")
     parser.add_argument("--withdrawal-address", 
                        default="0x8943545177806ED17B9F23F0a21ee5948eCaa776",
@@ -187,6 +223,12 @@ def main():
         else:
             print(f"\n✅ 找到 {status['total_active']} 个已激活的密钥")
             sys.exit(0)
+    
+    # 验证必需参数
+    if not args.fork_version:
+        print("❌ 请指定 --fork-version 参数")
+        print("💡 示例: --fork-version 0x10000038")
+        sys.exit(1)
     
     success = create_deposits_for_active_keys(
         fork_version=args.fork_version,

@@ -11,8 +11,8 @@ from pathlib import Path
 
 # Add project root to path
 project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-sys.path.append(project_root)
-sys.path.append(os.path.join(project_root, 'code'))
+sys.path.insert(0, project_root)
+sys.path.insert(0, os.path.join(project_root, 'code'))
 
 def run_consistent_workflow(count: int = 4, fork_version: str = "0x10000038", 
                           withdrawal_address: str = "0x8943545177806ED17B9F23F0a21ee5948eCaa776") -> bool:
@@ -21,8 +21,22 @@ def run_consistent_workflow(count: int = 4, fork_version: str = "0x10000038",
     print("=" * 50)
     
     try:
-        from code.core.validator_manager import ExternalValidatorManager
-        from code.core.vault_key_manager import VaultKeyManager
+        # Import modules using importlib
+        import importlib.util
+        
+        # Import ExternalValidatorManager
+        validator_module_path = os.path.join(project_root, 'code', 'core', 'validator_manager.py')
+        spec = importlib.util.spec_from_file_location("validator_manager", validator_module_path)
+        validator_module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(validator_module)
+        ExternalValidatorManager = validator_module.ExternalValidatorManager
+        
+        # Import VaultKeyManager
+        vault_module_path = os.path.join(project_root, 'code', 'core', 'vault_key_manager.py')
+        spec = importlib.util.spec_from_file_location("vault_key_manager", vault_module_path)
+        vault_module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(vault_module)
+        VaultKeyManager = vault_module.VaultKeyManager
         
         # 1. 检查密钥池状态
         print("🔍 步骤 1: 检查密钥池状态...")
@@ -111,8 +125,22 @@ def check_workflow_status() -> dict:
     print("🔍 检查工作流程状态...")
     
     try:
-        from code.core.validator_manager import ExternalValidatorManager
-        from code.core.vault_key_manager import VaultKeyManager
+        # Import modules using importlib
+        import importlib.util
+        
+        # Import ExternalValidatorManager
+        validator_module_path = os.path.join(project_root, 'code', 'core', 'validator_manager.py')
+        spec = importlib.util.spec_from_file_location("validator_manager", validator_module_path)
+        validator_module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(validator_module)
+        ExternalValidatorManager = validator_module.ExternalValidatorManager
+        
+        # Import VaultKeyManager
+        vault_module_path = os.path.join(project_root, 'code', 'core', 'vault_key_manager.py')
+        spec = importlib.util.spec_from_file_location("vault_key_manager", vault_module_path)
+        vault_module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(vault_module)
+        VaultKeyManager = vault_module.VaultKeyManager
         
         # 检查密钥池状态
         manager = ExternalValidatorManager()

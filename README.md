@@ -31,9 +31,12 @@ export VAULT_TOKEN=dev-root-token
 # 3. Activate first batch of validators
 ./validator.sh activate-keys --count 4
 
-# 4. Create deposits (uses only active keys)
-# ./validator.sh create-deposits
-./validator.sh create-deposits-with-fork-version --fork-version 0x10000038 --count 4 --withdrawal-address 0x8943545177806ED17B9F23F0a21ee5948eCaa776
+# 4. Create deposits (uses only active keys) - NEW CONSISTENT WORKFLOW
+# Option A: Use consistent workflow (recommended)
+./validator.sh consistent-workflow --count 4 --fork-version 0x10000038
+
+# Option B: Manual steps (ensure consistency)
+./validator.sh create-deposits-for-active-keys --fork-version 0x10000038 --count 4 --withdrawal-address 0x8943545177806ED17B9F23F0a21ee5948eCaa776
 
 # 5. Validate deposits (optional)
 ./validator.sh validate-deposits
@@ -56,10 +59,9 @@ export VAULT_TOKEN=dev-root-token
 ```bash
 ./validator.sh start
 ./validator.sh init-pool --count 1000  # Generate 1000 keys upfront
-./validator.sh activate-keys --count 50  # Activate 50 from pool
+./validator.sh consistent-workflow --count 50 --fork-version 0x10000038  # Activate keys + create deposits
 ./validator.sh list-keys  # Get pubkeys for backup
 ./validator.sh backup mnemonic 0x1234... 0x5678... --name batch-50
-./validator.sh create-deposits
 # Review deposit_data.json
 ./validator.sh validate-deposits  # Validate using ethstaker-deposit-cli
 ./validator.sh submit-deposits
@@ -67,9 +69,12 @@ export VAULT_TOKEN=dev-root-token
 
 ### Scenario 2: Add More Validators Later
 ```bash
-# Activate more keys from existing pool
+# Option A: Use consistent workflow (recommended)
+./validator.sh consistent-workflow --count 10 --fork-version 0x10000038
+
+# Option B: Manual steps
 ./validator.sh activate-keys --count 10
-./validator.sh create-deposits
+./validator.sh create-deposits-for-active-keys --fork-version 0x10000038 --count 10
 ./validator.sh submit-deposits
 ```
 
@@ -78,8 +83,7 @@ export VAULT_TOKEN=dev-root-token
 # Clean all existing keys and start fresh
 ./validator.sh clean
 ./validator.sh init-pool --count 1000  # Initialize new pool
-./validator.sh activate-keys --count 5  # Activate first batch
-./validator.sh create-deposits
+./validator.sh consistent-workflow --count 5 --fork-version 0x10000038  # Activate + create deposits
 ./validator.sh submit-deposits
 ```
 
@@ -87,8 +91,7 @@ export VAULT_TOKEN=dev-root-token
 ```bash
 # For testing with smaller key pools
 ./validator.sh init-pool --count 10    # Generate only 10 keys
-./validator.sh activate-keys --count 3 # Activate 3 keys
-./validator.sh create-deposits
+./validator.sh consistent-workflow --count 3 --fork-version 0x10000038  # Activate 3 keys + create deposits
 ./validator.sh submit-deposits
 ```
 
@@ -180,6 +183,10 @@ python3 scripts/detect_kurtosis_fork_version.py
 
 ### Deposit Operations
 ```bash
+./validator.sh consistent-workflow --count 4 --fork-version 0x10000038  # NEW: Consistent workflow (activate keys + create deposits)
+./validator.sh create-deposits-for-active-keys --fork-version 0x10000038 --count 4  # NEW: Create deposits for active keys only
+./validator.sh check-active-keys  # NEW: Check status of active keys
+./validator.sh check-workflow-status  # NEW: Check overall workflow status
 ./validator.sh create-deposits                    # Create deposit data for ACTIVE keys only (uses custom kurtosis network config)
 ./validator.sh create-deposits-with-fork-version --auto-detect  # Auto-detect Kurtosis fork version and create deposits
 ./validator.sh create-deposits-with-fork-version --fork-version 0x10000038  # Create deposits with custom fork version
@@ -205,6 +212,10 @@ python3 scripts/detect_kurtosis_fork_version.py
 ./validator.sh monitor        # Monitor validators
 ./validator.sh test-import    # Test Vault key import
 ./validator.sh diagnose-web3signer  # Diagnose Web3Signer connection issues
+./validator.sh debug-web3signer-connection  # NEW: Detailed Web3Signer connection analysis
+./validator.sh analyze-prysm-web3signer  # NEW: Analyze Prysm-Web3Signer connection issues
+./validator.sh fix-web3signer-connection  # NEW: Auto-fix Web3Signer connection problems
+./validator.sh restart-web3signer  # NEW: Restart Web3Signer service
 ./validator.sh test-haproxy        # Test HAProxy configuration
 ./validator.sh test-web3signer-startup  # Test Web3Signer startup without keys
 ./validator.sh validate-deposits  # Validate deposit data using ethstaker-deposit-cli
@@ -233,6 +244,47 @@ python3 scripts/detect_kurtosis_fork_version.py
 ### Workflow
 ```
 1. Key Generation → 2. Deposit Creation → 3. Client Configuration → 4. Validator Operation
+```
+
+## 🔑 Key Consistency & Workflow
+
+### ⚠️ Important: Key Consistency Issue
+
+**Problem**: The original workflow had a critical inconsistency:
+- `activate-keys` activates keys from the pool → stores in Vault → syncs to Web3Signer
+- `create-deposits-with-fork-version` generates NEW keys → creates deposit data
+
+This results in **different keys** being used for validation vs. deposit submission!
+
+### ✅ Solution: Consistent Workflow
+
+**New Recommended Workflow:**
+```bash
+# Option 1: One-command consistent workflow (RECOMMENDED)
+./validator.sh consistent-workflow --count 4 --fork-version 0x10000038
+
+# Option 2: Manual consistent steps
+./validator.sh activate-keys --count 4
+./validator.sh create-deposits-for-active-keys --fork-version 0x10000038 --count 4
+```
+
+**Key Benefits:**
+- ✅ **Same keys**: Activated keys and deposit data use identical key pairs
+- ✅ **State validation**: Each step verifies the previous step completed successfully
+- ✅ **Error handling**: Fails fast if insufficient keys or other issues
+- ✅ **Status checking**: Built-in status verification at each step
+
+### 🔍 Workflow Status Checking
+
+```bash
+# Check overall workflow status
+./validator.sh check-workflow-status
+
+# Check active keys status
+./validator.sh check-active-keys
+
+# Check key pool status
+./validator.sh pool-status
 ```
 
 ## 🔧 Advanced Usage
@@ -617,11 +669,44 @@ docker-compose up -d
 # 检查 Web3Signer 状态
 ./validator.sh web3signer-status
 
+# 详细诊断 Web3Signer 连接问题
+./validator.sh debug-web3signer-connection
+
+# 分析 Prysm-Web3Signer 连接问题
+./validator.sh analyze-prysm-web3signer
+
+# 自动修复 Web3Signer 连接问题
+./validator.sh fix-web3signer-connection
+
+# 重启 Web3Signer 服务
+./validator.sh restart-web3signer
+
 # 检查 Web3Signer 日志
 docker logs web3signer
+```
 
-# 重启 Web3Signer
-docker restart web3signer
+#### 常见 Web3Signer 错误及解决方案
+
+**错误**: `"failed to sign the request: http: ContentLength=391 with Body length 0"`
+
+**原因**: HTTP 请求头与实际请求体长度不匹配，通常是 Prysm 与 Web3Signer 通信问题
+
+**解决方案**:
+```bash
+# 1. 详细诊断
+./validator.sh analyze-prysm-web3signer
+
+# 2. 检查 Web3Signer 健康状态
+curl http://localhost:9000/upcheck
+
+# 3. 验证密钥加载
+curl http://localhost:9000/api/v1/eth2/publicKeys
+
+# 4. 重启服务
+./validator.sh restart-web3signer
+
+# 5. 检查 Prysm 配置
+./validator.sh start-validator prysm --config-only
 ```
 
 #### Kurtosis Fork Version 问题
