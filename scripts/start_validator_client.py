@@ -35,11 +35,17 @@ class ValidatorClientStarter:
         self.kurtosis_ports = self._detect_kurtosis_ports()
         
         # Beacon 节点配置（动态检测）
-        self.beacon_urls = self.kurtosis_ports.get("beacon", {
-            "prysm": "http://localhost:3500",
-            "lighthouse": "http://localhost:5052", 
-            "teku": "http://localhost:5051"
-        })
+        detected_beacon = self.kurtosis_ports.get("beacon", {})
+        self.beacon_urls = {
+            "prysm": detected_beacon.get("prysm", "http://localhost:3500"),
+            "lighthouse": detected_beacon.get("lighthouse", "http://localhost:5052"), 
+            "teku": detected_beacon.get("teku", "http://localhost:5051")
+        }
+        
+        # 打印检测到的端口信息
+        print(f"🔍 检测到的 Beacon 端口:")
+        for client_type, url in self.beacon_urls.items():
+            print(f"   {client_type}: {url}")
     
     def _detect_kurtosis_ports(self) -> Dict[str, Dict[str, str]]:
         """动态检测 Kurtosis 网络端口"""
