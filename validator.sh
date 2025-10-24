@@ -203,6 +203,11 @@ case "$COMMAND" in
         echo "🧪 测试 gRPC 转换逻辑..."
         python3 "$SCRIPT_DIR/scripts/test_grpc_conversion.py"
         ;;
+
+    test-prysm-ports)
+        echo "🧪 测试 Prysm 端口检测..."
+        python3 "$SCRIPT_DIR/scripts/test_prysm_ports.py"
+        ;;
     
     test-vault-paths)
         echo "🔍 测试 Vault 路径和密钥访问..."

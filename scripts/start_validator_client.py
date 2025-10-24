@@ -34,20 +34,19 @@ class ValidatorClientStarter:
         # 动态检测 Kurtosis 端口
         self.kurtosis_ports = self._detect_kurtosis_ports()
         
-        # Beacon 节点配置（智能选择可用的 API）
+        # Beacon 节点配置（客户端特定选择）
         detected_beacon = self.kurtosis_ports.get("beacon", {})
         
-        # 智能选择最佳的 beacon API
-        available_beacon = self._select_best_beacon_api(detected_beacon)
-        
-        # 所有 validator client 都使用同一个可用的 beacon API
+        # 为每个客户端选择对应的 beacon API
         self.beacon_urls = {
-            "prysm": available_beacon,
-            "lighthouse": available_beacon, 
-            "teku": available_beacon
+            "prysm": detected_beacon.get("prysm", "http://localhost:3500"),
+            "lighthouse": detected_beacon.get("lighthouse", "http://localhost:5052"), 
+            "teku": detected_beacon.get("teku", "http://localhost:5051")
         }
         
-        print(f"🔍 统一使用 Beacon API: {available_beacon}")
+        print(f"🔍 客户端特定的 Beacon API:")
+        for client_type, url in self.beacon_urls.items():
+            print(f"   {client_type}: {url}")
     
     def _select_best_beacon_api(self, detected_beacon: Dict[str, str]) -> str:
         """智能选择最佳的 beacon API"""

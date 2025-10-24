@@ -45,14 +45,15 @@ class ValidatorClientConfig:
             host = beacon_url.replace("http://", "").split(":")[0]
             if ":" in beacon_url:
                 port = beacon_url.split(":")[-1]
-                # 对于 Lighthouse HTTP API，我们需要找到对应的 gRPC 端口
-                # 这里我们需要从 Kurtosis 端口配置中查找
-                grpc_port = self._find_grpc_port_for_lighthouse(host, port)
-                if grpc_port:
-                    return f"{host}:{grpc_port}"
+                # 对于 Prysm，HTTP API 端口和 gRPC 端口不同
+                # HTTP API 通常是高端口，gRPC 是低端口
+                if int(port) > 5000:
+                    # 高端口 HTTP API，gRPC 使用标准端口 4000
+                    print(f"🔍 检测到高端口 HTTP API ({port})，使用 gRPC 端口 4000")
+                    return f"{host}:4000"
                 else:
-                    # 如果找不到对应的 gRPC 端口，使用检测到的端口
-                    print(f"⚠️  未找到 Lighthouse gRPC 端口，使用 HTTP 端口: {port}")
+                    # 低端口，可能是 gRPC 端口
+                    print(f"🔍 使用检测到的端口作为 gRPC: {port}")
                     return f"{host}:{port}"
             else:
                 return f"{host}:4000"
