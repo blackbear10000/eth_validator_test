@@ -279,6 +279,21 @@ case "$COMMAND" in
         python3 "$SCRIPT_DIR/scripts/diagnose_web3signer.py"
         ;;
     
+    debug-web3signer-connection)
+        echo "🔍 诊断 Web3Signer 连接问题..."
+        python3 "$SCRIPT_DIR/scripts/debug_web3signer_connection.py"
+        ;;
+    
+    fix-web3signer-connection)
+        echo "🔧 修复 Web3Signer 连接问题..."
+        python3 "$SCRIPT_DIR/scripts/fix_web3signer_connection.py"
+        ;;
+    
+    restart-web3signer)
+        echo "🔄 重启 Web3Signer 服务..."
+        python3 "$SCRIPT_DIR/scripts/fix_web3signer_connection.py" --restart
+        ;;
+    
     test-haproxy)
         echo "🔍 测试 HAProxy 配置..."
         python3 "$SCRIPT_DIR/scripts/test_haproxy_config.py"
