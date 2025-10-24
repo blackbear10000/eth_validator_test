@@ -27,6 +27,14 @@ class KurtosisPortDetector:
     def get_enclave_info(self) -> Optional[Dict]:
         """获取 Kurtosis enclave 信息"""
         try:
+            # 首先检查 kurtosis 命令是否可用
+            try:
+                subprocess.run(["kurtosis", "--version"], capture_output=True, check=True)
+            except (subprocess.CalledProcessError, FileNotFoundError):
+                print("❌ Kurtosis 未安装或不在 PATH 中")
+                print("💡 请安装 Kurtosis: https://docs.kurtosis.com/install")
+                return None
+            
             result = subprocess.run([
                 "kurtosis", "enclave", "inspect", self.enclave_name
             ], capture_output=True, text=True, check=True)
@@ -48,6 +56,9 @@ class KurtosisPortDetector:
             
         except subprocess.CalledProcessError as e:
             print(f"❌ 无法获取 enclave 信息: {e}")
+            print(f"   错误输出: {e.stderr}")
+            print(f"💡 请确保 Kurtosis enclave '{self.enclave_name}' 正在运行")
+            print(f"   运行: kurtosis enclave ls")
             return None
         except Exception as e:
             print(f"❌ 解析 enclave 信息失败: {e}")
@@ -174,6 +185,11 @@ class KurtosisPortDetector:
         # 检测 Execution API 端口
         execution_ports = self.detect_execution_ports()
         
+        # 如果 Kurtosis 检测失败，尝试常见端口
+        if not beacon_ports and not execution_ports:
+            print("🔄 Kurtosis 检测失败，尝试常见端口...")
+            beacon_ports = self._detect_common_ports()
+        
         # 测试 Beacon 端点
         working_beacon = self.test_beacon_endpoints(beacon_ports)
         
@@ -181,6 +197,18 @@ class KurtosisPortDetector:
             "beacon": working_beacon,
             "execution": execution_ports
         }
+    
+    def _detect_common_ports(self) -> Dict[str, str]:
+        """检测常见端口（当 Kurtosis 不可用时）"""
+        print("🔍 检测常见端口...")
+        
+        common_ports = {
+            "prysm": "http://localhost:3500",
+            "lighthouse": "http://localhost:5052",
+            "teku": "http://localhost:5051"
+        }
+        
+        return common_ports
     
     def save_port_config(self, ports: Dict[str, Dict[str, str]], output_file: str = "config/kurtosis_ports.json"):
         """保存端口配置到文件"""

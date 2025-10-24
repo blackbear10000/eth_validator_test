@@ -149,6 +149,11 @@ case "$COMMAND" in
         python3 "$SCRIPT_DIR/scripts/detect_kurtosis_ports.py" --save
         ;;
     
+    setup-kurtosis-alternative)
+        echo "🔧 设置 Kurtosis 替代方案..."
+        python3 "$SCRIPT_DIR/scripts/setup_kurtosis_alternative.py"
+        ;;
+    
     test-vault-paths)
         echo "🔍 测试 Vault 路径和密钥访问..."
         python3 "$SCRIPT_DIR/scripts/test_vault_paths.py"
