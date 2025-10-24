@@ -150,7 +150,6 @@ class ValidatorClientConfig:
             "chain-config-file": chain_config_file,
             "graffiti": f"Prysm-{datetime.now().strftime('%Y%m%d')}",
             "log-format": "json",
-            "log-level": "info",
             "monitoring-port": 8082,
             "web": True,
             "http-port": 7500,
@@ -328,7 +327,6 @@ prysm validator \\
     --chain-config-file={chain_config_file} \\
     --graffiti=Prysm-{datetime.now().strftime('%Y%m%d')} \\
     --log-format=json \\
-    --log-level=info \\
     --monitoring-port=8082 \\
     --web \\
     --http-port=7500 \\
