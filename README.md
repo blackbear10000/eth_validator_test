@@ -32,7 +32,8 @@ export VAULT_TOKEN=dev-root-token
 ./validator.sh activate-keys --count 5
 
 # 4. Create deposits (uses only active keys)
-./validator.sh create-deposits
+# ./validator.sh create-deposits
+./validator.sh create-deposits-with-fork-version --fork-version 0x10000038 --count 5 --withdrawal-address 0x8943545177806ED17B9F23F0a21ee5948eCaa776
 
 # 5. Validate deposits (optional)
 ./validator.sh validate-deposits
@@ -82,6 +83,15 @@ export VAULT_TOKEN=dev-root-token
 ./validator.sh submit-deposits
 ```
 
+### Scenario 2.2: Small Test Setup
+```bash
+# For testing with smaller key pools
+./validator.sh init-pool --count 10    # Generate only 10 keys
+./validator.sh activate-keys --count 3 # Activate 3 keys
+./validator.sh create-deposits
+./validator.sh submit-deposits
+```
+
 ### Scenario 3: Backup Everything
 ```bash
 # List all keys first
@@ -118,7 +128,7 @@ export VAULT_TOKEN=dev-root-token
 ./validator.sh create-deposits-with-fork-version --auto-detect
 
 # Manual fork version specification (if you know the exact version)
-./validator.sh create-deposits-with-fork-version --fork-version 0x10000038 --count 10
+./validator.sh create-deposits-with-fork-version --fork-version 0x10000038 --count 10 --withdrawal-address 0x8943545177806ED17B9F23F0a21ee5948eCaa776
 
 # Verify fork version compatibility
 python3 scripts/detect_kurtosis_fork_version.py

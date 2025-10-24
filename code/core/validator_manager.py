@@ -157,9 +157,8 @@ class ExternalValidatorManager:
         if count is None:
             count = self.config.get("external_validator_count", 5)
         
-        # For bulk mode, default to larger batches
-        if bulk_mode and count < 100:
-            count = 1000  # Default bulk size
+        # For bulk mode, use the specified count (don't override user input)
+        if bulk_mode:
             print(f"🔄 批量模式：生成 {count} 个验证者密钥")
         else:
             print(f"=== Generating {count} External Validator Keys ===")
@@ -1174,7 +1173,10 @@ def main():
         
         elif args.command == "init-pool":
             print("=== Initialize Key Pool ===")
-            count = args.count or 1000
+            if args.count is not None:
+                count = args.count
+            else:
+                count = 1000  # Default only when no count specified
             success = manager.init_key_pool(count)
             if success:
                 print("✅ Key pool initialized successfully")
@@ -1184,7 +1186,10 @@ def main():
         
         elif args.command == "activate-keys":
             print("=== Activate Keys from Pool ===")
-            count = args.count or 10
+            if args.count is not None:
+                count = args.count
+            else:
+                count = 10  # Default only when no count specified
             activated_keys = manager.activate_keys_from_pool(count)
             if activated_keys:
                 print(f"✅ Successfully activated {len(activated_keys)} keys")
