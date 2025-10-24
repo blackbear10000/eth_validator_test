@@ -218,6 +218,11 @@ case "$COMMAND" in
         echo "🔍 调试服务名称匹配..."
         python3 "$SCRIPT_DIR/scripts/debug_service_matching.py"
         ;;
+
+    debug-prysm-parsing)
+        echo "🔍 调试 Prysm 端口解析..."
+        python3 "$SCRIPT_DIR/scripts/debug_prysm_parsing.py"
+        ;;
     
     test-vault-paths)
         echo "🔍 测试 Vault 路径和密钥访问..."
