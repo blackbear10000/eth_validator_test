@@ -122,7 +122,7 @@ class ValidatorClientStarter:
         try:
             # 检查 Prysm 是否已安装
             prysm_path = None
-            result = subprocess.run(['prysm', '--version'], 
+            result = subprocess.run(['prysm', 'validator', '--help'], 
                                   capture_output=True, text=True)
             if result.returncode == 0:
                 prysm_path = 'prysm'
@@ -137,7 +137,7 @@ class ValidatorClientStarter:
                 for alt_path in alternative_paths:
                     if os.path.exists(alt_path):
                         try:
-                            result = subprocess.run([alt_path, '--version'], 
+                            result = subprocess.run([alt_path, 'validator', '--help'], 
                                                   capture_output=True, text=True)
                             if result.returncode == 0:
                                 prysm_path = alt_path

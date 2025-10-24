@@ -45,10 +45,10 @@ def debug_prysm_installation():
     # 3. 尝试直接运行
     print("\n3. 尝试直接运行 Prysm...")
     try:
-        result = subprocess.run(['prysm', '--version'], 
+        result = subprocess.run(['prysm', 'validator', '--help'], 
                               capture_output=True, text=True, timeout=10)
         print(f"返回码: {result.returncode}")
-        print(f"标准输出: {result.stdout}")
+        print(f"标准输出: {result.stdout[:200]}...")
         print(f"错误输出: {result.stderr}")
     except FileNotFoundError:
         print("❌ 命令未找到")
@@ -62,11 +62,11 @@ def debug_prysm_installation():
     for path in prysm_paths:
         if os.path.exists(path):
             try:
-                result = subprocess.run([path, '--version'], 
+                result = subprocess.run([path, 'validator', '--help'], 
                                       capture_output=True, text=True, timeout=10)
                 print(f"✅ {path} 运行成功:")
                 print(f"   返回码: {result.returncode}")
-                print(f"   输出: {result.stdout}")
+                print(f"   输出: {result.stdout[:200]}...")
                 break
             except Exception as e:
                 print(f"❌ {path} 运行失败: {e}")

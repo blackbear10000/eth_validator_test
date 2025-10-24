@@ -32,12 +32,17 @@ class ValidatorClientChecker:
         }
         
         try:
-            # 检查 prysm 命令
-            result = subprocess.run(['prysm', '--version'], 
+            # 检查 prysm 命令 - 使用正确的参数
+            result = subprocess.run(['prysm', 'validator', '--help'], 
                                   capture_output=True, text=True, timeout=10)
             if result.returncode == 0:
                 status["installed"] = True
-                status["version"] = result.stdout.strip()
+                # 从帮助信息中提取版本
+                version_line = [line for line in result.stdout.split('\n') if 'version' in line.lower()]
+                if version_line:
+                    status["version"] = version_line[0].strip()
+                else:
+                    status["version"] = "Prysm (版本信息未找到)"
                 print(f"✅ Prysm 已安装: {status['version']}")
                 
                 # 获取路径
