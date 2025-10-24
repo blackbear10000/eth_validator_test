@@ -31,9 +31,8 @@ class KurtosisPortDetector:
             try:
                 subprocess.run(["kurtosis", "--version"], capture_output=True, check=True)
             except (subprocess.CalledProcessError, FileNotFoundError):
-                print("❌ Kurtosis 未安装或不在 PATH 中")
-                print("💡 请安装 Kurtosis: https://docs.kurtosis.com/install")
-                return None
+                print("⚠️  Kurtosis 版本检查失败，但继续尝试运行命令...")
+                # 不直接返回 None，继续尝试运行命令
             
             result = subprocess.run([
                 "kurtosis", "enclave", "inspect", self.enclave_name
@@ -87,54 +86,61 @@ class KurtosisPortDetector:
     def _parse_service_line(self, line: str) -> Optional[Dict]:
         """解析单个服务行"""
         try:
-            # 分割 UUID、Name、Ports、Status
-            parts = line.split()
-            if len(parts) < 4:
+            print(f"🔍 解析服务行: {line[:100]}...")
+            
+            # 使用正则表达式解析更复杂的格式
+            import re
+            
+            # 匹配格式: UUID Name Ports Status
+            # 例如: 354e03f6ff87 cl-1-prysm-geth http: 3500/tcp -> http://127.0.0.1:33522 RUNNING
+            pattern = r'^([a-f0-9]{12})\s+([^\s]+(?:\s+[^\s]+)*?)\s+(.*?)\s+(RUNNING|STOPPED)$'
+            match = re.match(pattern, line)
+            
+            if not match:
+                print(f"⚠️  服务行格式不匹配: {line[:50]}...")
                 return None
             
-            # 提取 UUID
-            uuid = parts[0]
+            uuid = match.group(1)
+            service_name = match.group(2)
+            ports_text = match.group(3)
+            status = match.group(4)
             
-            # 提取服务名称（可能包含多个单词）
-            name_parts = []
-            ports_start = -1
+            print(f"   服务名: {service_name}")
+            print(f"   端口文本: {ports_text[:50]}...")
             
-            for i, part in enumerate(parts[1:], 1):
-                if "http:" in part or "tcp:" in part or "udp:" in part:
-                    ports_start = i
-                    break
-                name_parts.append(part)
-            
-            if ports_start == -1:
-                return None
-            
-            service_name = " ".join(name_parts)
-            
-            # 提取端口信息
+            # 解析端口信息
             ports = {}
-            port_parts = parts[ports_start:]
             
-            for i in range(0, len(port_parts), 2):
-                if i + 1 < len(port_parts):
-                    port_name = port_parts[i].rstrip(':')
-                    port_mapping = port_parts[i + 1]
-                    
-                    # 解析端口映射 "http: 3500/tcp -> http://127.0.0.1:33522"
-                    if "->" in port_mapping:
-                        local_port = port_mapping.split("->")[-1].split(":")[-1]
+            # 查找所有端口映射
+            port_pattern = r'(\w+):\s*(\d+)/(\w+)\s*->\s*([^\s]+)'
+            port_matches = re.findall(port_pattern, ports_text)
+            
+            for port_name, internal_port, protocol, external_mapping in port_matches:
+                # 从外部映射中提取本地端口
+                if ":" in external_mapping:
+                    local_port = external_mapping.split(":")[-1]
+                    try:
                         ports[port_name] = {
                             "number": int(local_port),
-                            "mapping": port_mapping
+                            "mapping": f"{port_name}: {internal_port}/{protocol} -> {external_mapping}",
+                            "internal_port": int(internal_port),
+                            "protocol": protocol
                         }
+                        print(f"   端口 {port_name}: {local_port}")
+                    except ValueError:
+                        print(f"   ⚠️  无效端口号: {local_port}")
             
             return {
                 "name": service_name,
                 "uuid": uuid,
-                "ports": ports
+                "ports": ports,
+                "status": status
             }
             
         except Exception as e:
             print(f"⚠️  解析服务行失败: {line[:50]}... - {e}")
+            import traceback
+            print(f"详细错误: {traceback.format_exc()}")
             return None
     
     def detect_beacon_ports(self) -> Dict[str, str]:
