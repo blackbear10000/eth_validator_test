@@ -80,6 +80,12 @@ class ValidatorClientStarter:
         """测试 beacon API 是否可用"""
         try:
             import requests
+            
+            # 如果是 gRPC 格式 (localhost:port)，跳过 HTTP 测试
+            if "://" not in url and ":" in url:
+                print(f"🔍 跳过 gRPC 端口测试: {url}")
+                return True  # gRPC 端口假设可用
+            
             # 测试健康检查端点
             health_url = f"{url}/eth/v1/node/health"
             response = requests.get(health_url, timeout=5)
