@@ -170,13 +170,21 @@ class KurtosisPortDetector:
                 
                 # 查找 Prysm Beacon API (cl-1-prysm-geth)
                 if 'prysm' in service_name.lower() and 'cl-' in service_name.lower():
+                    # Prysm 通常使用固定的 gRPC 端口 4000，但需要检查实际映射
                     for port_name, port_info in ports.items():
                         if port_name == 'rpc':  # Prysm 使用 rpc 端口作为 gRPC API
                             port = port_info.get('number')
                             if port:
-                                beacon_ports['prysm'] = f"localhost:{port}"
-                                print(f"✅ 找到 Prysm Beacon gRPC API: {beacon_ports['prysm']}")
-                                break
+                                # 检查是否是 gRPC 端口（通常是 4000 或类似的端口）
+                                if port in [4000, 4001, 4002, 4003, 4004, 4005]:
+                                    beacon_ports['prysm'] = f"localhost:{port}"
+                                    print(f"✅ 找到 Prysm Beacon gRPC API: {beacon_ports['prysm']}")
+                                    break
+                                else:
+                                    # 如果不是标准 gRPC 端口，尝试使用默认端口
+                                    beacon_ports['prysm'] = f"localhost:4000"
+                                    print(f"⚠️  使用默认 Prysm gRPC 端口: {beacon_ports['prysm']}")
+                                    break
                 
                 # 查找 Lighthouse Beacon API (cl-2-lighthouse-reth)
                 elif 'lighthouse' in service_name.lower() and 'cl-' in service_name.lower():

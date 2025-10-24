@@ -43,19 +43,11 @@ class ValidatorClientConfig:
         # 从 HTTP URL 转换为 gRPC 地址
         if beacon_url.startswith("http://"):
             host = beacon_url.replace("http://", "").split(":")[0]
-            # 使用检测到的端口，或者默认 4000
-            if ":" in beacon_url:
-                port = beacon_url.split(":")[-1]
-                return f"{host}:{port}"
-            else:
-                return f"{host}:4000"
+            # 对于 Prysm，使用默认的 gRPC 端口 4000
+            return f"{host}:4000"
         elif beacon_url.startswith("https://"):
             host = beacon_url.replace("https://", "").split(":")[0]
-            if ":" in beacon_url:
-                port = beacon_url.split(":")[-1]
-                return f"{host}:{port}"
-            else:
-                return f"{host}:4000"
+            return f"{host}:4000"
         else:
             # 如果已经是 gRPC 格式，直接返回
             return beacon_url
