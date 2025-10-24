@@ -127,7 +127,7 @@ class ValidatorClientConfig:
         prysm_config = {
             "beacon-rpc-provider": grpc_address,
             "validators-external-signer-url": self.web3signer_url,
-            "validators-external-signer-public-keys": ",".join(pubkeys),
+            "validators-external-signer-public-keys": pubkeys,  # 使用数组格式
             "suggested-fee-recipient": "0x0000000000000000000000000000000000000000",  # 需要用户设置
             "enable-external-slashing-protection": True,
             "slashing-protection-db-url": "postgres://user:password@localhost:5432/slashing_protection",
