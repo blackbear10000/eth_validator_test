@@ -243,6 +243,11 @@ case "$COMMAND" in
         echo "🔍 检查 Beacon 链同步状态..."
         python3 "$SCRIPT_DIR/scripts/check_beacon_sync.py"
         ;;
+
+    check-validator-status)
+        echo "🔍 检查验证者状态..."
+        python3 "$SCRIPT_DIR/scripts/check_validator_status.py"
+        ;;
     
     test-vault-paths)
         echo "🔍 测试 Vault 路径和密钥访问..."

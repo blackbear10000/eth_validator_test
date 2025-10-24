@@ -289,6 +289,8 @@ echo "🔧 启动验证者..."
 prysm validator \\
     --config-file={config_file} \\
     --web \\
+    --web-address=127.0.0.1 \\
+    --web-port=7500 \\
     --accept-terms-of-use
 
 echo "✅ Prysm 验证者已启动"
