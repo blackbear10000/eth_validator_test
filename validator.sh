@@ -164,6 +164,16 @@ case "$COMMAND" in
         python3 "$SCRIPT_DIR/scripts/test_kurtosis_command.py"
         ;;
     
+    check-clients)
+        echo "🔍 检查 Validator Client 安装状态..."
+        python3 "$SCRIPT_DIR/scripts/check_validator_clients.py"
+        ;;
+    
+    install-commands)
+        echo "📋 显示 Validator Client 安装命令..."
+        python3 "$SCRIPT_DIR/scripts/check_validator_clients.py" --install-commands
+        ;;
+    
     test-vault-paths)
         echo "🔍 测试 Vault 路径和密钥访问..."
         python3 "$SCRIPT_DIR/scripts/test_vault_paths.py"

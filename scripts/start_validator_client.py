@@ -125,7 +125,10 @@ class ValidatorClientStarter:
                                   capture_output=True, text=True)
             if result.returncode != 0:
                 print("❌ Prysm 未安装或不在 PATH 中")
-                print("💡 请安装 Prysm: https://docs.prylabs.network/docs/install/install-with-script")
+                print("💡 请先安装 Prysm:")
+                print("   1. 运行: ./validator.sh check-clients")
+                print("   2. 运行: ./validator.sh install-commands")
+                print("   3. 按照提示安装 Prysm")
                 return False
             
             # 启动 Prysm 验证者
@@ -155,7 +158,10 @@ class ValidatorClientStarter:
                                   capture_output=True, text=True)
             if result.returncode != 0:
                 print("❌ Lighthouse 未安装或不在 PATH 中")
-                print("💡 请安装 Lighthouse: https://lighthouse-book.sigmaprime.io/installation.html")
+                print("💡 请先安装 Lighthouse:")
+                print("   1. 运行: ./validator.sh check-clients")
+                print("   2. 运行: ./validator.sh install-commands")
+                print("   3. 按照提示安装 Lighthouse")
                 return False
             
             # 启动 Lighthouse 验证者
@@ -185,7 +191,10 @@ class ValidatorClientStarter:
                                   capture_output=True, text=True)
             if result.returncode != 0:
                 print("❌ Teku 未安装或不在 PATH 中")
-                print("💡 请安装 Teku: https://docs.teku.consensys.net/en/latest/HowTo/Get-Started/Installation-Options/")
+                print("💡 请先安装 Teku:")
+                print("   1. 运行: ./validator.sh check-clients")
+                print("   2. 运行: ./validator.sh install-commands")
+                print("   3. 按照提示安装 Teku")
                 return False
             
             # 启动 Teku 验证者

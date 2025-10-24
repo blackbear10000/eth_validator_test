@@ -192,6 +192,8 @@ python3 scripts/detect_kurtosis_fork_version.py
 ```bash
 ./validator.sh detect-kurtosis-ports  # Detect Kurtosis network ports dynamically
 ./validator.sh check-services        # Check all services status
+./validator.sh check-clients         # Check validator client installation status
+./validator.sh install-commands     # Show installation commands for clients
 ./validator.sh start-validator prysm        # Start Prysm validator client
 ./validator.sh start-validator lighthouse  # Start Lighthouse validator client
 ./validator.sh start-validator teku        # Start Teku validator client
