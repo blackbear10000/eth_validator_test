@@ -14,4 +14,5 @@ metrics-host: "0.0.0.0"
 metrics-port: 9001
 
 # network settings
-eth2.network: "minimal"
+# 使用 mainnet 配置以支持完整的 fork 功能
+eth2.network: "mainnet"
