@@ -45,6 +45,8 @@ network_params:
 
   # ===== 预设与网络标识 =====
   preset: minimal
+  genesis_fork_version: "0x00000000"
+  exit_fork_version: "0x00000000"
   network_id: "3151908"
   deposit_contract_address: "0x4242424242424242424242424242424242424242"
 

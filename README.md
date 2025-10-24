@@ -112,6 +112,18 @@ export VAULT_TOKEN=dev-root-token
 ./validator.sh create-deposits-with-address --withdrawal-address 0x8943545177806ED17B9F23F0a21ee5948eCaa776
 ```
 
+### Scenario 6: Kurtosis Fork Version Compatibility
+```bash
+# Auto-detect Kurtosis fork version and create compatible deposits
+./validator.sh create-deposits-with-fork-version --auto-detect
+
+# Manual fork version specification (if you know the exact version)
+./validator.sh create-deposits-with-fork-version --fork-version 0x10000038 --count 10
+
+# Verify fork version compatibility
+python3 scripts/detect_kurtosis_fork_version.py
+```
+
 ## 🎯 Command Reference
 
 ### Infrastructure Commands
@@ -135,6 +147,8 @@ export VAULT_TOKEN=dev-root-token
 ### Deposit Operations
 ```bash
 ./validator.sh create-deposits                    # Create deposit data for ACTIVE keys only (uses custom kurtosis network config)
+./validator.sh create-deposits-with-fork-version --auto-detect  # Auto-detect Kurtosis fork version and create deposits
+./validator.sh create-deposits-with-fork-version --fork-version 0x10000038  # Create deposits with custom fork version
 ./validator.sh create-deposits-with-address --withdrawal-address 0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266  # Create with custom withdrawal address
 ./validator.sh validate-deposits                  # Validate deposit data using ethstaker-deposit-cli
 ./validator.sh submit-deposits                    # Submit existing deposit_data.json to network (auto-copied to standard location)
@@ -198,6 +212,15 @@ python3 utils/deposit_generator.py --vault-token dev-root-token generate 3 0xf39
 
 # List available keys
 python3 utils/deposit_generator.py --vault-token dev-root-token list-keys
+
+# Create deposits with custom fork version
+python3 scripts/create_deposits_with_fork_version.py --fork-version 0x10000038 --count 5
+
+# Auto-detect Kurtosis fork version
+python3 scripts/create_deposits_with_fork_version.py --auto-detect
+
+# Detect and configure fork version
+python3 scripts/detect_kurtosis_fork_version.py --fork-version 0x10000038
 ```
 
 ### Deposit Validation
@@ -494,7 +517,13 @@ docker exec web3signer curl http://vault:8200/v1/sys/health
 
 #### 存款数据生成
 ```bash
-# 为 Kurtosis 网络生成存款数据
+# 为 Kurtosis 网络生成存款数据（自动检测 fork version）
+./validator.sh create-deposits-with-fork-version --auto-detect
+
+# 手动指定 fork version（如果已知确切版本）
+./validator.sh create-deposits-with-fork-version --fork-version 0x10000038
+
+# 传统方式（使用默认配置）
 ./validator.sh create-deposits
 
 # 验证存款数据
@@ -547,6 +576,22 @@ docker logs web3signer
 
 # 重启 Web3Signer
 docker restart web3signer
+```
+
+#### Kurtosis Fork Version 问题
+```bash
+# 检测 Kurtosis 网络的实际 fork version
+python3 scripts/detect_kurtosis_fork_version.py
+
+# 使用检测到的 fork version 创建存款数据
+./validator.sh create-deposits-with-fork-version --auto-detect
+
+# 手动指定 fork version（如果已知）
+./validator.sh create-deposits-with-fork-version --fork-version 0x10000038
+
+# 验证生成的存款数据
+cat data/deposits/deposit_data.json | jq '.[0] | {network_name, fork_version}'
+# 应该显示：{"network_name": "kurtosis", "fork_version": "10000038"}
 ```
 
 ## 🏭 Production Considerations
@@ -648,6 +693,54 @@ python3 utils/validate_deposits_standalone.py ../data/deposits/deposit_data.json
 - **Compliance**: Meet different regulatory requirements
 - **Future-proof**: Adapt to changing withdrawal strategies
 
+## 🔧 Kurtosis Fork Version Compatibility
+
+### Problem
+Kurtosis devnet networks often use random `genesis_fork_version` values (e.g., `0x10000038`) instead of the standard `0x00000000`, causing deposit data incompatibility.
+
+### Solution
+The system now supports automatic fork version detection and custom fork version specification:
+
+#### Auto-Detection (Recommended)
+```bash
+# Automatically detect Kurtosis fork version and create compatible deposits
+./validator.sh create-deposits-with-fork-version --auto-detect
+
+# Or use Python script directly
+python3 scripts/create_deposits_with_fork_version.py --auto-detect
+```
+
+#### Manual Specification
+```bash
+# Specify exact fork version if known
+./validator.sh create-deposits-with-fork-version --fork-version 0x10000038 --count 10
+
+# Or use Python script
+python3 scripts/create_deposits_with_fork_version.py --fork-version 0x10000038 --count 5
+```
+
+#### Detection and Configuration
+```bash
+# Detect and configure fork version
+python3 scripts/detect_kurtosis_fork_version.py
+
+# Manual fork version configuration
+python3 scripts/detect_kurtosis_fork_version.py --fork-version 0x10000038
+```
+
+### How It Works
+1. **Beacon API Query**: Queries `http://localhost:5052/eth/v1/beacon/genesis` for actual fork version
+2. **Multi-Endpoint Fallback**: Tries multiple beacon API endpoints (Prysm, Lighthouse)
+3. **Dynamic Configuration**: Uses detected fork version to create compatible deposit data
+4. **Validation**: Ensures deposit data matches Kurtosis network requirements
+
+### Compatibility Features
+- ✅ **Auto-Detection**: Automatically detects Kurtosis fork version
+- ✅ **Manual Override**: Support for custom fork version specification
+- ✅ **Network Validation**: Ensures deposit data compatibility
+- ✅ **Error Handling**: Graceful fallback to default values
+- ✅ **Multi-Client Support**: Works with Prysm, Lighthouse, and other clients
+
 ## 📁 Project Structure
 
 ```
@@ -690,6 +783,8 @@ eth_validator_test/
 ├── scripts/                              # Helper scripts
 │   ├── debug_web3signer.py             # Web3Signer diagnostic tool
 │   ├── fix_database.py                  # Database repair tool
+│   ├── detect_kurtosis_fork_version.py  # Kurtosis fork version detection
+│   ├── create_deposits_with_fork_version.py  # Create deposits with custom fork version
 │   └── quick-deploy.sh                  # One-command deployment
 │
 ├── config/                               # Configuration directory (git ignored)

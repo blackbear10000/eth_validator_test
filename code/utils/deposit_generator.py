@@ -45,9 +45,49 @@ from vault_key_manager import VaultKeyManager, ValidatorKey
 class DepositGenerator:
     """动态存款生成器"""
     
-    def __init__(self, vault_url: str = "http://localhost:8200", vault_token: str = None, network: str = 'kurtosis'):
+    def __init__(self, vault_url: str = "http://localhost:8200", vault_token: str = None, 
+                 network: str = 'kurtosis', fork_version: str = None):
         self.vault_manager = VaultKeyManager(vault_url, vault_token)
         self.network = network
+        self.fork_version = fork_version or self._detect_fork_version()
+    
+    def _detect_fork_version(self) -> str:
+        """检测 Kurtosis 网络的实际 fork version"""
+        try:
+            import requests
+            
+            # 尝试从 beacon API 获取 fork version
+            beacon_urls = [
+                "http://localhost:5052",  # Prysm beacon API
+                "http://localhost:5051",  # Lighthouse beacon API
+                "http://localhost:5050",  # 其他可能的 beacon API
+            ]
+            
+            for beacon_url in beacon_urls:
+                try:
+                    print(f"🔍 尝试从 {beacon_url} 获取 fork version...")
+                    genesis_url = f"{beacon_url}/eth/v1/beacon/genesis"
+                    response = requests.get(genesis_url, timeout=5)
+                    
+                    if response.status_code == 200:
+                        genesis_data = response.json()
+                        fork_version = genesis_data.get('data', {}).get('genesis_fork_version')
+                        
+                        if fork_version:
+                            print(f"✅ 检测到 fork version: {fork_version}")
+                            return fork_version
+                            
+                except Exception as e:
+                    print(f"⚠️ 无法连接到 {beacon_url}: {e}")
+                    continue
+            
+            # 如果无法检测，使用默认值
+            print("⚠️ 无法自动检测 fork version，使用默认值: 0x00000000")
+            return "0x00000000"
+            
+        except Exception as e:
+            print(f"⚠️ 检测 fork version 时出错: {e}")
+            return "0x00000000"
         
     def generate_deposits(self, 
                          count: int,
@@ -112,12 +152,12 @@ class DepositGenerator:
         try:
             # 获取链设置
             if self.network == 'kurtosis':
-                # Kurtosis 使用自定义网络配置
+                # Kurtosis 使用自定义网络配置，使用检测到的 fork version
                 from ethstaker_deposit.settings import get_devnet_chain_setting
                 chain_setting = get_devnet_chain_setting(
                     network_name='kurtosis',
-                    genesis_fork_version='0x00000000',  # minimal preset fork version
-                    exit_fork_version='0x00000000',     # minimal preset exit version
+                    genesis_fork_version=self.fork_version,  # 使用检测到的 fork version
+                    exit_fork_version=self.fork_version,     # 使用检测到的 fork version
                     genesis_validator_root=None,       # 使用默认值
                     multiplier=1,
                     min_activation_amount=32,

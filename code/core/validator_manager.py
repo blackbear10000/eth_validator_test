@@ -1044,8 +1044,20 @@ class ExternalValidatorManager:
             from ethstaker_deposit.utils.validation import validate_deposit
             from ethstaker_deposit.settings import get_chain_setting
             
-            # Get chain setting for validation
-            chain_setting = get_chain_setting("mainnet")
+            # Get chain setting for validation - use kurtosis for kurtosis network
+            if self.config.get('network') == 'kurtosis':
+                from ethstaker_deposit.settings import get_devnet_chain_setting
+                chain_setting = get_devnet_chain_setting(
+                    network_name='kurtosis',
+                    genesis_fork_version='0x00000000',
+                    exit_fork_version='0x00000000',
+                    genesis_validator_root=None,
+                    multiplier=1,
+                    min_activation_amount=32,
+                    min_deposit_amount=1
+                )
+            else:
+                chain_setting = get_chain_setting(self.config.get('network', 'mainnet'))
             
             # Validate each deposit
             for i, deposit in enumerate(deposit_data):

@@ -1,5 +1,5 @@
 {
-  "network": "mainnet",
+  "network": "kurtosis",
   "vault_url": "http://localhost:8200",
   "vault_token": "dev-root-token",
   "web3signer_url": "http://localhost:9000",
