@@ -13,6 +13,37 @@ import os
 from pathlib import Path
 import glob
 
+def check_docker_containers():
+    """检查 Docker 容器状态"""
+    print("🔍 检查 Docker 容器状态...")
+    
+    try:
+        # 检查 PostgreSQL 容器
+        result = subprocess.run(['docker', 'ps', '--filter', 'name=postgres', '--format', '{{.Names}}'], 
+                              capture_output=True, text=True, timeout=10)
+        
+        if 'postgres' in result.stdout:
+            print("✅ PostgreSQL 容器正在运行")
+        else:
+            print("❌ PostgreSQL 容器未运行")
+            print("💡 请先启动基础设施: ./validator.sh start")
+            return False
+        
+        # 检查 Web3Signer 容器
+        result = subprocess.run(['docker', 'ps', '--filter', 'name=web3signer', '--format', '{{.Names}}'], 
+                              capture_output=True, text=True, timeout=10)
+        
+        if 'web3signer' in result.stdout:
+            print("✅ Web3Signer 容器正在运行")
+        else:
+            print("⚠️  Web3Signer 容器未运行，将在迁移后启动")
+        
+        return True
+        
+    except Exception as e:
+        print(f"❌ 检查 Docker 容器失败: {e}")
+        return False
+
 def get_migration_files():
     """获取迁移文件并按顺序排序"""
     print("🔍 查找 Web3Signer 官方迁移文件...")
@@ -58,8 +89,9 @@ def run_database_migration(migration_files):
         print(f"\n📋 运行迁移 {i}/{len(migration_files)}: {file_path.name}")
         
         try:
-            # 使用 psql 执行迁移文件
+            # 使用 Docker 执行 psql 命令
             cmd = [
+                "docker", "exec", "-i", "postgres",
                 "psql",
                 "--echo-all",
                 "--host=localhost",
@@ -115,6 +147,7 @@ def verify_database_schema():
         for description, query in verification_queries:
             try:
                 cmd = [
+                    "docker", "exec", "-i", "postgres",
                     "psql",
                     "--host=localhost",
                     "--port=5432",
@@ -277,40 +310,47 @@ def main():
     print("https://docs.web3signer.consensys.io/how-to/configure-slashing-protection")
     print("=" * 70)
     
-    # 1. 获取迁移文件
+    # 1. 检查 Docker 容器状态
+    containers_ok = check_docker_containers()
+    
+    if not containers_ok:
+        print("\n❌ Docker 容器状态检查失败，无法继续")
+        return False
+    
+    # 2. 获取迁移文件
     migration_files = get_migration_files()
     
     if not migration_files:
         print("\n❌ 没有找到迁移文件，无法继续")
         return False
     
-    # 2. 运行数据库迁移
+    # 3. 运行数据库迁移
     migration_success = run_database_migration(migration_files)
     
     if not migration_success:
         print("\n❌ 数据库迁移失败")
         return False
     
-    # 3. 验证数据库架构
+    # 4. 验证数据库架构
     schema_success = verify_database_schema()
     
     if not schema_success:
         print("\n⚠️  数据库架构验证失败，但继续尝试重启服务")
     
-    # 4. 重启 Web3Signer
+    # 5. 重启 Web3Signer
     restart_success = restart_web3signer()
     
     if not restart_success:
         print("\n❌ Web3Signer 重启失败")
         return False
     
-    # 5. 检查日志
+    # 6. 检查日志
     logs_success = check_web3signer_logs()
     
-    # 6. 测试密钥加载
+    # 7. 测试密钥加载
     keys_success = test_web3signer_keys()
     
-    # 7. 总结
+    # 8. 总结
     print("\n" + "=" * 70)
     print("📊 修复结果总结:")
     print("=" * 70)
