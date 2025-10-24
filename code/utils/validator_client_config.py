@@ -33,6 +33,32 @@ class ValidatorClientConfig:
     def __init__(self, vault_url: str = "http://localhost:8200", vault_token: str = None):
         self.vault_manager = VaultKeyManager(vault_url, vault_token)
         self.web3signer_url = "http://localhost:9000"
+    
+    def _convert_http_to_grpc(self, beacon_url: str) -> str:
+        """将 Beacon URL 转换为 gRPC 地址"""
+        # 如果已经是 gRPC 格式 (localhost:port)，直接返回
+        if "://" not in beacon_url and ":" in beacon_url:
+            return beacon_url
+        
+        # 从 HTTP URL 转换为 gRPC 地址
+        if beacon_url.startswith("http://"):
+            host = beacon_url.replace("http://", "").split(":")[0]
+            # 使用检测到的端口，或者默认 4000
+            if ":" in beacon_url:
+                port = beacon_url.split(":")[-1]
+                return f"{host}:{port}"
+            else:
+                return f"{host}:4000"
+        elif beacon_url.startswith("https://"):
+            host = beacon_url.replace("https://", "").split(":")[0]
+            if ":" in beacon_url:
+                port = beacon_url.split(":")[-1]
+                return f"{host}:{port}"
+            else:
+                return f"{host}:4000"
+        else:
+            # 如果已经是 gRPC 格式，直接返回
+            return beacon_url
         
     def generate_prysm_config(self, 
                              pubkeys: List[str],
@@ -53,11 +79,13 @@ class ValidatorClientConfig:
             yaml.dump(web3signer_config, f, default_flow_style=False)
         
         # 2. 生成 Prysm 验证者配置
+        # 从 HTTP URL 转换为 gRPC 地址
+        grpc_address = self._convert_http_to_grpc(beacon_node_url)
+        
         prysm_config = {
             "wallet-dir": "/data/wallet",
             "wallet-password-file": "/data/wallet-password.txt",
-            "beacon-rpc-provider": beacon_node_url,
-            "beacon-rpc-gateway-provider": beacon_node_url,
+            "beacon-rpc-provider": grpc_address,
             "web3signer-url": self.web3signer_url,
             "web3signer-public-keys": pubkeys,
             "suggested-fee-recipient": "0x0000000000000000000000000000000000000000",  # 需要用户设置
@@ -65,7 +93,8 @@ class ValidatorClientConfig:
             "slashing-protection-db-url": "postgres://user:password@localhost:5432/slashing_protection",
             "graffiti": f"Prysm-{datetime.now().strftime('%Y%m%d')}",
             "log-format": "json",
-            "log-level": "info"
+            "log-level": "info",
+            "monitoring-port": "8082"  # 避免端口冲突
         }
         
         config_file = output_path / "validator-config.yaml"

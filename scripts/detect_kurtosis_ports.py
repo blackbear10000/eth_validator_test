@@ -171,11 +171,11 @@ class KurtosisPortDetector:
                 # 查找 Prysm Beacon API (cl-1-prysm-geth)
                 if 'prysm' in service_name.lower() and 'cl-' in service_name.lower():
                     for port_name, port_info in ports.items():
-                        if port_name == 'http':  # Prysm 使用 http 端口作为 Beacon API
+                        if port_name == 'rpc':  # Prysm 使用 rpc 端口作为 gRPC API
                             port = port_info.get('number')
                             if port:
-                                beacon_ports['prysm'] = f"http://localhost:{port}"
-                                print(f"✅ 找到 Prysm Beacon API: {beacon_ports['prysm']}")
+                                beacon_ports['prysm'] = f"localhost:{port}"
+                                print(f"✅ 找到 Prysm Beacon gRPC API: {beacon_ports['prysm']}")
                                 break
                 
                 # 查找 Lighthouse Beacon API (cl-2-lighthouse-reth)

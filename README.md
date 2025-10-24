@@ -146,7 +146,7 @@ python3 scripts/detect_kurtosis_fork_version.py
 ./validator.sh load-keys
 
 # 4. Start validator client (auto-detects Kurtosis ports)
-./validator.sh start-validator prysm
+
 
 # 5. Monitor validator performance
 ./validator.sh monitor
