@@ -25,8 +25,8 @@ export VAULT_TOKEN=dev-root-token
 # 1. Start infrastructure
 ./validator.sh start
 
-# 2. Initialize key pool (generate 1000 keys upfront)
-./validator.sh init-pool --count 1000
+# 2. Initialize key pool (generate 10 keys upfront)
+./validator.sh init-pool --count 10
 
 # 3. Activate first batch of validators
 ./validator.sh activate-keys --count 5
