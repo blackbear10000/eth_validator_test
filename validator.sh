@@ -69,7 +69,7 @@ case "$COMMAND" in
         ;;
     create-deposits-with-fork-version)
         echo "💰 Creating deposit data with custom fork version..."
-        python3 "$SCRIPT_DIR/scripts/create_deposits_with_fork_version.py "$@"
+        python3 "$SCRIPT_DIR/scripts/create_deposits_with_fork_version.py" "$@"
         ;;
     create-deposits-with-address)
         echo "💰 Creating deposit data with custom withdrawal address..."
