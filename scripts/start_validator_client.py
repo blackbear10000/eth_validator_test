@@ -86,11 +86,16 @@ class ValidatorClientStarter:
                 print(f"🔍 跳过 gRPC 端口测试: {url}")
                 return True  # gRPC 端口假设可用
             
+            # 确保 URL 有协议前缀
+            if not url.startswith(('http://', 'https://')):
+                url = f"http://{url}"
+            
             # 测试健康检查端点
             health_url = f"{url}/eth/v1/node/health"
             response = requests.get(health_url, timeout=5)
             return response.status_code == 200
-        except:
+        except Exception as e:
+            print(f"⚠️  API 测试失败: {e}")
             return False
     
     def _detect_kurtosis_ports(self) -> Dict[str, Dict[str, str]]:
