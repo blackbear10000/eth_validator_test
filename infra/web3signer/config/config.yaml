@@ -15,4 +15,4 @@ metrics-port: 9001
 
 # network settings
 # 使用 minimal 配置以支持测试网络
-eth2.network: "minimal"
+eth2.network: "mainnet"

@@ -40,11 +40,11 @@ network_params:
   max_per_epoch_activation_churn_limit: 64
 
   # ===== 创世与验证者基数 =====
-  num_validator_keys_per_node: 32         # 4 组 × 32 = 128 个 genesis 验证者
-  withdrawal_type: "0x01"                 # 退出后自动提款到 EL 地址
+  num_validator_keys_per_node: 64
+  withdrawal_type: "0x01"
 
   # ===== 预设与网络标识 =====
-  preset: minimal
+  preset: mainnet
   network_id: "3151908"
   deposit_contract_address: "0x4242424242424242424242424242424242424242"
 
