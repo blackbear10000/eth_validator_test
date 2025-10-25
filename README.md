@@ -47,6 +47,8 @@ export VAULT_TOKEN=dev-root-token
 # 7. Monitor
 ./validator.sh monitor
 
+./validator.sh start-validator prysm
+
 # 8. Later, activate more validators as needed
 ./validator.sh activate-keys --count 10
 ./validator.sh create-deposits
