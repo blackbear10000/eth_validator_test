@@ -73,6 +73,7 @@ services:
     volumes:
       - postgres_data:/var/lib/postgresql/data
       - ./web3signer/init-db-migrations.sh:/docker-entrypoint-initdb.d/init-db-migrations.sh
+      - ./web3signer/migrations:/docker-entrypoint-initdb.d/migrations
     networks:
       - eth_validator_network
     healthcheck:

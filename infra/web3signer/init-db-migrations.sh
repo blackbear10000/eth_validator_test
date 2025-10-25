@@ -9,11 +9,28 @@ echo "Initializing Web3Signer database with official migrations..."
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 MIGRATIONS_DIR="$SCRIPT_DIR/migrations/postgresql"
 
+# In Docker container, the migrations are mounted at /docker-entrypoint-initdb.d/migrations
+if [ -d "/docker-entrypoint-initdb.d/migrations/postgresql" ]; then
+    MIGRATIONS_DIR="/docker-entrypoint-initdb.d/migrations/postgresql"
+fi
+
+# Debug information
+echo "Script directory: $SCRIPT_DIR"
+echo "Migrations directory: $MIGRATIONS_DIR"
+echo "Current working directory: $(pwd)"
+
 # Check if migrations directory exists
 if [ ! -d "$MIGRATIONS_DIR" ]; then
     echo "Error: Migrations directory not found at $MIGRATIONS_DIR"
+    echo "Contents of script directory:"
+    ls -la "$SCRIPT_DIR"
+    echo "Contents of current directory:"
+    ls -la .
     exit 1
 fi
+
+echo "Migrations directory found. Contents:"
+ls -la "$MIGRATIONS_DIR"
 
 # Apply migrations in order
 echo "Applying V00001__initial.sql..."
