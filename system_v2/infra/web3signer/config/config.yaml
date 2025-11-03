@@ -1,0 +1,14 @@
+server:
+  type: "http"
+  httpHost: "0.0.0.0"
+  httpPort: 9000
+  allowedCorsOrigins: ["*"]
+
+logging:
+  level: "INFO"
+
+keyStorePath: "/keys"
+
+ssl:
+  tlsEnabled: false
+

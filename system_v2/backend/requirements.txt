@@ -1,0 +1,37 @@
+# Web Framework
+fastapi>=0.104.0
+uvicorn[standard]>=0.24.0
+pydantic>=2.5.0
+pydantic-settings>=2.1.0
+
+# Database
+sqlalchemy>=2.0.23
+alembic>=1.12.1
+psycopg2-binary>=2.9.9
+
+# Vault
+hvac>=2.3.0
+
+# Ethereum Tools
+web3>=6.0.0
+eth-utils>=2.2.0
+eth-keys>=0.4.0
+eth-account>=0.9.0
+
+# Key Generation (ethstaker-deposit-cli dependencies)
+click>=8.1.0
+cryptography>=3.4.8
+pycryptodome>=3.15.0
+mnemonic>=0.20
+
+# HTTP Client
+requests>=2.31.0
+httpx>=0.25.0
+
+# Utilities
+pyyaml>=6.0
+python-dotenv>=1.0.0
+
+# Logging
+structlog>=23.2.0
+

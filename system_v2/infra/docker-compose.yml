@@ -1,0 +1,234 @@
+version: '3.8'
+
+services:
+  # Consul - Vault 存储后端
+  consul:
+    image: hashicorp/consul:1.21.5
+    container_name: consul
+    ports:
+      - "8500:8500"
+    environment:
+      - CONSUL_BIND_INTERFACE=eth0
+    command: >
+      consul agent
+        -server
+        -bootstrap
+        -ui
+        -client=0.0.0.0
+        -data-dir=/consul/data
+    volumes:
+      - consul_data:/consul/data
+    networks:
+      - validator_network
+    healthcheck:
+      test: ["CMD", "consul", "members"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+
+  # Vault HA Cluster - 节点 1
+  vault-1:
+    image: hashicorp/vault:1.20.4
+    container_name: vault-1
+    ports:
+      - "8200:8200"
+    environment:
+      - VAULT_ADDR=http://0.0.0.0:8200
+      - VAULT_DEV_ROOT_TOKEN_ID=dev-root-token
+    cap_add:
+      - IPC_LOCK
+    volumes:
+      - vault_data_1:/vault/data
+      - ./vault/config:/vault/config:ro
+    networks:
+      - validator_network
+    depends_on:
+      consul:
+        condition: service_healthy
+    command: >
+      sh -c "
+        vault server -config=/vault/config/vault.hcl &
+        sleep 5 &&
+        export VAULT_ADDR=http://localhost:8200 &&
+        export VAULT_TOKEN=dev-root-token &&
+        vault auth enable userpass || true &&
+        vault write auth/userpass/users/admin password=admin policies=admin || true &&
+        wait
+      "
+    healthcheck:
+      test: ["CMD", "vault", "status"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+
+  # PostgreSQL - 元数据存储 + Web3Signer Slashing Protection
+  postgres:
+    image: postgres:12
+    container_name: postgres
+    ports:
+      - "5432:5432"
+    environment:
+      - POSTGRES_PASSWORD=password
+      - POSTGRES_USER=postgres
+      - POSTGRES_DB=web3signer
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./web3signer/init-db-migrations.sh:/docker-entrypoint-initdb.d/init-db-migrations.sh
+      - ./web3signer/migrations:/docker-entrypoint-initdb.d/migrations
+    networks:
+      - validator_network
+    healthcheck:
+      test: >
+        sh -c "
+          pg_isready -U postgres &&
+          psql -U postgres -d web3signer -c 'SELECT version FROM database_version;' | grep -q '12'
+        "
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Web3Signer 实例 1
+  web3signer-1:
+    image: consensys/web3signer:25.9.1
+    container_name: web3signer-1
+    ports:
+      - "9000:9000"
+    environment:
+      - VAULT_ADDR=http://vault-1:8200
+      - VAULT_TOKEN=dev-root-token
+    volumes:
+      - ./web3signer/config:/config:ro
+      - ./web3signer/keys:/keys:ro
+    networks:
+      - validator_network
+    depends_on:
+      vault-1:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+    command: >
+      --config-file=/config/config.yaml
+      eth2
+      --slashing-protection-db-url=jdbc:postgresql://postgres:5432/web3signer
+      --slashing-protection-db-username=postgres
+      --slashing-protection-db-password=password
+      --slashing-protection-pruning-enabled=true
+      --key-store-path=/keys
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/upcheck"]
+      interval: 15s
+      timeout: 3s
+      retries: 3
+
+  # Web3Signer 实例 2
+  web3signer-2:
+    image: consensys/web3signer:25.9.1
+    container_name: web3signer-2
+    ports:
+      - "9001:9000"
+    environment:
+      - VAULT_ADDR=http://vault-1:8200
+      - VAULT_TOKEN=dev-root-token
+    volumes:
+      - ./web3signer/config:/config:ro
+      - ./web3signer/keys:/keys:ro
+    networks:
+      - validator_network
+    depends_on:
+      vault-1:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+    command: >
+      --config-file=/config/config.yaml
+      eth2
+      --slashing-protection-db-url=jdbc:postgresql://postgres:5432/web3signer
+      --slashing-protection-db-username=postgres
+      --slashing-protection-db-password=password
+      --slashing-protection-pruning-enabled=true
+      --key-store-path=/keys
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/upcheck"]
+      interval: 15s
+      timeout: 3s
+      retries: 3
+
+  # HAProxy - Web3Signer 负载均衡
+  haproxy:
+    image: haproxy:2.9
+    container_name: haproxy
+    ports:
+      - "9002:9002"
+    volumes:
+      - ./haproxy/haproxy.cfg:/usr/local/etc/haproxy/haproxy.cfg:ro
+    networks:
+      - validator_network
+    depends_on:
+      web3signer-1:
+        condition: service_healthy
+      web3signer-2:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9002/upcheck"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+
+  # 后端 API 服务
+  backend:
+    build:
+      context: ../backend
+      dockerfile: Dockerfile
+    container_name: backend
+    ports:
+      - "8000:8000"
+    environment:
+      - DATABASE_URL=postgresql://postgres:password@postgres:5432/validator_db
+      - VAULT_URL=http://vault-1:8200
+      - VAULT_TOKEN=dev-root-token
+      - WEB3SIGNER_URL_PRIMARY=http://web3signer-1:9000
+      - WEB3SIGNER_URL_SECONDARY=http://web3signer-2:9000
+      - WEB3SIGNER_HAPROXY_URL=http://haproxy:9002
+      - BEACON_API_URL=http://localhost:5052
+    volumes:
+      - ../backend:/app
+      - ../code/external:/app/external:ro
+    networks:
+      - validator_network
+    depends_on:
+      postgres:
+        condition: service_healthy
+      vault-1:
+        condition: service_healthy
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+
+  # 前端 Web 服务
+  frontend:
+    build:
+      context: ../frontend
+      dockerfile: Dockerfile
+    container_name: frontend
+    ports:
+      - "3000:80"
+    environment:
+      - REACT_APP_API_URL=http://backend:8000
+    networks:
+      - validator_network
+    depends_on:
+      backend:
+        condition: service_healthy
+
+volumes:
+  consul_data:
+  vault_data_1:
+  postgres_data:
+
+networks:
+  validator_network:
+    driver: bridge
+

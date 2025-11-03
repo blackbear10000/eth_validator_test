@@ -1,3 +1,7 @@
 [submodule "ethstaker-deposit-cli"]
 	path = code/external/ethstaker-deposit-cli
 	url = https://github.com/ethstaker/ethstaker-deposit-cli
+
+[submodule "eth2-batch-deposit"]
+	path = code/external/eth2-batch-deposit
+	url = https://github.com/stakefish/eth2-batch-deposit
