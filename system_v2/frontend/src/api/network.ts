@@ -18,6 +18,15 @@ export interface NetworkInfo {
   status?: any
 }
 
+export interface RpcEndpoints {
+  rpc_url?: string
+  host_rpc_url?: string
+  ws_url?: string
+  service?: string
+  error?: string
+  debug_info?: string
+}
+
 export const networkApi = {
   // 获取网络状态
   getStatus: () => apiClient.get('/network/status'),
@@ -30,5 +39,8 @@ export const networkApi = {
 
   // 获取网络信息
   getInfo: () => apiClient.get('/network/info'),
+
+  // 获取 RPC 端点
+  getRpcEndpoints: () => apiClient.get('/network/rpc-endpoints') as Promise<RpcEndpoints>,
 }
 

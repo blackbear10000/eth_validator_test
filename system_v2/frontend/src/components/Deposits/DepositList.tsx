@@ -24,6 +24,7 @@ import {
 } from '@ant-design/icons'
 import { depositsApi, DepositTransaction, DepositData, BatchDepositContract } from '../../api/deposits'
 import { keysApi } from '../../api/keys'
+import { networkApi, RpcEndpoints } from '../../api/network'
 
 const { Title, Text } = Typography
 const { Option } = Select
@@ -38,13 +39,28 @@ const DepositList: React.FC = () => {
   const [availableKeys, setAvailableKeys] = useState<any[]>([])
   const [generatedDepositData, setGeneratedDepositData] = useState<DepositData[]>([])
   const [batchContracts, setBatchContracts] = useState<BatchDepositContract[]>([])
+  const [rpcEndpoints, setRpcEndpoints] = useState<RpcEndpoints | null>(null)
   const [form] = Form.useForm()
   const [submitForm] = Form.useForm()
   const [deployForm] = Form.useForm()
 
+  const loadRpcEndpoints = async () => {
+    try {
+      const endpoints = await networkApi.getRpcEndpoints()
+      setRpcEndpoints(endpoints)
+      // 如果获取到了 RPC URL，自动填充到表单
+      if (endpoints.host_rpc_url && !deployForm.getFieldValue('rpc_url')) {
+        deployForm.setFieldsValue({ rpc_url: endpoints.host_rpc_url })
+      }
+    } catch (error: any) {
+      console.warn('无法获取 RPC 端点:', error)
+    }
+  }
+
   useEffect(() => {
     loadDeposits()
     loadBatchContracts()
+    loadRpcEndpoints()
   }, [])
 
   const loadDeposits = async () => {
@@ -537,8 +553,40 @@ const DepositList: React.FC = () => {
           <Form.Item
             name="rpc_url"
             label="RPC URL（可选，留空则自动从 Kurtosis 网络获取）"
+            help={
+              <div>
+                {rpcEndpoints?.host_rpc_url ? (
+                  <div style={{ marginBottom: 8 }}>
+                    <Text type="success">✓ 已自动检测到 RPC URL: </Text>
+                    <Text copyable={{ text: rpcEndpoints.host_rpc_url }} code>
+                      {rpcEndpoints.host_rpc_url}
+                    </Text>
+                  </div>
+                ) : rpcEndpoints?.error ? (
+                  <div style={{ marginBottom: 8 }}>
+                    <Text type="warning">⚠ {rpcEndpoints.error}</Text>
+                  </div>
+                ) : null}
+                <div style={{ marginTop: 8 }}>
+                  <strong>如何手动获取 RPC URL：</strong>
+                  <ol style={{ marginTop: 4, paddingLeft: 20, fontSize: '12px' }}>
+                    <li>在服务器上运行：<code>docker ps | grep el-</code> 查找执行层容器（如 el-1-geth-prysm）</li>
+                    <li>运行：<code>docker port &lt;容器名&gt;</code> 查看端口映射</li>
+                    <li>找到 <code>8545/tcp</code> 端口映射，格式如：<code>0.0.0.0:33697 -&gt; 8545/tcp</code></li>
+                    <li>
+                      <strong>从主机访问：</strong>使用 <code>http://localhost:33697</code>（使用映射的主机端口）
+                    </li>
+                    <li>
+                      <strong>从 Docker 容器内访问：</strong>使用 <code>http://host.docker.internal:33697</code> 或 <code>http://172.18.0.1:33697</code>
+                    </li>
+                  </ol>
+                </div>
+              </div>
+            }
           >
-            <Input placeholder="http://localhost:8545（留空则自动获取）" />
+            <Input 
+              placeholder={rpcEndpoints?.host_rpc_url || "http://localhost:8545（留空则自动获取）"} 
+            />
           </Form.Item>
           <Form.Item
             name="deployer_private_key"

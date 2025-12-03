@@ -189,35 +189,43 @@ class NetworkService:
             }
         
         # 解析输出，查找执行层服务的 RPC 端口
-        # 格式示例：
-        # el-1-geth-prysm                                  engine-rpc: 8551/tcp -> 127.0.0.1:33699       RUNNING
-        #                                                   rpc: 8545/tcp -> 127.0.0.1:33697
-        #                                                   ws: 8546/tcp -> 127.0.0.1:33698
+        # 格式示例（Kurtosis enclave inspect 输出）：
+        # NAME                          STATUS    PORTS
+        # el-1-geth-prysm               RUNNING   engine-rpc: 8551/tcp -> 127.0.0.1:33699
+        #                                              rpc: 8545/tcp -> 127.0.0.1:33697
+        #                                              ws: 8546/tcp -> 127.0.0.1:33698
         
         import re
         
         rpc_url = None
         ws_url = None
+        current_service = None
+        
+        # 记录原始输出用于调试
+        logger.debug(f"解析 enclave 输出，长度: {len(raw_output)} 字符")
+        logger.debug(f"输出前 500 字符: {raw_output[:500]}")
         
         # 查找执行层服务（el- 开头的服务）
         lines = raw_output.split('\n')
         in_el_service = False
-        current_service = None
         
-        for line in lines:
-            # 检查是否是执行层服务行
-            if re.match(r'^[a-f0-9]{12}\s+el-\d+-', line):
+        for i, line in enumerate(lines):
+            # 检查是否是执行层服务行（可能包含容器ID或服务名）
+            # 格式可能是：容器ID + 服务名，或者直接是服务名
+            if re.search(r'el-\d+-\w+', line):
                 in_el_service = True
                 # 提取服务名称
                 match = re.search(r'(el-\d+-\w+)', line)
                 if match:
                     current_service = match.group(1)
+                    logger.debug(f"找到执行层服务: {current_service}, 行 {i+1}: {line[:100]}")
                 continue
             
             # 如果在执行层服务块中，查找端口映射
             if in_el_service:
                 # 查找 rpc 端口（8545）
-                rpc_match = re.search(r'rpc:\s+8545/tcp\s+->\s+([\d.]+):(\d+)', line)
+                # 匹配格式：rpc: 8545/tcp -> 127.0.0.1:33697 或 rpc:8545/tcp->127.0.0.1:33697
+                rpc_match = re.search(r'rpc\s*:\s*8545/tcp\s*->\s*([\d.]+):(\d+)', line)
                 if rpc_match:
                     host_ip = rpc_match.group(1)
                     host_port = rpc_match.group(2)
@@ -226,9 +234,10 @@ class NetworkService:
                         rpc_url = f"http://localhost:{host_port}"
                     else:
                         rpc_url = f"http://{host_ip}:{host_port}"
+                    logger.info(f"找到 RPC 端口映射: {host_ip}:{host_port} -> {rpc_url}")
                 
                 # 查找 ws 端口（8546）
-                ws_match = re.search(r'ws:\s+8546/tcp\s+->\s+([\d.]+):(\d+)', line)
+                ws_match = re.search(r'ws\s*:\s*8546/tcp\s*->\s*([\d.]+):(\d+)', line)
                 if ws_match:
                     host_ip = ws_match.group(1)
                     host_port = ws_match.group(2)
@@ -236,6 +245,7 @@ class NetworkService:
                         ws_url = f"ws://localhost:{host_port}"
                     else:
                         ws_url = f"ws://{host_ip}:{host_port}"
+                    logger.info(f"找到 WS 端口映射: {host_ip}:{host_port} -> {ws_url}")
                 
                 # 如果找到了 RPC URL，可以继续查找 WS，但通常一个服务块就包含了
                 if rpc_url:
@@ -243,21 +253,41 @@ class NetworkService:
                     pass
             
             # 如果遇到新的服务块（非执行层），重置状态
-            if re.match(r'^[a-f0-9]{12}\s+', line) and not re.search(r'el-\d+-', line):
+            # 检查是否是新的容器/服务行（通常以容器ID开头，或者包含其他服务名）
+            if in_el_service and re.match(r'^[a-f0-9]{12}\s+', line) and not re.search(r'el-\d+-', line):
                 in_el_service = False
                 current_service = None
         
         if rpc_url:
+            # 注意：如果后端在 Docker 容器中运行，需要将 localhost 替换为 host.docker.internal
+            # 或者使用主机 IP（通常是 172.18.0.1）
+            # 但这里返回的 URL 是给后端容器使用的，所以需要特殊处理
+            # 实际上，如果后端容器需要访问主机上的端口，应该使用 host.docker.internal
+            
+            # 检查是否在容器环境中（通过环境变量判断）
+            import os
+            container_rpc_url = rpc_url
+            if os.path.exists('/.dockerenv'):
+                # 在容器中，如果 RPC URL 是 localhost，需要替换为 host.docker.internal
+                if 'localhost' in rpc_url or '127.0.0.1' in rpc_url:
+                    container_rpc_url = rpc_url.replace('localhost', 'host.docker.internal').replace('127.0.0.1', 'host.docker.internal')
+                    logger.info(f"检测到容器环境，将 RPC URL 转换为容器可访问的地址: {container_rpc_url}")
+            
+            logger.info(f"成功提取 RPC 端点: {rpc_url} (容器内: {container_rpc_url}), 服务: {current_service}")
             return {
-                "rpc_url": rpc_url,
+                "rpc_url": container_rpc_url,  # 返回容器可访问的 URL
+                "host_rpc_url": rpc_url,  # 返回主机可访问的 URL（用于前端显示）
                 "ws_url": ws_url,
                 "service": current_service
             }
         else:
+            logger.warning(f"无法从 enclave 信息中提取 RPC 端点。原始输出前 1000 字符:\n{raw_output[:1000]}")
             return {
-                "error": "无法从 enclave 信息中提取 RPC 端点",
+                "error": f"无法从 enclave 信息中提取 RPC 端点。请检查网络是否正常运行，或手动提供 RPC URL。",
                 "rpc_url": None,
-                "ws_url": None
+                "host_rpc_url": None,
+                "ws_url": None,
+                "debug_info": raw_output[:500]  # 返回部分原始输出用于调试
             }
     
     def get_info(self) -> Dict[str, Any]:
