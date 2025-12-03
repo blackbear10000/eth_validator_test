@@ -7,6 +7,9 @@ key-store-path: "/keys"
 # HTTP settings
 http-listen-host: "0.0.0.0"
 http-listen-port: 9000
+# Host allowlist - 允许所有主机访问（包括容器名和 IP）
+# 如果不配置，Web3Signer 会拒绝来自未授权主机的请求
+http-host-allowlist: ["*"]
 # CORS settings - 允许所有来源，避免健康检查 403 错误
 http-cors-origins: ["*"]
 
