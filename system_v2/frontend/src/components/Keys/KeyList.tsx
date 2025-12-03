@@ -69,8 +69,11 @@ const KeyList: React.FC = () => {
       console.log('密钥列表 API 响应:', {
         rawResponse: response,
         responseData: responseData,
+        responseDataType: typeof responseData,
+        responseDataKeys: responseData ? Object.keys(responseData) : [],
         itemsCount: responseData.items?.length || 0,
         total: responseData.total,
+        totalType: typeof responseData.total,
         currentPage: currentPagination.current,
         pageSize: currentPagination.pageSize,
         offset: params.offset,
@@ -79,12 +82,14 @@ const KeyList: React.FC = () => {
       })
 
       const items = responseData.items || []
-      const total = responseData.total || 0
+      const total = typeof responseData.total === 'number' ? responseData.total : (responseData.total ? parseInt(responseData.total) : 0)
       
       console.log('更新状态:', {
         itemsCount: items.length,
         total: total,
-        willUpdatePagination: true
+        totalType: typeof total,
+        willUpdatePagination: true,
+        currentPaginationState: paginationRef.current
       })
 
       setKeys(items)
@@ -95,7 +100,8 @@ const KeyList: React.FC = () => {
         }
         console.log('pagination 状态更新:', {
           from: prev,
-          to: newState
+          to: newState,
+          totalChanged: prev.total !== total
         })
         return newState
       })

@@ -27,6 +27,7 @@ const { Text } = Typography
 const KeyPoolOverview: React.FC = () => {
   const [status, setStatus] = useState<KeyPoolStatus | null>(null)
   const [keys, setKeys] = useState<ValidatorKey[]>([])
+  const [keysTotal, setKeysTotal] = useState(0)
   const [loading, setLoading] = useState(true)
   const [keysLoading, setKeysLoading] = useState(false)
   const [generateModalVisible, setGenerateModalVisible] = useState(false)
@@ -60,7 +61,14 @@ const KeyPoolOverview: React.FC = () => {
         limit: 20,
         offset: 0,
       }) as any
-      setKeys(response.items || [])
+      // apiClient 拦截器已经返回了 response.data，所以 response 就是数据对象
+      const responseData = response.data || response
+      setKeys(responseData.items || [])
+      setKeysTotal(responseData.total || 0)
+      console.log('KeyPoolOverview 加载密钥:', {
+        itemsCount: responseData.items?.length || 0,
+        total: responseData.total || 0
+      })
     } catch (error: any) {
       message.error(`加载密钥列表失败: ${error.message}`)
     } finally {
@@ -249,9 +257,12 @@ const KeyPoolOverview: React.FC = () => {
           rowKey="pubkey"
           loading={keysLoading}
           pagination={{
+            current: 1,
             pageSize: 20,
+            total: keysTotal,
             showTotal: (total) => `共 ${total} 条`,
             showSizeChanger: false,
+            hideOnSinglePage: false,
           }}
         />
       </Card>
