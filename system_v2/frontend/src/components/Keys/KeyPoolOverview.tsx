@@ -14,7 +14,7 @@ const KeyPoolOverview: React.FC = () => {
     try {
       setLoading(true)
       const response = await keysApi.getPoolStatus() as any
-      setStatus(response as KeyPoolStatus)
+      setStatus(response as unknown as KeyPoolStatus)
     } catch (error) {
       console.error('加载密钥池状态失败:', error)
     } finally {

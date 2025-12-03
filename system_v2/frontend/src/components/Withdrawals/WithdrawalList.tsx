@@ -50,7 +50,7 @@ const WithdrawalList: React.FC = () => {
         withdrawalsApi.getStatistics(selectedPubkey),
       ])
       setWithdrawals((withdrawalsRes as any).items || [])
-      setStatistics(statsRes as WithdrawalStatistics)
+      setStatistics(statsRes as unknown as WithdrawalStatistics)
     } catch (error: any) {
       message.error(`加载取款历史失败: ${error.message}`)
     } finally {
