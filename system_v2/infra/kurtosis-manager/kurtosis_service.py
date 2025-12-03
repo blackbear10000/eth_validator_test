@@ -456,8 +456,9 @@ class KurtosisService:
             }
         
         # 获取 enclave 详细信息
+        # 注意：Kurtosis CLI 不支持 --json 标志，使用普通输出
         success, stdout, stderr = self._run_kurtosis_command(
-            ["enclave", "inspect", self.enclave_name, "--json"],
+            ["enclave", "inspect", self.enclave_name],
             timeout=30
         )
         
@@ -469,23 +470,17 @@ class KurtosisService:
                 "error": stderr or "无法获取 enclave 详细信息"
             }
         
-        # 解析 enclave 信息
-        try:
-            enclave_info = json.loads(stdout)
-            return {
-                "enclave_name": self.enclave_name,
-                "status": "running",
-                "is_running": True,
-                "enclave_info": enclave_info
-            }
-        except json.JSONDecodeError as e:
-            logger.warning(f"解析 JSON 失败: {e}, 原始输出: {stdout[:200]}")
-            return {
-                "enclave_name": self.enclave_name,
-                "status": "running",
-                "is_running": True,
+        # Kurtosis CLI 输出是文本格式，不是 JSON
+        # 返回原始输出，让调用者根据需要解析
+        return {
+            "enclave_name": self.enclave_name,
+            "status": "running",
+            "is_running": True,
+            "enclave_info": {
                 "raw_output": stdout
-            }
+            },
+            "raw_output": stdout
+        }
     
     def start(self) -> Dict[str, Any]:
         """
