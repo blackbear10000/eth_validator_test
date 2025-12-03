@@ -78,19 +78,21 @@ services:
       - POSTGRES_DB=web3signer
     volumes:
       - postgres_data:/var/lib/postgresql/data
-      - ./web3signer/init-db-migrations.sh:/docker-entrypoint-initdb.d/init-db-migrations.sh
-      - ./web3signer/migrations:/docker-entrypoint-initdb.d/migrations
+      - ./web3signer/init-db-migrations.sh:/docker-entrypoint-initdb.d/init-db-migrations.sh:ro
+      - ./web3signer/migrations:/docker-entrypoint-initdb.d/migrations:ro
     networks:
       - validator_network
     healthcheck:
       test: >
         sh -c "
           pg_isready -U postgres &&
-          psql -U postgres -d web3signer -c 'SELECT version FROM database_version;' | grep -q '12'
+          psql -U postgres -lqt | cut -d \| -f 1 | grep -qw web3signer &&
+          psql -U postgres -d web3signer -c 'SELECT 1;' >/dev/null 2>&1
         "
       interval: 10s
       timeout: 5s
       retries: 5
+      start_period: 30s
 
   # Web3Signer 实例 1
   web3signer-1:

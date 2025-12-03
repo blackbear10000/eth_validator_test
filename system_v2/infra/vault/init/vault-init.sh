@@ -239,7 +239,35 @@ else
         
         if [ $DELETE_SUCCESS -eq 0 ]; then
           echo "Vault data deleted from Consul successfully."
-          echo "Waiting for Vault to detect the change and become uninitialized..."
+          echo "Restarting Vault process to detect the change..."
+          
+          # 找到 Vault 进程并优雅地重启它
+          VAULT_PID=$(pgrep -f "vault server" | head -1)
+          if [ -n "$VAULT_PID" ]; then
+            echo "Stopping Vault process (PID: $VAULT_PID)..."
+            # 发送 TERM 信号让 Vault 优雅关闭
+            kill -TERM "$VAULT_PID" 2>/dev/null || kill "$VAULT_PID" 2>/dev/null || true
+            # 等待进程退出
+            for i in $(seq 1 10); do
+              if ! kill -0 "$VAULT_PID" 2>/dev/null; then
+                break
+              fi
+              sleep 1
+            done
+            # 如果还在运行，强制杀死
+            if kill -0 "$VAULT_PID" 2>/dev/null; then
+              kill -9 "$VAULT_PID" 2>/dev/null || true
+            fi
+            sleep 2
+            
+            # 重新启动 Vault
+            echo "Restarting Vault server..."
+            vault server -config=/vault/config/vault.hcl &
+            sleep 8
+          else
+            echo "Warning: Could not find Vault process, waiting for it to detect changes..."
+            sleep 5
+          fi
           
           # 等待 Vault 检测到数据被删除（最多等待 30 秒）
           for i in $(seq 1 30); do
