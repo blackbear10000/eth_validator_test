@@ -17,7 +17,7 @@ try:
         DepositMessage,
         DepositData
     )
-    from ethstaker_deposit.utils.crypto import bls
+    from py_ecc.bls import G2ProofOfPossession as bls
     from eth_utils import to_canonical_address
 except ImportError as e:
     logging.error(f"无法导入 ethstaker-deposit-cli，Deposit Data 生成功能不可用: {e}")

@@ -10,7 +10,7 @@ try:
     from ethstaker_deposit.utils.exit_transaction import exit_transaction_generation
     from ethstaker_deposit.settings import get_chain_setting, BaseChainSetting
     from ethstaker_deposit.utils.ssz import SignedVoluntaryExit
-    from ethstaker_deposit.utils.crypto import bls
+    from py_ecc.bls import G2ProofOfPossession as bls
 except ImportError as e:
     logging.error(f"无法导入 ethstaker-deposit-cli，退出功能不可用: {e}")
     logging.error("请确保已安装 ethstaker-deposit-cli: pip install git+https://github.com/ethstaker/ethstaker-deposit-cli.git")
