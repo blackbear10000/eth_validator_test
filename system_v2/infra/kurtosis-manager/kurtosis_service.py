@@ -124,6 +124,52 @@ class KurtosisService:
             logger.warning(f"禁用 analytics 时出错: {e}，将使用环境变量")
             return False
     
+    def _check_engine_container_status(self) -> Dict[str, Any]:
+        """
+        检查 engine 容器的实际状态（通过 Docker）
+        
+        Returns:
+            容器状态信息
+        """
+        try:
+            import docker
+            client = docker.from_env()
+            
+            # 查找 kurtosis engine 容器
+            containers = client.containers.list(all=True, filters={"name": "kurtosis-engine"})
+            
+            if not containers:
+                return {"found": False, "message": "未找到 engine 容器"}
+            
+            container = containers[0]
+            status = {
+                "found": True,
+                "id": container.id[:12],
+                "status": container.status,
+                "name": container.name,
+            }
+            
+            # 检查容器健康状态
+            if hasattr(container, 'attrs') and 'State' in container.attrs:
+                state = container.attrs['State']
+                status["running"] = state.get('Running', False)
+                status["restarting"] = state.get('Restarting', False)
+                status["exit_code"] = state.get('ExitCode', 0)
+                status["error"] = state.get('Error', '')
+            
+            # 检查端口映射
+            if hasattr(container, 'attrs') and 'NetworkSettings' in container.attrs:
+                ports = container.attrs.get('NetworkSettings', {}).get('Ports', {})
+                status["ports"] = ports
+            
+            return status
+        except ImportError:
+            logger.debug("docker Python 库未安装，跳过容器状态检查")
+            return {"found": None, "message": "无法检查容器状态（docker 库未安装）"}
+        except Exception as e:
+            logger.debug(f"检查容器状态时出错: {e}")
+            return {"found": None, "message": f"检查失败: {str(e)}"}
+    
     def _ensure_engine_running(self) -> bool:
         """
         确保 Kurtosis engine 正在运行
@@ -131,14 +177,23 @@ class KurtosisService:
         注意：不强制要求 engine 运行，因为某些操作可能不需要 engine。
         如果 engine 无法启动，服务仍然可以启动，只是某些功能可能不可用。
         
-        改进：使用实际命令测试 engine 可用性，而不是依赖 `engine status`。
+        改进：
+        1. 使用实际命令测试 engine 可用性
+        2. 检查 engine 容器的实际状态
+        3. 如果容器在运行但无法连接，提供诊断信息
         
         Returns:
             是否成功
         """
         try:
-            # 首先尝试执行一个简单的测试命令来验证 engine 是否真的可用
-            # 这比 `engine status` 更可靠，因为它实际测试了 engine 的响应能力
+            # 首先检查 engine 容器的实际状态
+            container_status = self._check_engine_container_status()
+            if container_status.get("found") is True:
+                logger.info(f"Engine 容器状态: {container_status.get('status')}, 运行中: {container_status.get('running')}")
+                if container_status.get("restarting"):
+                    logger.warning("Engine 容器正在重启中，可能存在问题")
+            
+            # 尝试执行一个简单的测试命令来验证 engine 是否真的可用
             logger.info("验证 Kurtosis engine 是否可用...")
             test_success, test_stdout, test_stderr = self._run_kurtosis_command(
                 ["enclave", "ls"], 
@@ -149,15 +204,23 @@ class KurtosisService:
                 logger.info("Kurtosis engine 可用且响应正常")
                 return True
             
-            # 测试命令失败，可能的原因：
-            # 1. Engine 未运行
-            # 2. Engine 容器存在但服务器无响应
-            
+            # 测试命令失败
             error_msg = (test_stdout + test_stderr).lower()
+            full_error = test_stderr[:500] if test_stderr else test_stdout[:500]
+            
+            logger.warning(f"Engine 测试失败: {full_error}")
+            
+            # 如果容器在运行但无法连接，提供诊断信息
+            if container_status.get("found") is True and container_status.get("running"):
+                logger.warning("Engine 容器在运行，但 CLI 无法连接。可能的原因：")
+                logger.warning("  1. Engine 服务器进程未正常启动")
+                logger.warning("  2. 端口映射问题")
+                logger.warning("  3. 网络连接问题")
+                logger.warning(f"  容器状态: {container_status}")
             
             # 检查是否是 engine 相关错误
-            if "engine" in error_msg or "server isn't responding" in error_msg:
-                logger.warning("检测到 Kurtosis engine 问题，尝试修复...")
+            if "engine" in error_msg or "server isn't responding" in error_msg or "creating a new" in error_msg:
+                logger.warning("检测到 Kurtosis engine 连接问题")
                 
                 # 只尝试一次重启，避免无限循环
                 if not self._engine_restart_attempted:
@@ -181,9 +244,13 @@ class KurtosisService:
                         )
                         
                         if restart_result.returncode == 0:
-                            logger.info("Engine 重启成功，等待几秒后验证...")
+                            logger.info("Engine 重启命令执行成功，等待几秒后验证...")
                             import time
-                            time.sleep(5)  # 等待 engine 完全启动
+                            time.sleep(10)  # 等待 engine 完全启动（增加等待时间）
+                            
+                            # 再次检查容器状态
+                            container_status_after = self._check_engine_container_status()
+                            logger.info(f"重启后容器状态: {container_status_after}")
                             
                             # 再次验证
                             verify_success, _, _ = self._run_kurtosis_command(
@@ -196,7 +263,7 @@ class KurtosisService:
                             else:
                                 logger.warning("Engine 重启后仍然无法响应")
                         else:
-                            logger.warning(f"Engine 重启失败: {restart_result.stderr[:200]}")
+                            logger.warning(f"Engine 重启失败: {restart_result.stderr[:300]}")
                     except Exception as restart_error:
                         logger.warning(f"尝试重启 engine 时出错: {restart_error}")
                 else:
