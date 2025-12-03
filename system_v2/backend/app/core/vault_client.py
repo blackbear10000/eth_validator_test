@@ -4,9 +4,11 @@ Vault 客户端封装
 私钥存储格式兼容 Web3Signer
 """
 import logging
+import os
 from typing import Optional
 import hvac
 from hvac.exceptions import VaultError
+import requests
 
 from app.config import settings
 
@@ -41,11 +43,51 @@ class VaultClient:
         # 初始化 Vault 客户端
         self.client = hvac.Client(url=self.vault_url, token=self.vault_token)
         
-        # 验证连接和认证
-        self._ensure_authenticated()
+        # 验证连接和认证，如果失败则尝试从 Consul 读取 token
+        try:
+            self._ensure_authenticated()
+        except ConnectionError:
+            # 尝试从 Consul 读取 token
+            consul_token = self._get_token_from_consul()
+            if consul_token:
+                logger.info("从 Consul 读取到新的 Vault token，更新客户端")
+                self.vault_token = consul_token
+                self.client = hvac.Client(url=self.vault_url, token=self.vault_token)
+                self._ensure_authenticated()
+            else:
+                raise
         
         # 确保 KV v2 引擎已启用
         self._ensure_kv_engine()
+    
+    def _get_token_from_consul(self) -> Optional[str]:
+        """
+        从 Consul KV store 读取 Vault root token
+        
+        Returns:
+            Vault token 或 None
+        """
+        try:
+            # Consul 地址（从环境变量或默认值）
+            consul_addr = os.getenv("CONSUL_ADDR", "consul:8500")
+            consul_url = f"http://{consul_addr}/v1/kv/vault/root_token"
+            
+            response = requests.get(consul_url, timeout=5)
+            if response.status_code == 200:
+                import base64
+                import json
+                data = response.json()
+                if data and len(data) > 0:
+                    # Consul KV API 返回 base64 编码的值
+                    token_b64 = data[0].get('Value', '')
+                    if token_b64:
+                        token = base64.b64decode(token_b64).decode('utf-8')
+                        logger.info("成功从 Consul 读取 Vault token")
+                        return token.strip()
+        except Exception as e:
+            logger.debug(f"从 Consul 读取 token 失败（这是正常的，如果 Consul 不可用）: {e}")
+        
+        return None
     
     def _ensure_authenticated(self) -> None:
         """确保 Vault 客户端已认证"""
