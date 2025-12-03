@@ -28,6 +28,7 @@ const KeyPoolOverview: React.FC = () => {
   const [status, setStatus] = useState<KeyPoolStatus | null>(null)
   const [keys, setKeys] = useState<ValidatorKey[]>([])
   const [keysTotal, setKeysTotal] = useState(0)
+  const [keysCurrentPage, setKeysCurrentPage] = useState(1)
   const [loading, setLoading] = useState(true)
   const [keysLoading, setKeysLoading] = useState(false)
   const [generateModalVisible, setGenerateModalVisible] = useState(false)
@@ -54,18 +55,24 @@ const KeyPoolOverview: React.FC = () => {
     }
   }
 
-  const loadKeys = async () => {
+  const loadKeys = async (page: number = 1) => {
     try {
       setKeysLoading(true)
+      const limit = 20
+      const offset = (page - 1) * limit
       const response = await keysApi.list({
-        limit: 20,
-        offset: 0,
+        limit: limit,
+        offset: offset,
       }) as any
       // apiClient 拦截器已经返回了 response.data，所以 response 就是数据对象
       const responseData = response.data || response
       setKeys(responseData.items || [])
       setKeysTotal(responseData.total || 0)
+      setKeysCurrentPage(page)
       console.log('KeyPoolOverview 加载密钥:', {
+        page: page,
+        offset: offset,
+        limit: limit,
         itemsCount: responseData.items?.length || 0,
         total: responseData.total || 0
       })
@@ -257,12 +264,21 @@ const KeyPoolOverview: React.FC = () => {
           rowKey="pubkey"
           loading={keysLoading}
           pagination={{
-            current: 1,
+            current: keysCurrentPage,
             pageSize: 20,
             total: keysTotal,
             showTotal: (total) => `共 ${total} 条`,
             showSizeChanger: false,
             hideOnSinglePage: false,
+            onChange: (page, pageSize) => {
+              console.log('KeyPoolOverview 分页改变:', { 
+                page, 
+                pageSize,
+                currentPage: keysCurrentPage,
+                total: keysTotal 
+              })
+              loadKeys(page)
+            },
           }}
         />
       </Card>
