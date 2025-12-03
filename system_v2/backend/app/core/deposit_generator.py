@@ -11,7 +11,7 @@ try:
     from ethstaker_deposit.credentials import Credential
     from ethstaker_deposit.settings import get_chain_setting, BaseChainSetting
     from ethstaker_deposit.utils.constants import EXECUTION_ADDRESS_WITHDRAWAL_PREFIX
-    from ethstaker_deposit.utils.crypto import (
+    from ethstaker_deposit.utils.ssz import (
         compute_deposit_domain,
         compute_signing_root
     )

@@ -27,7 +27,7 @@ async def system_health():
         vault_health = False
         try:
             # 使用 VaultClient 的健康检查方法（内部使用 requests，更可靠）
-        vault_client = VaultClient()
+            vault_client = VaultClient()
             vault_health = vault_client.health_check()
             logger.info(f"Vault 健康检查成功: healthy={vault_health}")
         except Exception as health_error:
