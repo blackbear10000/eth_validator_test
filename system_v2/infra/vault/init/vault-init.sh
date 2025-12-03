@@ -1,29 +1,48 @@
 #!/bin/sh
 
-set -e
-
 export VAULT_ADDR=http://localhost:8200
 
-# 等待 Vault 启动
+# 等待 Vault 启动并响应
 echo "Waiting for Vault to start..."
-for i in $(seq 1 30); do
-  if vault status >/dev/null 2>&1; then
+for i in $(seq 1 60); do
+  # 检查 Vault 是否响应（即使未初始化也会响应）
+  if vault status 2>&1 | grep -qE "(Initialized|Error making API request)" || vault status 2>&1 | grep -q "seal configuration missing"; then
+    echo "Vault is responding"
     break
+  fi
+  if [ $i -eq 60 ]; then
+    echo "Error: Vault did not start within 60 seconds"
+    exit 1
   fi
   sleep 1
 done
 
+# 额外等待确保 Vault 完全启动
+sleep 2
+
 # 检查 Vault 是否已初始化
 VAULT_STATUS_OUTPUT=$(vault status 2>&1)
-if echo "$VAULT_STATUS_OUTPUT" | grep -q "Initialized.*true"; then
-  echo "Initializing Vault..."
+if ! echo "$VAULT_STATUS_OUTPUT" | grep -q "Initialized.*true"; then
+  echo "Vault is not initialized, initializing now..."
   
   # 初始化 Vault（1个密钥份额，阈值为1，适合测试环境）
-  INIT_OUTPUT=$(vault operator init -key-shares=1 -key-threshold=1 -format=json)
+  echo "Running vault operator init..."
+  INIT_OUTPUT=$(vault operator init -key-shares=1 -key-threshold=1 -format=json 2>&1)
+  
+  if [ $? -ne 0 ]; then
+    echo "Error initializing Vault: $INIT_OUTPUT"
+    exit 1
+  fi
   
   # 提取 root token 和 unseal key
   ROOT_TOKEN=$(echo "$INIT_OUTPUT" | grep -o '"root_token":"[^"]*' | cut -d'"' -f4)
   UNSEAL_KEY=$(echo "$INIT_OUTPUT" | grep -o '"unseal_keys_b64":\["[^"]*' | cut -d'"' -f4)
+  
+  if [ -z "$ROOT_TOKEN" ] || [ -z "$UNSEAL_KEY" ]; then
+    echo "Error: Failed to extract root token or unseal key from init output"
+    echo "Init output: $INIT_OUTPUT"
+    exit 1
+  fi
   
   # 保存到文件（用于后续使用）
   echo "$ROOT_TOKEN" > /vault/data/root_token.txt
@@ -35,10 +54,16 @@ if echo "$VAULT_STATUS_OUTPUT" | grep -q "Initialized.*true"; then
   echo "$UNSEAL_KEY" > /vault/data/shared/unseal_key.txt 2>/dev/null || true
   
   # 使用 unseal key 解锁 Vault
+  echo "Unsealing Vault..."
   export VAULT_TOKEN="$ROOT_TOKEN"
-  vault operator unseal "$UNSEAL_KEY"
+  UNSEAL_OUTPUT=$(vault operator unseal "$UNSEAL_KEY" 2>&1)
   
-  echo "Vault initialized successfully"
+  if [ $? -ne 0 ]; then
+    echo "Error unsealing Vault: $UNSEAL_OUTPUT"
+    exit 1
+  fi
+  
+  echo "Vault initialized and unsealed successfully"
   echo "Root Token: $ROOT_TOKEN"
   echo "Unseal Key: $UNSEAL_KEY"
 else
@@ -64,12 +89,23 @@ else
   fi
 fi
 
+# 等待 Vault 完全就绪
+echo "Waiting for Vault to be fully ready..."
+sleep 3
+
+# 检查 Vault 是否已解锁
+VAULT_FINAL_STATUS=$(vault status 2>&1)
+if echo "$VAULT_FINAL_STATUS" | grep -q "Sealed.*true"; then
+  echo "Warning: Vault is still sealed after initialization"
+  exit 1
+fi
+
 # 启用 userpass 认证
 echo "Setting up authentication..."
-vault auth enable userpass || true
+vault auth enable userpass 2>&1 || echo "userpass auth may already be enabled"
 
 # 创建 admin 用户
-vault write auth/userpass/users/admin password=admin policies=admin || true
+vault write auth/userpass/users/admin password=admin policies=admin 2>&1 || echo "admin user may already exist"
 
 # 如果 admin policy 不存在，创建它
 if ! vault policy read admin >/dev/null 2>&1; then
