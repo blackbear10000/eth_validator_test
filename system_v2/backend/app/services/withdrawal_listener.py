@@ -9,16 +9,31 @@ from datetime import datetime
 from decimal import Decimal
 
 from web3 import Web3
-from web3.middleware import geth_poa_middleware
 from sqlalchemy.orm import Session
+
+logger = logging.getLogger(__name__)
+
+# 兼容不同版本的 web3.py
+# web3.py 6.0+ 中 geth_poa_middleware 的导入方式已改变
+geth_poa_middleware = None
+try:
+    # 尝试旧版本导入 (web3.py < 6.0)
+    from web3.middleware import geth_poa_middleware
+except ImportError:
+    try:
+        # 尝试新版本导入 (web3.py >= 6.0)
+        from web3.middleware import ExtraDataToPOAMiddleware
+        geth_poa_middleware = ExtraDataToPOAMiddleware
+    except ImportError:
+        # PoA 中间件在新版本中可能已移除或改名
+        # 这不会影响主网等非 PoA 网络的使用
+        pass
 
 from app.models.database import ValidatorKey, WithdrawalEvent
 from app.models.enums import WithdrawalType
 from app.config import settings
 from app.core.beacon_api import BeaconAPIClient
 from app.utils.exceptions import DatabaseError
-
-logger = logging.getLogger(__name__)
 
 
 class WithdrawalListener:
@@ -53,10 +68,11 @@ class WithdrawalListener:
         if self.execution_rpc_url:
             self.w3 = Web3(Web3.HTTPProvider(self.execution_rpc_url))
             # 如果使用 PoA 网络，添加中间件
-            try:
-                self.w3.middleware_onion.inject(geth_poa_middleware, layer=0)
-            except:
-                pass
+            if geth_poa_middleware is not None:
+                try:
+                    self.w3.middleware_onion.inject(geth_poa_middleware, layer=0)
+                except Exception as e:
+                    logger.debug(f"无法注入 PoA 中间件: {e}")
         else:
             self.w3 = None
             logger.warning("Execution Layer RPC URL 未配置，将使用 Beacon API 同步")
