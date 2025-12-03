@@ -30,10 +30,18 @@ class BackgroundTaskScheduler:
         self.running = False
         self.tasks = []
         
-        # 创建数据库连接
-        engine = create_engine(settings.database_url)
-        SessionLocal = sessionmaker(bind=engine)
-        self.db = SessionLocal()
+        # 创建数据库连接和会话工厂
+        engine = create_engine(
+            settings.database_url,
+            pool_pre_ping=True,
+            pool_size=5,
+            max_overflow=10
+        )
+        self.SessionLocal = sessionmaker(bind=engine)
+    
+    def get_db_session(self) -> Session:
+        """获取新的数据库会话"""
+        return self.SessionLocal()
     
     async def sync_validator_states(self):
         """
@@ -42,9 +50,12 @@ class BackgroundTaskScheduler:
         logger.info("开始定期同步验证者状态")
         
         while self.running:
+            db = None
             try:
-                sync_service = SyncService(self.db)
+                db = self.get_db_session()
+                sync_service = SyncService(db)
                 await sync_service.sync_all_validators()
+                db.commit()
                 
                 logger.info("验证者状态同步完成")
                 
@@ -53,7 +64,18 @@ class BackgroundTaskScheduler:
                 
             except Exception as e:
                 logger.error(f"同步验证者状态失败: {e}")
+                if db:
+                    try:
+                        db.rollback()
+                    except Exception:
+                        pass
                 await asyncio.sleep(60)  # 出错后等待 1 分钟再试
+            finally:
+                if db:
+                    try:
+                        db.close()
+                    except Exception:
+                        pass
     
     async def sync_withdrawal_events(self):
         """
@@ -62,9 +84,12 @@ class BackgroundTaskScheduler:
         logger.info("开始定期同步取款事件")
         
         while self.running:
+            db = None
             try:
-                listener = WithdrawalListener(self.db)
+                db = self.get_db_session()
+                listener = WithdrawalListener(db)
                 results = listener.sync_all_validators()
+                db.commit()
                 
                 logger.info(
                     f"取款事件同步完成: {results['synced']}/{results['total']} 成功, "
@@ -76,7 +101,18 @@ class BackgroundTaskScheduler:
                 
             except Exception as e:
                 logger.error(f"同步取款事件失败: {e}")
+                if db:
+                    try:
+                        db.rollback()
+                    except Exception:
+                        pass
                 await asyncio.sleep(60)  # 出错后等待 1 分钟再试
+            finally:
+                if db:
+                    try:
+                        db.close()
+                    except Exception:
+                        pass
     
     async def start(self):
         """启动所有后台任务"""
@@ -113,9 +149,6 @@ class BackgroundTaskScheduler:
         await asyncio.gather(*self.tasks, return_exceptions=True)
         
         self.tasks = []
-        
-        # 关闭数据库连接
-        self.db.close()
         
         logger.info("后台任务调度器已停止")
 

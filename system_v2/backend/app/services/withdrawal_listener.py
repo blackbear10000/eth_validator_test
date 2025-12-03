@@ -84,15 +84,33 @@ class WithdrawalListener:
         Returns:
             公钥列表
         """
-        validators = self.db.query(ValidatorKey).filter(
-            ValidatorKey.status.in_([
-                'active_on_chain',
-                'pending_exit',
-                'exited'
-            ])
-        ).all()
-        
-        return [v.pubkey for v in validators]
+        try:
+            validators = self.db.query(ValidatorKey).filter(
+                ValidatorKey.status.in_([
+                    'active_on_chain',
+                    'pending_exit',
+                    'exited'
+                ])
+            ).all()
+            
+            return [v.pubkey for v in validators]
+        except Exception as e:
+            # 如果查询失败，可能是事务已中止，尝试回滚并重试
+            logger.warning(f"获取验证者公钥列表失败，尝试回滚: {e}")
+            try:
+                self.db.rollback()
+                # 回滚后重试一次
+                validators = self.db.query(ValidatorKey).filter(
+                    ValidatorKey.status.in_([
+                        'active_on_chain',
+                        'pending_exit',
+                        'exited'
+                    ])
+                ).all()
+                return [v.pubkey for v in validators]
+            except Exception as retry_error:
+                logger.error(f"回滚后重试仍然失败: {retry_error}")
+                return []
     
     def record_withdrawal_event(
         self,
