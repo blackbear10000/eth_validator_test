@@ -198,6 +198,9 @@ services:
       - WEB3SIGNER_URL_SECONDARY=http://web3signer-2:9000
       - WEB3SIGNER_HAPROXY_URL=http://haproxy:9002
       - BEACON_API_URL=http://localhost:5052
+      # kurtosis-manager 使用 host 网络，后端通过主机 IP 访问
+      # 使用 host.docker.internal 或主机网关 IP (通常是 172.18.0.1)
+      - KURTOSIS_MANAGER_URL=http://host.docker.internal:8002
     volumes:
       - ../backend:/app
       - ../code/external:/app/external:ro
@@ -221,10 +224,9 @@ services:
       context: ./kurtosis-manager
       dockerfile: Dockerfile
     container_name: kurtosis-manager
-    # 使用 bridge 网络，让后端可以通过服务名访问
-    # 同时通过 extra_hosts 和 Docker socket 访问主机上的 engine
-    ports:
-      - "8002:8002"
+    # 使用 host 网络模式，让 CLI 可以直接访问主机的 engine
+    # 后端通过主机 IP (172.18.0.1 或 host.docker.internal) 访问 kurtosis-manager
+    network_mode: host
     environment:
       - KURTOSIS_CONFIG_FILE=/kurtosis-config/kurtosis-config.yaml
       - KURTOSIS_ENCLAVE=eth-devnet
@@ -238,12 +240,8 @@ services:
       - /var/run/docker.sock:/var/run/docker.sock
       # 挂载 Kurtosis 配置文件目录（从项目根目录）
       - ../../infra/kurtosis:/kurtosis-config:ro
-    networks:
-      - validator_network
-    # 添加 extra_hosts，让容器能够访问主机的 localhost
-    # 这样 CLI 可以通过 host.docker.internal 或 host-gateway 访问主机上的 engine
-    extra_hosts:
-      - "host.docker.internal:host-gateway"
+    # 注意：使用 host 网络模式时，不需要 networks 配置
+    # 也不需要 ports 映射（直接使用主机端口 8002）
     # 注意：需要访问 Docker socket，可能需要 root 权限或 docker 组权限
     # 在生产环境中应该使用更安全的配置
     healthcheck:

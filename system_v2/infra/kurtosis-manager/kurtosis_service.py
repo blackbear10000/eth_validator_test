@@ -217,6 +217,18 @@ class KurtosisService:
                 logger.warning("  2. 端口映射问题")
                 logger.warning("  3. 网络连接问题")
                 logger.warning(f"  容器状态: {container_status}")
+                
+                # 尝试检查 engine 容器的日志
+                try:
+                    import docker
+                    client = docker.from_env()
+                    containers = client.containers.list(all=True, filters={"name": "kurtosis-engine"})
+                    if containers:
+                        container = containers[0]
+                        logs = container.logs(tail=20).decode('utf-8', errors='ignore')
+                        logger.info(f"Engine 容器最近日志:\n{logs}")
+                except Exception as e:
+                    logger.debug(f"无法获取 engine 容器日志: {e}")
             
             # 检查是否是 engine 相关错误
             if "engine" in error_msg or "server isn't responding" in error_msg or "creating a new" in error_msg:
@@ -270,7 +282,13 @@ class KurtosisService:
                     logger.info("已尝试过重启 engine，跳过以避免循环")
             
             # Engine 无法启动或不可用，但不阻止服务启动
+            # 注意：即使 engine 不可用，CLI 仍然可以通过 Docker socket 管理容器
+            # 只是某些需要 engine API 的功能可能不可用
             logger.info("Kurtosis engine 当前不可用，服务将继续运行（某些功能可能受限）")
+            logger.info("提示：如果 engine 容器在运行但无响应，可以尝试手动重启：")
+            logger.info("  docker restart <engine-container-name>")
+            logger.info("或者检查 engine 容器日志：")
+            logger.info("  docker logs <engine-container-name> --tail=50")
             return False
             
         except Exception as e:
