@@ -40,12 +40,15 @@ class Settings(BaseSettings):
     beacon_api_sync_interval: int = 12  # 秒（1 epoch）
     
     # Execution Layer RPC 配置
-    execution_rpc_url: Optional[str] = None  # 例如: "http://localhost:8545"
+    execution_rpc_url: Optional[str] = os.getenv("EXECUTION_RPC_URL", None)  # 例如: "http://localhost:8545"
     
     # Batch Deposit Contract 配置
-    batch_deposit_contract_address: Optional[str] = None
+    batch_deposit_contract_address: Optional[str] = os.getenv("BATCH_DEPOSIT_CONTRACT_ADDRESS", None)
     batch_deposit_max_size: int = 100  # 单次最多 100 个验证者
     batch_deposit_gas_limit: int = 5000000
+    
+    # Official Deposit Contract 配置
+    official_deposit_contract_address: Optional[str] = os.getenv("OFFICIAL_DEPOSIT_CONTRACT_ADDRESS", None)
     
     # 费用配置
     fee_rate: float = 0.1  # 默认 10% 费用比例

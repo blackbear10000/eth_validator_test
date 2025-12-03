@@ -72,3 +72,15 @@ async def get_network_info():
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
+
+@router.get("/network/rpc-endpoints")
+async def get_rpc_endpoints():
+    """获取网络的 RPC 端点信息"""
+    try:
+        service = get_network_service()
+        endpoints = service.get_rpc_endpoints()
+        return endpoints
+    except Exception as e:
+        logger.error(f"获取 RPC 端点失败: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+

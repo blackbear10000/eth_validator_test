@@ -78,11 +78,39 @@ class DepositDataResponse(BaseModel):
     fork_version: str
 
 
+class BatchDepositDeployRequest(BaseModel):
+    """Batch Deposit 合约部署请求"""
+    rpc_url: str = Field(..., description="RPC URL")
+    deployer_private_key: str = Field(..., description="部署者私钥")
+    network_name: str = Field(..., description="网络名称")
+    gas_price: Optional[int] = Field(None, description="Gas 价格（可选）")
+    gas_limit: Optional[int] = Field(None, description="Gas 限制（可选）")
+
+
+class BatchDepositContractResponse(BaseModel):
+    """Batch Deposit 合约响应"""
+    id: int
+    contract_address: str
+    network_name: str
+    rpc_url: str
+    deployer_address: str
+    deployment_tx_hash: str
+    block_number: Optional[int] = None
+    gas_used: Optional[int] = None
+    deployed_at: datetime
+    notes: Optional[str] = None
+
+    model_config = {"from_attributes": True}
+
+
 class BatchDepositSubmit(BaseModel):
     """批量存款提交请求"""
     deposit_data_list: List[DepositDataResponse]
     from_address: str = Field(..., description="发送交易的钱包地址")
     private_key: Optional[str] = Field(None, description="私钥（用于签名交易）")
+    deposit_type: str = Field("batch", description="存款类型: official 或 batch")
+    batch_contract_address: Optional[str] = Field(None, description="Batch Deposit 合约地址（deposit_type 为 batch 时必需）")
+    official_deposit_contract_address: Optional[str] = Field(None, description="官方 Deposit 合约地址（deposit_type 为 official 时可选）")
 
 
 class DepositTransactionResponse(BaseModel):

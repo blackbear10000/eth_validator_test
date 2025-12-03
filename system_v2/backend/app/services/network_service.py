@@ -162,6 +162,104 @@ class NetworkService:
         
         return result
     
+    def get_rpc_endpoints(self) -> Dict[str, Any]:
+        """
+        从 Kurtosis enclave 信息中提取 RPC 端点
+        
+        Returns:
+            包含 rpc_url 和 ws_url 的字典，如果无法获取则返回错误信息
+        """
+        status = self.get_status()
+        
+        if not status.get("is_running"):
+            return {
+                "error": "网络未运行",
+                "rpc_url": None,
+                "ws_url": None
+            }
+        
+        # 获取 enclave 详细信息
+        raw_output = status.get("raw_output") or status.get("enclave_info", {}).get("raw_output")
+        
+        if not raw_output:
+            return {
+                "error": "无法获取 enclave 详细信息",
+                "rpc_url": None,
+                "ws_url": None
+            }
+        
+        # 解析输出，查找执行层服务的 RPC 端口
+        # 格式示例：
+        # el-1-geth-prysm                                  engine-rpc: 8551/tcp -> 127.0.0.1:33699       RUNNING
+        #                                                   rpc: 8545/tcp -> 127.0.0.1:33697
+        #                                                   ws: 8546/tcp -> 127.0.0.1:33698
+        
+        import re
+        
+        rpc_url = None
+        ws_url = None
+        
+        # 查找执行层服务（el- 开头的服务）
+        lines = raw_output.split('\n')
+        in_el_service = False
+        current_service = None
+        
+        for line in lines:
+            # 检查是否是执行层服务行
+            if re.match(r'^[a-f0-9]{12}\s+el-\d+-', line):
+                in_el_service = True
+                # 提取服务名称
+                match = re.search(r'(el-\d+-\w+)', line)
+                if match:
+                    current_service = match.group(1)
+                continue
+            
+            # 如果在执行层服务块中，查找端口映射
+            if in_el_service:
+                # 查找 rpc 端口（8545）
+                rpc_match = re.search(r'rpc:\s+8545/tcp\s+->\s+([\d.]+):(\d+)', line)
+                if rpc_match:
+                    host_ip = rpc_match.group(1)
+                    host_port = rpc_match.group(2)
+                    # 如果映射到 localhost，使用 localhost；否则使用实际 IP
+                    if host_ip == '127.0.0.1' or host_ip == '0.0.0.0':
+                        rpc_url = f"http://localhost:{host_port}"
+                    else:
+                        rpc_url = f"http://{host_ip}:{host_port}"
+                
+                # 查找 ws 端口（8546）
+                ws_match = re.search(r'ws:\s+8546/tcp\s+->\s+([\d.]+):(\d+)', line)
+                if ws_match:
+                    host_ip = ws_match.group(1)
+                    host_port = ws_match.group(2)
+                    if host_ip == '127.0.0.1' or host_ip == '0.0.0.0':
+                        ws_url = f"ws://localhost:{host_port}"
+                    else:
+                        ws_url = f"ws://{host_ip}:{host_port}"
+                
+                # 如果找到了 RPC URL，可以继续查找 WS，但通常一个服务块就包含了
+                if rpc_url:
+                    # 继续查找 WS，但不要跳出循环，因为可能有多个执行层服务
+                    pass
+            
+            # 如果遇到新的服务块（非执行层），重置状态
+            if re.match(r'^[a-f0-9]{12}\s+', line) and not re.search(r'el-\d+-', line):
+                in_el_service = False
+                current_service = None
+        
+        if rpc_url:
+            return {
+                "rpc_url": rpc_url,
+                "ws_url": ws_url,
+                "service": current_service
+            }
+        else:
+            return {
+                "error": "无法从 enclave 信息中提取 RPC 端点",
+                "rpc_url": None,
+                "ws_url": None
+            }
+    
     def get_info(self) -> Dict[str, Any]:
         """
         获取网络详细信息（genesis、fork version、deposit contract 等）

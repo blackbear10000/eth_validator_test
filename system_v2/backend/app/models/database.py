@@ -223,3 +223,38 @@ class ClientInstance(Base):
     def __repr__(self):
         return f"<ClientInstance(name={self.name}, type={self.client_type}, status={self.status})>"
 
+
+class BatchDepositContract(Base):
+    """
+    Batch Deposit 合约记录表
+    记录已部署的 Batch Deposit 合约信息
+    """
+    __tablename__ = "batch_deposit_contracts"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    
+    # 合约信息
+    contract_address = Column(String(42), nullable=False, unique=True, index=True, comment="合约地址")
+    network_name = Column(String(64), nullable=False, index=True, comment="网络名称（如 kurtosis-devnet, mainnet）")
+    rpc_url = Column(String(256), nullable=False, comment="关联的 RPC URL")
+    
+    # 部署信息
+    deployer_address = Column(String(42), nullable=False, comment="部署者地址")
+    deployment_tx_hash = Column(String(66), nullable=False, unique=True, index=True, comment="部署交易哈希")
+    block_number = Column(Integer, nullable=True, comment="部署区块号")
+    gas_used = Column(Numeric(20, 0), nullable=True, comment="部署使用的 Gas")
+    
+    # 时间戳
+    deployed_at = Column(DateTime, nullable=False, default=datetime.utcnow, index=True, comment="部署时间")
+    
+    # 备注
+    notes = Column(Text, nullable=True, comment="备注信息")
+    
+    # 唯一约束：同一网络不应该有多个活跃合约（可选）
+    __table_args__ = (
+        Index('idx_network_contract', 'network_name', 'contract_address'),
+    )
+
+    def __repr__(self):
+        return f"<BatchDepositContract(address={self.contract_address[:10]}..., network={self.network_name})>"
+
