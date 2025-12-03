@@ -24,7 +24,7 @@ class Settings(BaseSettings):
     database_echo: bool = False
     
     # Vault 配置
-    vault_url: str = "http://localhost:8200"
+    vault_url: str = os.getenv("VAULT_URL", "http://localhost:8200")
     vault_token: str = os.getenv("VAULT_TOKEN", "dev-root-token")
     vault_mount_point: str = "secret"
     vault_key_path_prefix: str = "web3signer-keys"

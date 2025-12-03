@@ -29,20 +29,24 @@ async def system_health():
             # 直接使用不需要认证的健康检查方法
             import hvac
             from app.config import settings
-            unauthenticated_client = hvac.Client(url=settings.vault_url)
+            vault_url = settings.vault_url
+            logger.debug(f"尝试连接 Vault: {vault_url}")
+            unauthenticated_client = hvac.Client(url=vault_url)
             health = unauthenticated_client.sys.read_health_status()
             initialized = health.get('initialized', False)
             sealed = health.get('sealed', True)
             vault_health = initialized and not sealed
-            logger.debug(f"Vault 健康检查: initialized={initialized}, sealed={sealed}, healthy={vault_health}")
+            logger.info(f"Vault 健康检查成功: url={vault_url}, initialized={initialized}, sealed={sealed}, healthy={vault_health}")
         except Exception as health_error:
-            logger.error(f"Vault 健康检查失败: {health_error}")
+            logger.error(f"Vault 健康检查失败 (url={settings.vault_url}): {health_error}", exc_info=True)
             # 如果直接健康检查也失败，尝试使用 VaultClient（可能需要认证）
             try:
+                logger.info("尝试使用 VaultClient 进行健康检查...")
                 vault_client = VaultClient()
                 vault_health = vault_client.health_check()
+                logger.info(f"VaultClient 健康检查成功: {vault_health}")
             except Exception as e:
-                logger.error(f"VaultClient 健康检查也失败: {e}")
+                logger.error(f"VaultClient 健康检查也失败: {e}", exc_info=True)
         
         # Web3Signer 健康检查
         web3signer_primary = False
@@ -119,20 +123,24 @@ async def system_overview(db: Session = Depends(get_db)):
             # 直接使用不需要认证的健康检查方法
             import hvac
             from app.config import settings
-            unauthenticated_client = hvac.Client(url=settings.vault_url)
+            vault_url = settings.vault_url
+            logger.debug(f"尝试连接 Vault: {vault_url}")
+            unauthenticated_client = hvac.Client(url=vault_url)
             health = unauthenticated_client.sys.read_health_status()
             initialized = health.get('initialized', False)
             sealed = health.get('sealed', True)
             vault_health = initialized and not sealed
-            logger.debug(f"Vault 健康检查: initialized={initialized}, sealed={sealed}, healthy={vault_health}")
+            logger.info(f"Vault 健康检查成功: url={vault_url}, initialized={initialized}, sealed={sealed}, healthy={vault_health}")
         except Exception as health_error:
-            logger.error(f"Vault 健康检查失败: {health_error}")
+            logger.error(f"Vault 健康检查失败 (url={settings.vault_url}): {health_error}", exc_info=True)
             # 如果直接健康检查也失败，尝试使用 VaultClient（可能需要认证）
             try:
+                logger.info("尝试使用 VaultClient 进行健康检查...")
                 vault_client = VaultClient()
                 vault_health = vault_client.health_check()
+                logger.info(f"VaultClient 健康检查成功: {vault_health}")
             except Exception as e:
-                logger.error(f"VaultClient 健康检查也失败: {e}")
+                logger.error(f"VaultClient 健康检查也失败: {e}", exc_info=True)
         
         web3signer_primary = False
         web3signer_secondary = False
