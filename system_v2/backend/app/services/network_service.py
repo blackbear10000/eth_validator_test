@@ -42,33 +42,60 @@ class NetworkService:
             logger.debug(f"调用 Kurtosis 管理服务: {method} {url}")
             response = requests.request(method, url, timeout=30, **kwargs)
             response.raise_for_status()
-            return response.json()
+            result = response.json()
+            
+            # 确保返回的数据包含必要字段（对于 /status 端点）
+            if endpoint == "/status":
+                if "enclave_name" not in result:
+                    result["enclave_name"] = self.enclave_name
+                if "status" not in result:
+                    result["status"] = "stopped" if not result.get("is_running") else "running"
+                if "is_running" not in result:
+                    result["is_running"] = False
+            
+            return result
         except requests.exceptions.ConnectionError as e:
             logger.error(f"无法连接到 Kurtosis 管理服务: {url}, {e}")
             return {
-                "error": f"无法连接到 Kurtosis 管理服务: {e}",
-                "is_running": False
+                "enclave_name": self.enclave_name,
+                "status": "error",
+                "is_running": False,
+                "error": f"无法连接到 Kurtosis 管理服务: {e}"
             }
         except requests.exceptions.Timeout:
             logger.error(f"Kurtosis 管理服务请求超时: {url}")
             return {
-                "error": "请求超时",
-                "is_running": False
+                "enclave_name": self.enclave_name,
+                "status": "error",
+                "is_running": False,
+                "error": "请求超时"
             }
         except requests.exceptions.HTTPError as e:
             logger.error(f"Kurtosis 管理服务 HTTP 错误: {e}, 响应: {response.text[:200]}")
             try:
-                return response.json()
+                result = response.json()
+                # 确保包含必要字段
+                if "enclave_name" not in result:
+                    result["enclave_name"] = self.enclave_name
+                if "status" not in result:
+                    result["status"] = "error" if result.get("error") else "stopped"
+                if "is_running" not in result:
+                    result["is_running"] = False
+                return result
             except:
                 return {
-                    "error": f"HTTP 错误: {e}",
-                    "is_running": False
+                    "enclave_name": self.enclave_name,
+                    "status": "error",
+                    "is_running": False,
+                    "error": f"HTTP 错误: {e}"
                 }
         except Exception as e:
             logger.error(f"调用 Kurtosis 管理服务失败: {e}", exc_info=True)
             return {
-                "error": str(e),
-                "is_running": False
+                "enclave_name": self.enclave_name,
+                "status": "error",
+                "is_running": False,
+                "error": str(e)
             }
     
     def get_status(self) -> Dict[str, Any]:
@@ -80,9 +107,13 @@ class NetworkService:
         """
         result = self._call_api("/status")
         
-        # 确保包含 enclave_name
+        # 确保包含必要字段
         if "enclave_name" not in result:
             result["enclave_name"] = self.enclave_name
+        if "status" not in result:
+            result["status"] = "stopped" if not result.get("is_running") else "running"
+        if "is_running" not in result:
+            result["is_running"] = False
         
         return result
     
@@ -98,7 +129,20 @@ class NetworkService:
         
         # 确保包含 success 字段
         if "success" not in result:
-            result["success"] = "error" not in result
+            # 检查是否有错误，或者检查 status 字段
+            if "error" in result:
+                result["success"] = False
+            elif result.get("status") == "running" or result.get("is_running"):
+                result["success"] = True
+            else:
+                result["success"] = False
+        
+        # 确保包含 message 字段
+        if "message" not in result:
+            if result.get("success"):
+                result["message"] = "网络启动成功"
+            else:
+                result["message"] = result.get("error", "启动失败")
         
         return result
     

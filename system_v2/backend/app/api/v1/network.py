@@ -2,10 +2,12 @@
 网络管理 API
 管理 Kurtosis 开发网络的启动、停止和状态查询
 """
+import logging
 from fastapi import APIRouter, HTTPException
 from app.services.network_service import NetworkService
 from app.models.schemas import NetworkStatusResponse, NetworkInfoResponse
 
+logger = logging.getLogger(__name__)
 router = APIRouter()
 
 
@@ -31,10 +33,19 @@ async def start_network():
     try:
         service = get_network_service()
         result = service.start()
+        
+        # 记录详细日志以便调试
+        logger.info(f"启动网络结果: success={result.get('success')}, message={result.get('message')}, error={result.get('error')}")
+        
         if not result.get("success"):
-            raise HTTPException(status_code=500, detail=result.get("message", "启动失败"))
+            error_msg = result.get("message") or result.get("error") or "启动失败"
+            logger.error(f"启动网络失败: {error_msg}")
+            raise HTTPException(status_code=500, detail=error_msg)
         return result
+    except HTTPException:
+        raise
     except Exception as e:
+        logger.error(f"启动网络异常: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
 
 
