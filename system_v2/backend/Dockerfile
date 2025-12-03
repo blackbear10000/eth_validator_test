@@ -9,8 +9,10 @@ RUN apt-get update && apt-get install -y \
     curl \
     git \
     ca-certificates \
+    gnupg \
     && curl -fsSL https://deb.nodesource.com/setup_20.x | bash - \
     && apt-get install -y nodejs \
+    && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
 
 # 复制依赖文件
@@ -19,11 +21,8 @@ COPY requirements.txt .
 # 安装 Python 依赖
 RUN pip install --no-cache-dir -r requirements.txt
 
-# 复制应用代码
+# 复制应用代码（包括诊断脚本）
 COPY . .
-
-# 复制诊断脚本（用于调试）
-COPY diagnose_word_lists.py /app/diagnose_word_lists.py
 
 # 暴露端口
 EXPOSE 8000
