@@ -61,7 +61,8 @@ const KeyList: React.FC = () => {
       
       const response = await keysApi.list(params) as any
       
-      // 处理响应数据（可能是 response.data 或直接是 response）
+      // apiClient 拦截器已经返回了 response.data，所以 response 就是数据对象
+      // 但为了兼容性，仍然检查 response.data
       const responseData = response.data || response
 
       // 调试日志
@@ -73,14 +74,31 @@ const KeyList: React.FC = () => {
         currentPage: currentPagination.current,
         pageSize: currentPagination.pageSize,
         offset: params.offset,
-        limit: params.limit
+        limit: params.limit,
+        paginationState: paginationRef.current
       })
 
-      setKeys(responseData.items || [])
-      setPagination((prev) => ({
-        ...prev,
-        total: responseData.total || 0,
-      }))
+      const items = responseData.items || []
+      const total = responseData.total || 0
+      
+      console.log('更新状态:', {
+        itemsCount: items.length,
+        total: total,
+        willUpdatePagination: true
+      })
+
+      setKeys(items)
+      setPagination((prev) => {
+        const newState = {
+          ...prev,
+          total: total,
+        }
+        console.log('pagination 状态更新:', {
+          from: prev,
+          to: newState
+        })
+        return newState
+      })
     } catch (error: any) {
       message.error(`加载密钥列表失败: ${error.message}`)
     } finally {
@@ -103,8 +121,16 @@ const KeyList: React.FC = () => {
 
   // 当分页参数改变时，加载数据
   useEffect(() => {
+    console.log('useEffect 触发 loadKeys:', {
+      current: pagination.current,
+      pageSize: pagination.pageSize,
+      total: pagination.total,
+      statusFilter,
+      batchIdFilter,
+      searchText
+    })
     loadKeys()
-  }, [pagination.current, pagination.pageSize, statusFilter, batchIdFilter, searchText])
+  }, [pagination.current, pagination.pageSize, statusFilter, batchIdFilter, searchText, loadKeys])
 
   // 获取状态标签
   const getStatusTag = (status: string) => {
@@ -320,13 +346,28 @@ const KeyList: React.FC = () => {
                 return `第 ${range[0]}-${range[1]} 条，共 ${total} 条`
               },
               pageSizeOptions: ['10', '20', '50', '100'],
+              // 确保分页控件始终显示（即使只有一页）
+              hideOnSinglePage: false,
               onChange: (page, pageSize) => {
-                console.log('分页改变:', { page, pageSize, currentTotal: pagination.total })
-                setPagination((prev) => ({
-                  ...prev,
-                  current: page,
-                  pageSize: pageSize || prev.pageSize,
-                }))
+                console.log('分页改变:', { 
+                  page, 
+                  pageSize, 
+                  currentTotal: pagination.total,
+                  currentPage: pagination.current,
+                  currentPageSize: pagination.pageSize
+                })
+                setPagination((prev) => {
+                  const newState = {
+                    ...prev,
+                    current: page,
+                    pageSize: pageSize || prev.pageSize,
+                  }
+                  console.log('onChange 更新 pagination:', {
+                    from: prev,
+                    to: newState
+                  })
+                  return newState
+                })
               },
               onShowSizeChange: (_current, size) => {
                 console.log('每页数量改变:', { size, currentTotal: pagination.total })
