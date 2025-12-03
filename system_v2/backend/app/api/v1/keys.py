@@ -63,6 +63,7 @@ async def activate_keys(
 async def list_keys(
     status: Optional[ValidatorKeyStatus] = Query(None),
     batch_id: Optional[str] = Query(None),
+    search: Optional[str] = Query(None, description="搜索关键词（公钥、提款公钥、批次ID）"),
     limit: int = Query(100, ge=1, le=1000),
     offset: int = Query(0, ge=0),
     key_service: KeyManagementService = Depends(get_key_service)
@@ -72,6 +73,7 @@ async def list_keys(
         keys, total = key_service.list_keys(
             status=status,
             batch_id=batch_id,
+            search=search,
             limit=limit,
             offset=offset
         )

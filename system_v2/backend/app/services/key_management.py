@@ -548,6 +548,7 @@ class KeyManagementService:
         status: Optional[ValidatorKeyStatus] = None,
         batch_id: Optional[str] = None,
         client_type: Optional[str] = None,
+        search: Optional[str] = None,
         limit: Optional[int] = None,
         offset: int = 0
     ) -> tuple[List[ValidatorKey], int]:
@@ -558,12 +559,15 @@ class KeyManagementService:
             status: 状态筛选
             batch_id: 批次ID筛选
             client_type: 客户端类型筛选
+            search: 搜索关键词（公钥、提款公钥、批次ID）
             limit: 限制数量
             offset: 偏移量
             
         Returns:
             (密钥列表, 总数) 元组
         """
+        from sqlalchemy import or_
+        
         query = self.db.query(ValidatorKey)
         
         if status:
@@ -573,7 +577,18 @@ class KeyManagementService:
         if client_type:
             query = query.filter(ValidatorKey.client_type == client_type)
         
-        # 获取总数
+        # 搜索功能
+        if search:
+            search_pattern = f"%{search.lower()}%"
+            query = query.filter(
+                or_(
+                    ValidatorKey.pubkey.ilike(search_pattern),
+                    ValidatorKey.withdrawal_pubkey.ilike(search_pattern),
+                    ValidatorKey.batch_id.ilike(search_pattern)
+                )
+            )
+        
+        # 获取总数（在应用 limit/offset 之前）
         total = query.count()
         
         # 按创建时间倒序（必须在 limit/offset 之前）

@@ -441,8 +441,13 @@ class BatchDepositDeployer:
             )
             
             # 发送交易
+            # web3.py 6.0+ 使用 raw_transaction（下划线），旧版本使用 rawTransaction（驼峰）
+            raw_transaction = getattr(signed_txn, 'raw_transaction', None) or getattr(signed_txn, 'rawTransaction', None)
+            if raw_transaction is None:
+                raise ValueError("无法获取原始交易数据，签名交易对象缺少 raw_transaction 或 rawTransaction 属性")
+            
             logger.info(f"发送部署交易...")
-            tx_hash = self.web3.eth.send_raw_transaction(signed_txn.rawTransaction)
+            tx_hash = self.web3.eth.send_raw_transaction(raw_transaction)
             tx_hash_hex = tx_hash.hex()
             
             logger.info(f"部署交易已发送: {tx_hash_hex}")
