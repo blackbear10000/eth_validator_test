@@ -58,8 +58,9 @@ async def system_health():
             web3signer_primary = web3signer_client.health_check("primary")
             web3signer_secondary = web3signer_client.health_check("secondary")
             haproxy = web3signer_client.health_check("haproxy")
+            logger.info(f"Web3Signer 健康检查: primary={web3signer_primary}, secondary={web3signer_secondary}, haproxy={haproxy}")
         except Exception as e:
-            logger.error(f"Web3Signer 健康检查失败: {e}")
+            logger.error(f"Web3Signer 健康检查失败: {e}", exc_info=True)
         
         # Beacon API 健康检查
         beacon_api_health = False
@@ -152,8 +153,9 @@ async def system_overview(db: Session = Depends(get_db)):
             web3signer_primary = web3signer_client.health_check("primary")
             web3signer_secondary = web3signer_client.health_check("secondary")
             haproxy = web3signer_client.health_check("haproxy")
+            logger.info(f"Web3Signer 健康检查: primary={web3signer_primary}, secondary={web3signer_secondary}, haproxy={haproxy}")
         except Exception as e:
-            logger.error(f"Web3Signer 健康检查失败: {e}")
+            logger.error(f"Web3Signer 健康检查失败: {e}", exc_info=True)
         
         beacon_api_health = False
         try:

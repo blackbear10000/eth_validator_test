@@ -113,9 +113,14 @@ class Web3SignerClient:
         
         try:
             response = self.session.get(f"{url}/upcheck", timeout=5)
-            is_healthy = response.status_code == 200
+            # Web3Signer 的 /upcheck 端点可能返回 200 或 403
+            # 403 通常表示服务在运行但可能有权限限制，我们也认为它是健康的
+            # 这与 HAProxy 配置一致：http-check expect status 200,403
+            is_healthy = response.status_code in [200, 403]
             if not is_healthy:
-                logger.warning(f"Web3Signer {instance} 健康检查失败: HTTP {response.status_code}")
+                logger.warning(f"Web3Signer {instance} 健康检查失败: HTTP {response.status_code}, URL: {url}")
+            else:
+                logger.debug(f"Web3Signer {instance} 健康检查成功: HTTP {response.status_code}, URL: {url}")
             return is_healthy
         except requests.exceptions.Timeout:
             logger.warning(f"Web3Signer {instance} 健康检查超时: {url}")
