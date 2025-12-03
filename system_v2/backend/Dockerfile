@@ -19,6 +19,9 @@ RUN pip install --no-cache-dir -r requirements.txt
 # 复制应用代码
 COPY . .
 
+# 复制诊断脚本（用于调试）
+COPY diagnose_word_lists.py /app/diagnose_word_lists.py
+
 # 暴露端口
 EXPOSE 8000
 
