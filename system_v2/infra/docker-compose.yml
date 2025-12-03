@@ -221,9 +221,10 @@ services:
       context: ./kurtosis-manager
       dockerfile: Dockerfile
     container_name: kurtosis-manager
-    # 使用 host 网络模式，让容器内的 localhost 指向主机
-    # 这样 Kurtosis CLI 可以通过 localhost 访问主机的 engine
-    network_mode: host
+    # 使用 bridge 网络，让后端可以通过服务名访问
+    # 同时通过 extra_hosts 和 Docker socket 访问主机上的 engine
+    ports:
+      - "8002:8002"
     environment:
       - KURTOSIS_CONFIG_FILE=/kurtosis-config/kurtosis-config.yaml
       - KURTOSIS_ENCLAVE=eth-devnet
@@ -237,8 +238,12 @@ services:
       - /var/run/docker.sock:/var/run/docker.sock
       # 挂载 Kurtosis 配置文件目录（从项目根目录）
       - ../../infra/kurtosis:/kurtosis-config:ro
-    # 注意：使用 host 网络模式时，不需要 networks 配置
-    # 也不需要 ports 映射（直接使用主机端口）
+    networks:
+      - validator_network
+    # 添加 extra_hosts，让容器能够访问主机的 localhost
+    # 这样 CLI 可以通过 host.docker.internal 或 host-gateway 访问主机上的 engine
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     # 注意：需要访问 Docker socket，可能需要 root 权限或 docker 组权限
     # 在生产环境中应该使用更安全的配置
     healthcheck:
