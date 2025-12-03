@@ -29,6 +29,9 @@ class KurtosisService:
         # 验证 Kurtosis CLI 是否可用
         self._verify_kurtosis_cli()
         
+        # 禁用 analytics/metrics（避免网络连接问题）
+        self._disable_analytics()
+        
         # 检查并启动 Kurtosis engine（如果需要）
         self._ensure_engine_running()
     
@@ -44,12 +47,18 @@ class KurtosisService:
             kurtosis_path = shutil.which("kurtosis")
             if kurtosis_path:
                 logger.info(f"找到 Kurtosis CLI: {kurtosis_path}")
-                # 尝试运行 version 命令验证
+                # 尝试运行 version 命令验证（设置环境变量禁用 telemetry）
+                env = os.environ.copy()
+                env['KURTOSIS_DISABLE_TELEMETRY'] = 'true'
+                env['KURTOSIS_DISABLE_ANALYTICS'] = 'true'
+                env['KURTOSIS_DISABLE_METRICS'] = 'true'
+                
                 result = subprocess.run(
                     ["kurtosis", "version"],
                     capture_output=True,
                     text=True,
-                    timeout=10
+                    timeout=10,
+                    env=env
                 )
                 if result.returncode == 0:
                     logger.info(f"Kurtosis CLI 版本: {result.stdout.strip()}")
@@ -72,6 +81,45 @@ class KurtosisService:
                 return False
         except Exception as e:
             logger.error(f"验证 Kurtosis CLI 时出错: {e}", exc_info=True)
+            return False
+    
+    def _disable_analytics(self) -> bool:
+        """
+        禁用 Kurtosis analytics/metrics
+        
+        Returns:
+            是否成功
+        """
+        try:
+            logger.info("禁用 Kurtosis analytics...")
+            kurtosis_path = self._get_kurtosis_path()
+            
+            # 直接调用 subprocess，不通过 _run_kurtosis_command（避免循环）
+            # 使用环境变量禁用 telemetry/metrics
+            env = os.environ.copy()
+            env['KURTOSIS_DISABLE_TELEMETRY'] = 'true'
+            env['KURTOSIS_DISABLE_ANALYTICS'] = 'true'
+            env['KURTOSIS_DISABLE_METRICS'] = 'true'
+            
+            # 尝试使用 kurtosis analytics disable 命令
+            result = subprocess.run(
+                [kurtosis_path, "analytics", "disable"],
+                capture_output=True,
+                text=True,
+                timeout=10,
+                env=env
+            )
+            
+            if result.returncode == 0:
+                logger.info("Kurtosis analytics 已禁用")
+                return True
+            else:
+                # 如果命令不存在或失败，记录警告但继续（环境变量应该足够）
+                logger.warning(f"禁用 analytics 命令失败（可能不支持）: {result.stderr[:200]}")
+                logger.info("将使用环境变量禁用 metrics")
+                return False
+        except Exception as e:
+            logger.warning(f"禁用 analytics 时出错: {e}，将使用环境变量")
             return False
     
     def _ensure_engine_running(self) -> bool:
@@ -142,8 +190,10 @@ class KurtosisService:
             kurtosis_path = self._get_kurtosis_path()
             logger.info(f"执行 Kurtosis 命令: {kurtosis_path} {' '.join(command)}")
             
-            # 设置环境变量以禁用 metrics/analytics（避免网络连接问题）
+            # 设置环境变量以禁用 telemetry/metrics（避免网络连接问题）
             env = os.environ.copy()
+            env['KURTOSIS_DISABLE_TELEMETRY'] = 'true'
+            # 保留其他可能的变量名作为后备
             env['KURTOSIS_DISABLE_ANALYTICS'] = 'true'
             env['KURTOSIS_DISABLE_METRICS'] = 'true'
             

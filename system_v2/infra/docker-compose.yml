@@ -226,7 +226,8 @@ services:
     environment:
       - KURTOSIS_CONFIG_FILE=/kurtosis-config/kurtosis-config.yaml
       - KURTOSIS_ENCLAVE=eth-devnet
-      # 禁用 metrics/analytics 以避免网络连接问题
+      # 禁用 telemetry/metrics 以避免网络连接问题
+      - KURTOSIS_DISABLE_TELEMETRY=true
       - KURTOSIS_DISABLE_ANALYTICS=true
       - KURTOSIS_DISABLE_METRICS=true
     volumes:
