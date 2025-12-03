@@ -265,13 +265,17 @@ class VaultClient:
         """
         检查 Vault 服务健康状态
         
+        注意：这个方法不需要认证，直接调用 Vault 的健康检查端点
+        
         Returns:
             是否健康
         """
         try:
-            # 尝试读取健康状态（不需要认证）
+            # 创建一个不需要 token 的客户端来检查健康状态
             # read_health_status 是一个不需要认证的端点
-            health = self.client.sys.read_health_status()
+            unauthenticated_client = hvac.Client(url=self.vault_url)
+            health = unauthenticated_client.sys.read_health_status()
+            
             initialized = health.get('initialized', False)
             sealed = health.get('sealed', True)
             
@@ -280,24 +284,11 @@ class VaultClient:
             
             if not is_healthy:
                 logger.warning(f"Vault 健康检查失败: initialized={initialized}, sealed={sealed}")
+            else:
+                logger.debug(f"Vault 健康检查成功: initialized={initialized}, sealed={sealed}")
             
             return is_healthy
         except Exception as e:
             logger.error(f"Vault 健康检查失败: {e}")
-            # 如果健康检查失败，可能是认证问题，尝试重新从 Consul 获取 token
-            try:
-                consul_token = self._get_token_from_consul()
-                if consul_token and consul_token != self.vault_token:
-                    logger.info("尝试使用从 Consul 获取的新 token 进行健康检查")
-                    self.vault_token = consul_token
-                    self.client = hvac.Client(url=self.vault_url, token=self.vault_token)
-                    # 重试健康检查
-                    health = self.client.sys.read_health_status()
-                    initialized = health.get('initialized', False)
-                    sealed = health.get('sealed', True)
-                    return initialized and not sealed
-            except Exception as retry_error:
-                logger.debug(f"使用 Consul token 重试健康检查失败: {retry_error}")
-            
             return False
 

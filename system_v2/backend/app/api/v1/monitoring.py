@@ -1,6 +1,7 @@
 """
 监控 API
 """
+import logging
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from sqlalchemy import func
@@ -13,6 +14,8 @@ from app.core.web3signer_client import Web3SignerClient
 from app.core.beacon_api import BeaconAPIClient
 from app.models.schemas import SystemHealthResponse, SystemOverviewResponse
 
+logger = logging.getLogger(__name__)
+
 router = APIRouter()
 
 
@@ -20,15 +23,41 @@ router = APIRouter()
 async def system_health():
     """系统健康检查"""
     try:
-        vault_client = VaultClient()
-        web3signer_client = Web3SignerClient()
-        beacon_api = BeaconAPIClient()
+        # Vault 健康检查（不需要认证）
+        vault_health = False
+        try:
+            vault_client = VaultClient()
+            vault_health = vault_client.health_check()
+        except Exception as e:
+            # 如果 VaultClient 初始化失败（可能是认证问题），尝试直接健康检查
+            try:
+                import hvac
+                from app.config import settings
+                unauthenticated_client = hvac.Client(url=settings.vault_url)
+                health = unauthenticated_client.sys.read_health_status()
+                vault_health = health.get('initialized', False) and not health.get('sealed', True)
+            except Exception as health_error:
+                logger.error(f"Vault 健康检查失败: {health_error}")
         
-        vault_health = vault_client.health_check()
-        web3signer_primary = web3signer_client.health_check("primary")
-        web3signer_secondary = web3signer_client.health_check("secondary")
-        haproxy = web3signer_client.health_check("haproxy")
-        beacon_api_health = beacon_api.health_check()
+        # Web3Signer 健康检查
+        web3signer_primary = False
+        web3signer_secondary = False
+        haproxy = False
+        try:
+            web3signer_client = Web3SignerClient()
+            web3signer_primary = web3signer_client.health_check("primary")
+            web3signer_secondary = web3signer_client.health_check("secondary")
+            haproxy = web3signer_client.health_check("haproxy")
+        except Exception as e:
+            logger.error(f"Web3Signer 健康检查失败: {e}")
+        
+        # Beacon API 健康检查
+        beacon_api_health = False
+        try:
+            beacon_api = BeaconAPIClient()
+            beacon_api_health = beacon_api.health_check()
+        except Exception as e:
+            logger.error(f"Beacon API 健康检查失败: {e}")
         
         # PostgreSQL 健康检查（简化）
         postgresql_health = True  # 实际应该检查数据库连接
@@ -52,6 +81,7 @@ async def system_health():
             overall=overall
         )
     except Exception as e:
+        logger.error(f"系统健康检查失败: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -78,16 +108,40 @@ async def system_overview(db: Session = Depends(get_db)):
         # 总收益（简化，实际应该从链上查询）
         total_rewards_eth = 0.0
         
-        # 系统健康
-        vault_client = VaultClient()
-        web3signer_client = Web3SignerClient()
-        beacon_api = BeaconAPIClient()
+        # 系统健康（使用与 system_health 相同的逻辑）
+        vault_health = False
+        try:
+            vault_client = VaultClient()
+            vault_health = vault_client.health_check()
+        except Exception as e:
+            # 如果 VaultClient 初始化失败（可能是认证问题），尝试直接健康检查
+            try:
+                import hvac
+                from app.config import settings
+                unauthenticated_client = hvac.Client(url=settings.vault_url)
+                health = unauthenticated_client.sys.read_health_status()
+                vault_health = health.get('initialized', False) and not health.get('sealed', True)
+            except Exception as health_error:
+                logger.error(f"Vault 健康检查失败: {health_error}")
         
-        vault_health = vault_client.health_check()
-        web3signer_primary = web3signer_client.health_check("primary")
-        web3signer_secondary = web3signer_client.health_check("secondary")
-        haproxy = web3signer_client.health_check("haproxy")
-        beacon_api_health = beacon_api.health_check()
+        web3signer_primary = False
+        web3signer_secondary = False
+        haproxy = False
+        try:
+            web3signer_client = Web3SignerClient()
+            web3signer_primary = web3signer_client.health_check("primary")
+            web3signer_secondary = web3signer_client.health_check("secondary")
+            haproxy = web3signer_client.health_check("haproxy")
+        except Exception as e:
+            logger.error(f"Web3Signer 健康检查失败: {e}")
+        
+        beacon_api_health = False
+        try:
+            beacon_api = BeaconAPIClient()
+            beacon_api_health = beacon_api.health_check()
+        except Exception as e:
+            logger.error(f"Beacon API 健康检查失败: {e}")
+        
         postgresql_health = True
         
         overall = all([
