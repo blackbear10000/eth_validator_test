@@ -73,6 +73,8 @@ export const depositsApi = {
     rpc_url?: string
     deployer_private_key: string
     network_name: string
+    deposit_contract_address?: string
+    initial_fee?: number
     gas_price?: number
     gas_limit?: number
   }) => apiClient.post('/deposits/batch-contract/deploy', params),

@@ -312,109 +312,29 @@ async def deploy_batch_contract(
                 detail=f"无法连接到 Web3 RPC: {rpc_url}"
             )
         
-        # 创建部署器
-        deployer = BatchDepositDeployer(
-            web3=web3,
-            deployer_private_key=request.deployer_private_key
-        )
-        
-        # 部署合约
-        deployment_result = deployer.deploy(
-            rpc_url=rpc_url,
-            network_name=request.network_name,
-            gas_price=request.gas_price,
-            gas_limit=request.gas_limit
-        )
-        
-        # 保存到数据库
-        batch_contract = BatchDepositContract(
-            contract_address=deployment_result['contract_address'],
-            network_name=request.network_name,
-            rpc_url=rpc_url,
-            deployer_address=deployment_result['deployer_address'],
-            deployment_tx_hash=deployment_result['deployment_tx_hash'],
-            block_number=deployment_result.get('block_number'),
-            gas_used=deployment_result.get('gas_used')
-        )
-        
-        db.add(batch_contract)
-        db.commit()
-        db.refresh(batch_contract)
-        
-        logger.info(f"Batch Deposit 合约已部署并保存: {batch_contract.contract_address}")
-        
-        return BatchDepositContractResponse.model_validate(batch_contract)
-        
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"部署 Batch Deposit 合约失败: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=str(e))
-
-
-@router.get("/deposits/batch-contract/list", response_model=List[BatchDepositContractResponse])
-async def list_batch_contracts(
-    network_name: Optional[str] = None,
-    db: Session = Depends(get_db)
-):
-    """列出已部署的 Batch Deposit 合约"""
-    try:
-        query = db.query(BatchDepositContract)
-        
-        if network_name:
-            query = query.filter(BatchDepositContract.network_name == network_name)
-        
-        contracts = query.order_by(BatchDepositContract.deployed_at.desc()).all()
-        
-        return [BatchDepositContractResponse.model_validate(c) for c in contracts]
-        
-    except Exception as e:
-        logger.error(f"列出 Batch Deposit 合约失败: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=str(e))
-
-
-@router.post("/deposits/batch-contract/deploy", response_model=BatchDepositContractResponse)
-async def deploy_batch_contract(
-    request: BatchDepositDeployRequest,
-    db: Session = Depends(get_db)
-):
-    """部署 Batch Deposit 合约"""
-    try:
-        from app.core.batch_deposit_deployer import BatchDepositDeployer
-        from app.services.network_service import NetworkService
-        from app.config import settings
-        
-        # 优先从 Kurtosis 网络获取 RPC URL（如果请求中的 RPC URL 为空）
-        rpc_url = request.rpc_url
-        if not rpc_url:
+        # 获取官方 Deposit 合约地址
+        deposit_contract_address = request.deposit_contract_address
+        if not deposit_contract_address:
             try:
                 network_service = NetworkService()
-                rpc_endpoints = network_service.get_rpc_endpoints()
-                if rpc_endpoints.get("rpc_url") and not rpc_endpoints.get("error"):
-                    rpc_url = rpc_endpoints["rpc_url"]
-                    logger.info(f"从 Kurtosis 网络获取 RPC URL: {rpc_url}")
-                else:
-                    error_msg = rpc_endpoints.get("error", "未知错误")
-                    logger.warning(f"无法从 Kurtosis 网络获取 RPC URL: {error_msg}")
+                network_info = network_service.get_info()
+                deposit_contract_address = network_info.get("deposit_contract_address")
+                if deposit_contract_address:
+                    logger.info(f"从 Kurtosis 网络配置获取 Deposit 合约地址: {deposit_contract_address}")
             except Exception as e:
-                logger.warning(f"无法从 Kurtosis 网络获取 RPC URL: {e}")
+                logger.warning(f"无法从 Kurtosis 网络配置获取 Deposit 合约地址: {e}")
         
-        if not rpc_url:
-            rpc_url = settings.execution_rpc_url
-        
-        if not rpc_url:
+        if not deposit_contract_address:
             raise HTTPException(
                 status_code=400,
-                detail="无法获取 RPC URL。请确保：1) Kurtosis 网络正在运行，或 2) 提供 rpc_url 参数，或 3) 配置 EXECUTION_RPC_URL 环境变量"
+                detail="无法获取官方 Deposit 合约地址。请提供 deposit_contract_address 参数，或确保 Kurtosis 网络配置中包含该地址"
             )
         
-        # 初始化 Web3 连接
-        web3 = Web3(Web3.HTTPProvider(rpc_url))
-        
-        if not web3.is_connected():
+        # 验证 deposit_contract_address 格式
+        if not web3.is_address(deposit_contract_address):
             raise HTTPException(
-                status_code=503,
-                detail=f"无法连接到 Web3 RPC: {rpc_url}"
+                status_code=400,
+                detail=f"无效的 Deposit 合约地址格式: {deposit_contract_address}"
             )
         
         # 创建部署器
@@ -424,9 +344,13 @@ async def deploy_batch_contract(
         )
         
         # 部署合约
+        # initial_fee 默认 0，必须是 gwei 的倍数
+        initial_fee = request.initial_fee or 0
         deployment_result = deployer.deploy(
             rpc_url=rpc_url,
             network_name=request.network_name,
+            deposit_contract_address=deposit_contract_address,
+            initial_fee=initial_fee,
             gas_price=request.gas_price,
             gas_limit=request.gas_limit
         )

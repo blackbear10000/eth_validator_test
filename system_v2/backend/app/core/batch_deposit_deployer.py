@@ -376,6 +376,8 @@ class BatchDepositDeployer:
         self,
         rpc_url: str,
         network_name: str,
+        deposit_contract_address: str,
+        initial_fee: int = 0,
         gas_price: Optional[int] = None,
         gas_limit: Optional[int] = None
     ) -> Dict[str, Any]:
@@ -385,6 +387,8 @@ class BatchDepositDeployer:
         Args:
             rpc_url: RPC URL（用于验证连接）
             network_name: 网络名称
+            deposit_contract_address: 官方 Deposit 合约地址
+            initial_fee: 初始费用（wei，必须是 gwei 的倍数，默认 0）
             gas_price: Gas 价格（可选）
             gas_limit: Gas 限制（可选）
             
@@ -410,8 +414,20 @@ class BatchDepositDeployer:
                 bytecode=bytecode
             )
             
+            # 验证 initial_fee 是 gwei 的倍数（1 gwei = 10^9 wei）
+            gwei = 10**9
+            if initial_fee % gwei != 0:
+                raise ValueError(f"初始费用必须是 gwei 的倍数。当前值: {initial_fee} wei")
+            
             # 构建部署交易
-            deploy_txn = contract.constructor().build_transaction({
+            # BatchDeposit 构造函数需要两个参数：
+            # 1. address depositContractAddr - 官方存款合约地址
+            # 2. uint256 initialFee - 初始费用（wei）
+            logger.info(f"部署 BatchDeposit 合约，参数: deposit_contract={deposit_contract_address}, initial_fee={initial_fee} wei")
+            deploy_txn = contract.constructor(
+                deposit_contract_address,
+                initial_fee
+            ).build_transaction({
                 'from': self.deployer_address,
                 'nonce': self.web3.eth.get_transaction_count(self.deployer_address),
                 'gas': gas_limit or 5000000,

@@ -99,7 +99,7 @@ const KeyList: React.FC = () => {
   // 当分页参数改变时，加载数据
   useEffect(() => {
     loadKeys()
-  }, [loadKeys])
+  }, [loadKeys, pagination.current, pagination.pageSize])
 
   // 获取状态标签
   const getStatusTag = (status: string) => {

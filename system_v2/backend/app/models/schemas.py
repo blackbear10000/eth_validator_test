@@ -80,9 +80,11 @@ class DepositDataResponse(BaseModel):
 
 class BatchDepositDeployRequest(BaseModel):
     """Batch Deposit 合约部署请求"""
-    rpc_url: str = Field(..., description="RPC URL")
+    rpc_url: Optional[str] = Field(None, description="RPC URL（可选，优先从 Kurtosis 网络获取）")
     deployer_private_key: str = Field(..., description="部署者私钥")
     network_name: str = Field(..., description="网络名称")
+    deposit_contract_address: Optional[str] = Field(None, description="官方 Deposit 合约地址（可选，优先从网络配置获取）")
+    initial_fee: Optional[int] = Field(0, description="初始费用（wei，必须是 gwei 的倍数，默认 0）")
     gas_price: Optional[int] = Field(None, description="Gas 价格（可选）")
     gas_limit: Optional[int] = Field(None, description="Gas 限制（可选）")
 
