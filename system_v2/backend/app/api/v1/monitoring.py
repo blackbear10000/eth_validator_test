@@ -55,12 +55,13 @@ async def system_health():
         haproxy = False
         try:
             web3signer_client = Web3SignerClient()
+            logger.debug(f"Web3Signer URLs: primary={web3signer_client.primary_url}, secondary={web3signer_client.secondary_url}, haproxy={web3signer_client.haproxy_url}")
             web3signer_primary = web3signer_client.health_check("primary")
             web3signer_secondary = web3signer_client.health_check("secondary")
             haproxy = web3signer_client.health_check("haproxy")
-            logger.info(f"Web3Signer 健康检查: primary={web3signer_primary}, secondary={web3signer_secondary}, haproxy={haproxy}")
+            logger.info(f"Web3Signer 健康检查结果: primary={web3signer_primary}, secondary={web3signer_secondary}, haproxy={haproxy}")
         except Exception as e:
-            logger.error(f"Web3Signer 健康检查失败: {e}", exc_info=True)
+            logger.error(f"Web3Signer 健康检查异常: {e}", exc_info=True)
         
         # Beacon API 健康检查
         beacon_api_health = False

@@ -112,15 +112,24 @@ class Web3SignerClient:
             return False
         
         try:
-            response = self.session.get(f"{url}/upcheck", timeout=5)
+            # 使用独立的 session，不包含额外的 headers，避免干扰健康检查
+            # /upcheck 端点是一个简单的健康检查端点，不需要 JSON headers
+            health_url = f"{url}/upcheck"
+            logger.debug(f"检查 Web3Signer {instance} 健康状态: {health_url}")
+            
+            # 创建一个简单的请求，不包含额外的 headers
+            response = requests.get(health_url, timeout=5)
+            
             # Web3Signer 的 /upcheck 端点可能返回 200 或 403
             # 403 通常表示服务在运行但可能有权限限制，我们也认为它是健康的
             # 这与 HAProxy 配置一致：http-check expect status 200,403
             is_healthy = response.status_code in [200, 403]
+            
             if not is_healthy:
-                logger.warning(f"Web3Signer {instance} 健康检查失败: HTTP {response.status_code}, URL: {url}")
+                logger.warning(f"Web3Signer {instance} 健康检查失败: HTTP {response.status_code}, URL: {health_url}, Response: {response.text[:100]}")
             else:
-                logger.debug(f"Web3Signer {instance} 健康检查成功: HTTP {response.status_code}, URL: {url}")
+                logger.info(f"Web3Signer {instance} 健康检查成功: HTTP {response.status_code}, URL: {health_url}")
+            
             return is_healthy
         except requests.exceptions.Timeout:
             logger.warning(f"Web3Signer {instance} 健康检查超时: {url}")
@@ -129,7 +138,7 @@ class Web3SignerClient:
             logger.warning(f"Web3Signer {instance} 连接失败: {url}, {e}")
             return False
         except Exception as e:
-            logger.warning(f"Web3Signer {instance} 健康检查失败: {url}, {e}")
+            logger.error(f"Web3Signer {instance} 健康检查失败: {url}, {e}", exc_info=True)
             return False
     
     def get_public_keys(self, instance: str = "haproxy") -> List[str]:
