@@ -9,7 +9,7 @@ import time
 
 from app.config import settings
 from app.utils.logger import configure_logging
-from app.api.v1 import keys, deposits, clients, monitoring, exits, withdrawals
+from app.api.v1 import keys, deposits, clients, monitoring, exits, withdrawals, network
 from app.core.background_tasks import start_background_tasks, stop_background_tasks
 
 # 配置日志
@@ -77,6 +77,7 @@ app.include_router(clients.router, prefix=settings.api_v1_prefix, tags=["clients
 app.include_router(monitoring.router, prefix=settings.api_v1_prefix, tags=["monitoring"])
 app.include_router(exits.router, prefix=settings.api_v1_prefix, tags=["exits"])
 app.include_router(withdrawals.router, prefix=settings.api_v1_prefix, tags=["withdrawals"])
+app.include_router(network.router, prefix=settings.api_v1_prefix, tags=["network"])
 
 
 # 根路径

@@ -1,12 +1,13 @@
 """
 客户端管理 API
 """
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 from typing import List, Optional
 
 from app.dependencies import get_db
 from app.services.client_management import ClientManagementService
+from app.services.client_process_service import ClientProcessService
 from app.core.web3signer_client import Web3SignerClient
 from app.models.schemas import (
     ClientInstanceCreate,
@@ -112,6 +113,123 @@ async def reload_keys(
             "client_id": client_id,
             "reload_result": result
         }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/clients/{client_id}/start", response_model=dict)
+async def start_client(
+    client_id: int,
+    db: Session = Depends(get_db)
+):
+    """启动客户端进程"""
+    try:
+        from app.models.database import ClientInstance
+        client = db.query(ClientInstance).filter(ClientInstance.id == client_id).first()
+        
+        if not client:
+            raise HTTPException(status_code=404, detail="客户端不存在")
+        
+        # 获取客户端配置
+        client_service = ClientManagementService(db)
+        config = client_service.generate_client_config(client)
+        
+        # 启动进程
+        process_service = ClientProcessService()
+        result = process_service.start(
+            client_id=client_id,
+            client_type=client.client_type.value,
+            config_file=config.get('config_file')
+        )
+        
+        if not result.get("success"):
+            raise HTTPException(status_code=500, detail=result.get("message", "启动失败"))
+        
+        return result
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/clients/{client_id}/stop", response_model=dict)
+async def stop_client(
+    client_id: int,
+    db: Session = Depends(get_db)
+):
+    """停止客户端进程"""
+    try:
+        from app.models.database import ClientInstance
+        client = db.query(ClientInstance).filter(ClientInstance.id == client_id).first()
+        
+        if not client:
+            raise HTTPException(status_code=404, detail="客户端不存在")
+        
+        # 停止进程
+        process_service = ClientProcessService()
+        result = process_service.stop(
+            client_id=client_id,
+            client_type=client.client_type.value
+        )
+        
+        if not result.get("success"):
+            raise HTTPException(status_code=500, detail=result.get("message", "停止失败"))
+        
+        return result
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/clients/{client_id}/status", response_model=dict)
+async def get_client_status(
+    client_id: int,
+    db: Session = Depends(get_db)
+):
+    """获取客户端进程状态"""
+    try:
+        from app.models.database import ClientInstance
+        client = db.query(ClientInstance).filter(ClientInstance.id == client_id).first()
+        
+        if not client:
+            raise HTTPException(status_code=404, detail="客户端不存在")
+        
+        # 获取进程状态
+        process_service = ClientProcessService()
+        status = process_service.get_status(
+            client_id=client_id,
+            client_type=client.client_type.value
+        )
+        
+        return status
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/clients/{client_id}/logs", response_model=dict)
+async def get_client_logs(
+    client_id: int,
+    lines: int = Query(default=100, ge=1, le=1000),
+    db: Session = Depends(get_db)
+):
+    """获取客户端日志"""
+    try:
+        from app.models.database import ClientInstance
+        client = db.query(ClientInstance).filter(ClientInstance.id == client_id).first()
+        
+        if not client:
+            raise HTTPException(status_code=404, detail="客户端不存在")
+        
+        # 获取日志
+        process_service = ClientProcessService()
+        logs = process_service.get_logs(client_id=client_id, lines=lines)
+        
+        return logs
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 

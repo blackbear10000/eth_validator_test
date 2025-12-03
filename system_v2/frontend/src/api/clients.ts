@@ -35,5 +35,21 @@ export const clientsApi = {
   // 重新加载密钥
   reloadKeys: (clientId: number) =>
     apiClient.post(`/clients/${clientId}/reload-keys`),
+
+  // 启动客户端
+  start: (clientId: number) =>
+    apiClient.post(`/clients/${clientId}/start`),
+
+  // 停止客户端
+  stop: (clientId: number) =>
+    apiClient.post(`/clients/${clientId}/stop`),
+
+  // 获取客户端状态
+  getStatus: (clientId: number) =>
+    apiClient.get(`/clients/${clientId}/status`),
+
+  // 获取客户端日志
+  getLogs: (clientId: number, lines?: number) =>
+    apiClient.get(`/clients/${clientId}/logs`, { params: { lines } }),
 }
 

@@ -88,6 +88,15 @@ class BeaconAPIClient:
             return fork_version
         raise BeaconAPIError("无法获取 fork version")
     
+    def get_fork_schedule(self) -> Dict[str, Any]:
+        """
+        获取 fork 调度信息
+        
+        Returns:
+            Fork schedule 信息
+        """
+        return self._get("/eth/v1/config/fork_schedule")
+    
     def get_validator(self, pubkey: str, state_id: str = "head") -> Optional[Dict[str, Any]]:
         """
         获取验证者信息

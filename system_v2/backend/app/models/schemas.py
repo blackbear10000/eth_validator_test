@@ -3,7 +3,7 @@ Pydantic Schemas
 用于 API 请求和响应的数据验证
 """
 from datetime import datetime
-from typing import Optional, List
+from typing import Optional, List, Dict, Any
 from pydantic import BaseModel, Field, validator
 
 from .enums import ValidatorKeyStatus, ValidatorClientType, DepositStatus, WithdrawalType
@@ -197,4 +197,26 @@ class WithdrawalEventResponse(BaseModel):
     epoch: Optional[int] = None
 
     model_config = {"from_attributes": True}
+
+
+# ==================== 网络管理相关 Schemas ====================
+
+class NetworkStatusResponse(BaseModel):
+    """网络状态响应"""
+    enclave_name: str
+    status: str
+    is_running: bool
+    error: Optional[str] = None
+    enclave_info: Optional[Dict[str, Any]] = None
+    raw_output: Optional[str] = None
+
+
+class NetworkInfoResponse(BaseModel):
+    """网络信息响应"""
+    enclave_name: str
+    genesis: Optional[Dict[str, Any]] = None
+    fork_schedule: Optional[Dict[str, Any]] = None
+    beacon_api_url: Optional[str] = None
+    error: Optional[str] = None
+    status: Optional[Dict[str, Any]] = None
 
