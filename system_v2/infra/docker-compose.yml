@@ -226,6 +226,9 @@ services:
     environment:
       - KURTOSIS_CONFIG_FILE=/kurtosis-config/kurtosis-config.yaml
       - KURTOSIS_ENCLAVE=eth-devnet
+      # 禁用 metrics/analytics 以避免网络连接问题
+      - KURTOSIS_DISABLE_ANALYTICS=true
+      - KURTOSIS_DISABLE_METRICS=true
     volumes:
       # 挂载 Docker socket，让容器内的 Kurtosis CLI 可以管理主机上的 Docker
       # 注意：这不是 Docker-in-Docker，Kurtosis 创建的容器会运行在主机上

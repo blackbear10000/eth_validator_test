@@ -2,6 +2,7 @@
 Kurtosis 服务封装
 封装 Kurtosis CLI 调用逻辑
 """
+import os
 import subprocess
 import json
 import logging
@@ -27,6 +28,9 @@ class KurtosisService:
         
         # 验证 Kurtosis CLI 是否可用
         self._verify_kurtosis_cli()
+        
+        # 检查并启动 Kurtosis engine（如果需要）
+        self._ensure_engine_running()
     
     def _verify_kurtosis_cli(self) -> bool:
         """
@@ -70,6 +74,35 @@ class KurtosisService:
             logger.error(f"验证 Kurtosis CLI 时出错: {e}", exc_info=True)
             return False
     
+    def _ensure_engine_running(self) -> bool:
+        """
+        确保 Kurtosis engine 正在运行
+        
+        Returns:
+            是否成功
+        """
+        try:
+            # 检查 engine 状态
+            success, stdout, stderr = self._run_kurtosis_command(["engine", "status"], timeout=10)
+            if success:
+                logger.info("Kurtosis engine 正在运行")
+                return True
+            else:
+                # 尝试启动 engine
+                logger.info("Kurtosis engine 未运行，尝试启动...")
+                success, stdout, stderr = self._run_kurtosis_command(["engine", "start"], timeout=30)
+                if success:
+                    logger.info("Kurtosis engine 启动成功")
+                    return True
+                else:
+                    logger.warning(f"Kurtosis engine 启动失败: {stderr[:200]}")
+                    # 不阻止服务启动，某些操作可能不需要 engine
+                    return False
+        except Exception as e:
+            logger.warning(f"检查 Kurtosis engine 状态时出错: {e}")
+            # 不阻止服务启动
+            return False
+    
     def _get_kurtosis_path(self) -> str:
         """
         获取 Kurtosis CLI 路径
@@ -108,11 +141,18 @@ class KurtosisService:
         try:
             kurtosis_path = self._get_kurtosis_path()
             logger.info(f"执行 Kurtosis 命令: {kurtosis_path} {' '.join(command)}")
+            
+            # 设置环境变量以禁用 metrics/analytics（避免网络连接问题）
+            env = os.environ.copy()
+            env['KURTOSIS_DISABLE_ANALYTICS'] = 'true'
+            env['KURTOSIS_DISABLE_METRICS'] = 'true'
+            
             result = subprocess.run(
                 [kurtosis_path] + command,
                 capture_output=True,
                 text=True,
-                timeout=timeout
+                timeout=timeout,
+                env=env
             )
             
             if result.returncode == 0:
