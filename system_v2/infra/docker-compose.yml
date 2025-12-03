@@ -159,7 +159,9 @@ services:
 
   # HAProxy - Web3Signer 负载均衡
   haproxy:
-    image: haproxy:2.9
+    build:
+      context: ./haproxy
+      dockerfile: Dockerfile
     container_name: haproxy
     ports:
       - "9002:9002"
@@ -173,10 +175,12 @@ services:
       web3signer-2:
         condition: service_healthy
     healthcheck:
+      # 使用自定义镜像中的 curl 进行健康检查
       test: ["CMD", "curl", "-f", "http://localhost:9002/upcheck"]
       interval: 10s
       timeout: 3s
       retries: 3
+      start_period: 10s
 
   # 后端 API 服务
   backend:
