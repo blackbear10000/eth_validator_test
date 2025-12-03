@@ -54,7 +54,8 @@ class BackgroundTaskScheduler:
             try:
                 db = self.get_db_session()
                 sync_service = SyncService(db)
-                await sync_service.sync_all_validators()
+                # 使用正确的方法名
+                result = sync_service.sync_all_pending_validators()
                 db.commit()
                 
                 logger.info("验证者状态同步完成")

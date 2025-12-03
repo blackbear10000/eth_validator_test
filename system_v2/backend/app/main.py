@@ -95,7 +95,25 @@ async def root():
 @app.on_event("startup")
 async def startup_event():
     """应用启动时执行"""
-    logger.info("应用启动，初始化后台任务...")
+    logger.info("应用启动，执行数据库迁移...")
+    try:
+        # 使用 Alembic API 执行迁移（而不是 subprocess）
+        from alembic.config import Config
+        from alembic import command
+        import os
+        
+        # 获取 alembic.ini 路径
+        backend_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        alembic_cfg = Config(os.path.join(backend_dir, "alembic.ini"))
+        
+        # 执行迁移
+        command.upgrade(alembic_cfg, "head")
+        logger.info("数据库迁移完成")
+    except Exception as e:
+        logger.error(f"数据库迁移失败: {e}")
+        # 迁移失败不应该阻止应用启动，但会记录错误
+    
+    logger.info("初始化后台任务...")
     try:
         await start_background_tasks()
         logger.info("后台任务已启动")
