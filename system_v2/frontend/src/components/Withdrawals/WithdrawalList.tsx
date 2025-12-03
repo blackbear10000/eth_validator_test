@@ -17,7 +17,6 @@ import { ReloadOutlined } from '@ant-design/icons'
 import { withdrawalsApi, WithdrawalEvent, WithdrawalStatistics } from '../../api/withdrawals'
 import { keysApi } from '../../api/keys'
 
-const { Search } = Input
 const { Text } = Typography
 const { Option } = Select
 
@@ -31,7 +30,7 @@ const WithdrawalList: React.FC = () => {
   // 加载验证者列表
   const loadKeys = async () => {
     try {
-      const response = await keysApi.listKeys({ limit: 1000 })
+      const response = await keysApi.list({ limit: 1000 })
       setKeys(response.items || [])
       if (response.items?.length > 0 && !selectedPubkey) {
         setSelectedPubkey(response.items[0].pubkey)
@@ -51,8 +50,8 @@ const WithdrawalList: React.FC = () => {
         withdrawalsApi.getValidatorWithdrawals(selectedPubkey, 100, 0),
         withdrawalsApi.getStatistics(selectedPubkey),
       ])
-      setWithdrawals(withdrawalsRes.data.items || [])
-      setStatistics(statsRes.data)
+      setWithdrawals(withdrawalsRes.items || [])
+      setStatistics(statsRes)
     } catch (error: any) {
       message.error(`加载取款历史失败: ${error.message}`)
     } finally {
@@ -164,11 +163,13 @@ const WithdrawalList: React.FC = () => {
               style={{ width: 400 }}
               placeholder="选择验证者"
               showSearch
-              filterOption={(input, option) =>
-                (option?.children as string)
-                  ?.toLowerCase()
-                  .includes(input.toLowerCase())
-              }
+              filterOption={(input, option) => {
+                const children = option?.children
+                if (typeof children === 'string') {
+                  return children.toLowerCase().includes(input.toLowerCase())
+                }
+                return false
+              }}
             >
               {keys.map((key) => (
                 <Option key={key.pubkey} value={key.pubkey}>

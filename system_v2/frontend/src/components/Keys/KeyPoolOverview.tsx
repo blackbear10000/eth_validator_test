@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react'
-import { Card, Statistic, Row, Col, Button } from 'antd'
+import { Card, Statistic, Row, Col } from 'antd'
 import { keysApi, KeyPoolStatus } from '../../api/keys'
 
 const KeyPoolOverview: React.FC = () => {
@@ -13,8 +13,8 @@ const KeyPoolOverview: React.FC = () => {
   const loadStatus = async () => {
     try {
       setLoading(true)
-      const data = await keysApi.getPoolStatus()
-      setStatus(data)
+      const response = await keysApi.getPoolStatus()
+      setStatus(response)
     } catch (error) {
       console.error('加载密钥池状态失败:', error)
     } finally {

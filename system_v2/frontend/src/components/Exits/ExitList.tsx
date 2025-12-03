@@ -16,7 +16,7 @@ import {
   DeleteOutlined,
   CheckCircleOutlined,
 } from '@ant-design/icons'
-import { exitsApi, ExitResponse } from '../../api/exits'
+import { exitsApi } from '../../api/exits'
 import { keysApi } from '../../api/keys'
 
 const { Search } = Input
@@ -41,7 +41,7 @@ const ExitList: React.FC = () => {
   const loadKeys = async () => {
     setLoading(true)
     try {
-      const response = await keysApi.listKeys({
+      const response = await keysApi.list({
         status: 'active_on_chain',
         limit: 1000,
       })
@@ -61,7 +61,7 @@ const ExitList: React.FC = () => {
   const handleGenerateExit = async (pubkey: string) => {
     try {
       const response = await exitsApi.generateExit(pubkey)
-      setExitData(response.data)
+      setExitData(response)
       setExitingKey(pubkey)
       setExitModalVisible(true)
     } catch (error: any) {
@@ -98,9 +98,9 @@ const ExitList: React.FC = () => {
       onOk: async () => {
         try {
           const response = await exitsApi.batchExit(selectedKeys)
-          const successCount = response.data.results.filter(
+          const successCount = response.results?.filter(
             (r: any) => r.status === 'success'
-          ).length
+          ).length || 0
           message.success(`批量退出完成: ${successCount}/${selectedKeys.length} 成功`)
           setSelectedKeys([])
           loadKeys()
@@ -220,7 +220,7 @@ const ExitList: React.FC = () => {
             <Search
               placeholder="搜索公钥"
               style={{ width: 300 }}
-              onSearch={(value) => {
+              onSearch={(_value) => {
                 // TODO: 实现搜索
                 message.info('搜索功能待实现')
               }}
