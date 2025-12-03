@@ -20,7 +20,8 @@ eth-account>=0.9.0
 
 # Key Generation - ethstaker-deposit-cli (installed from GitHub)
 # Note: This package includes its own dependencies (click, pycryptodome, etc.)
-ethstaker-deposit-cli @ git+https://github.com/ethstaker/ethstaker-deposit-cli.git@main
+# The package name in pyproject.toml is 'ethstaker_deposit', so we use #egg= to specify the install name
+ethstaker-deposit @ git+https://github.com/ethstaker/ethstaker-deposit-cli.git@main
 
 # HTTP Client
 requests>=2.31.0
