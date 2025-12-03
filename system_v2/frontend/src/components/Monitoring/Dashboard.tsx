@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react'
-import { Card, Row, Col, Statistic, Tag, Typography, Divider, Space } from 'antd'
+import { Card, Row, Col, Statistic, Tag, Typography, Space } from 'antd'
 import {
   CheckCircleOutlined,
   CloseCircleOutlined,

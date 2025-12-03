@@ -13,11 +13,7 @@ import {
   Descriptions,
 } from 'antd'
 import {
-  SearchOutlined,
   ReloadOutlined,
-  CheckCircleOutlined,
-  ClockCircleOutlined,
-  StopOutlined,
 } from '@ant-design/icons'
 import { keysApi, ValidatorKey } from '../../api/keys'
 

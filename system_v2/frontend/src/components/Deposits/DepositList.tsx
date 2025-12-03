@@ -17,7 +17,6 @@ import {
 } from 'antd'
 import {
   PlusOutlined,
-  SendOutlined,
   ReloadOutlined,
   SyncOutlined,
 } from '@ant-design/icons'
@@ -248,9 +247,10 @@ const DepositList: React.FC = () => {
               mode="multiple"
               placeholder="请选择密钥，留空则使用所有激活的密钥"
               showSearch
-              filterOption={(input, option) =>
-                (option?.children as string)?.toLowerCase().includes(input.toLowerCase())
-              }
+              filterOption={(input, option) => {
+                const children = option?.children as string | undefined
+                return children ? children.toLowerCase().includes(input.toLowerCase()) : false
+              }}
             >
               {availableKeys.map((key) => (
                 <Option key={key.pubkey} value={key.pubkey}>

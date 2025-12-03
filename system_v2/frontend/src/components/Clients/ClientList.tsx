@@ -11,7 +11,6 @@ import {
   Select,
   Tag,
   Typography,
-  Descriptions,
   Popconfirm,
 } from 'antd'
 import {
@@ -19,7 +18,6 @@ import {
   PlayCircleOutlined,
   StopOutlined,
   ReloadOutlined,
-  SettingOutlined,
   KeyOutlined,
 } from '@ant-design/icons'
 import { clientsApi, ClientInstance } from '../../api/clients'
@@ -345,9 +343,10 @@ const ClientList: React.FC = () => {
               mode="multiple"
               placeholder="请选择要分配的密钥"
               showSearch
-              filterOption={(input, option) =>
-                (option?.children as string)?.toLowerCase().includes(input.toLowerCase())
-              }
+              filterOption={(input, option) => {
+                const children = option?.children as string | undefined
+                return children ? children.toLowerCase().includes(input.toLowerCase()) : false
+              }}
             >
               {availableKeys.map((key) => (
                 <Option key={key.pubkey} value={key.pubkey}>
