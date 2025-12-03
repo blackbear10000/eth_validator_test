@@ -24,6 +24,75 @@ class KurtosisService:
         """
         self.config_file = config_file
         self.enclave_name = enclave_name
+        
+        # 验证 Kurtosis CLI 是否可用
+        self._verify_kurtosis_cli()
+    
+    def _verify_kurtosis_cli(self) -> bool:
+        """
+        验证 Kurtosis CLI 是否可用
+        
+        Returns:
+            是否可用
+        """
+        try:
+            import shutil
+            kurtosis_path = shutil.which("kurtosis")
+            if kurtosis_path:
+                logger.info(f"找到 Kurtosis CLI: {kurtosis_path}")
+                # 尝试运行 version 命令验证
+                result = subprocess.run(
+                    ["kurtosis", "version"],
+                    capture_output=True,
+                    text=True,
+                    timeout=10
+                )
+                if result.returncode == 0:
+                    logger.info(f"Kurtosis CLI 版本: {result.stdout.strip()}")
+                    return True
+                else:
+                    logger.warning(f"Kurtosis CLI 版本检查失败: {result.stderr}")
+                    return False
+            else:
+                logger.error("Kurtosis CLI 未在 PATH 中找到")
+                # 尝试检查常见安装位置
+                common_paths = [
+                    "/root/.kurtosis/bin/kurtosis",
+                    "/usr/local/bin/kurtosis",
+                    "/usr/bin/kurtosis"
+                ]
+                for path in common_paths:
+                    if Path(path).exists():
+                        logger.warning(f"Kurtosis CLI 在 {path} 但不在 PATH 中，请检查环境变量")
+                        return False
+                return False
+        except Exception as e:
+            logger.error(f"验证 Kurtosis CLI 时出错: {e}", exc_info=True)
+            return False
+    
+    def _get_kurtosis_path(self) -> str:
+        """
+        获取 Kurtosis CLI 路径
+        
+        Returns:
+            Kurtosis CLI 路径
+        """
+        import shutil
+        kurtosis_path = shutil.which("kurtosis")
+        if kurtosis_path:
+            return kurtosis_path
+        
+        # 尝试常见安装位置
+        common_paths = [
+            "/root/.kurtosis/bin/kurtosis",
+            "/usr/local/bin/kurtosis",
+            "/usr/bin/kurtosis"
+        ]
+        for path in common_paths:
+            if Path(path).exists():
+                return path
+        
+        return "kurtosis"  # 默认值，如果找不到会抛出 FileNotFoundError
     
     def _run_kurtosis_command(self, command: list[str], timeout: int = 300) -> Tuple[bool, str, str]:
         """
@@ -37,9 +106,10 @@ class KurtosisService:
             (成功标志, stdout, stderr)
         """
         try:
-            logger.info(f"执行 Kurtosis 命令: kurtosis {' '.join(command)}")
+            kurtosis_path = self._get_kurtosis_path()
+            logger.info(f"执行 Kurtosis 命令: {kurtosis_path} {' '.join(command)}")
             result = subprocess.run(
-                ["kurtosis"] + command,
+                [kurtosis_path] + command,
                 capture_output=True,
                 text=True,
                 timeout=timeout
@@ -52,8 +122,9 @@ class KurtosisService:
             
             return result.returncode == 0, result.stdout, result.stderr
         except FileNotFoundError:
-            logger.error("Kurtosis CLI 未找到")
-            return False, "", "Kurtosis CLI not found"
+            logger.error(f"Kurtosis CLI 未找到，尝试的路径: {self._get_kurtosis_path()}")
+            logger.error("请确保 Kurtosis CLI 已正确安装并在 PATH 中")
+            return False, "", "Kurtosis CLI not found. Please ensure Kurtosis CLI is installed and in PATH."
         except subprocess.TimeoutExpired:
             logger.error(f"Kurtosis 命令超时: {' '.join(command)}")
             return False, "", "Command timeout"

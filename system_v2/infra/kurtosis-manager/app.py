@@ -33,7 +33,14 @@ app.add_middleware(
 # 初始化 Kurtosis 服务
 config_file = os.getenv("KURTOSIS_CONFIG_FILE", "/kurtosis-config/kurtosis-config.yaml")
 enclave_name = os.getenv("KURTOSIS_ENCLAVE", "eth-devnet")
-kurtosis_service = KurtosisService(config_file=config_file, enclave_name=enclave_name)
+
+try:
+    kurtosis_service = KurtosisService(config_file=config_file, enclave_name=enclave_name)
+    logger.info("Kurtosis 服务初始化成功")
+except Exception as e:
+    logger.error(f"Kurtosis 服务初始化失败: {e}", exc_info=True)
+    logger.error("请确保 Kurtosis CLI 已正确安装")
+    kurtosis_service = None
 
 
 @app.get("/health")
@@ -45,6 +52,11 @@ async def health():
 @app.get("/status")
 async def get_status():
     """获取网络状态"""
+    if kurtosis_service is None:
+        raise HTTPException(
+            status_code=503,
+            detail="Kurtosis CLI 未安装或不可用。请检查容器日志并重新构建镜像。"
+        )
     try:
         status = kurtosis_service.get_status()
         return status
@@ -56,6 +68,11 @@ async def get_status():
 @app.post("/start")
 async def start_network():
     """启动 Kurtosis 网络"""
+    if kurtosis_service is None:
+        raise HTTPException(
+            status_code=503,
+            detail="Kurtosis CLI 未安装或不可用。请检查容器日志并重新构建镜像。"
+        )
     try:
         result = kurtosis_service.start()
         if not result.get("success"):
@@ -71,6 +88,11 @@ async def start_network():
 @app.post("/stop")
 async def stop_network():
     """停止 Kurtosis 网络"""
+    if kurtosis_service is None:
+        raise HTTPException(
+            status_code=503,
+            detail="Kurtosis CLI 未安装或不可用。请检查容器日志并重新构建镜像。"
+        )
     try:
         result = kurtosis_service.stop()
         if not result.get("success"):
