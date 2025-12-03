@@ -52,6 +52,7 @@ class Settings(BaseSettings):
     
     # Kurtosis 配置
     kurtosis_enclave: str = "eth-devnet"
+    kurtosis_manager_url: str = os.getenv("KURTOSIS_MANAGER_URL", "http://kurtosis-manager:8002")
     
     # 日志配置
     log_level: str = "INFO"

@@ -1,10 +1,10 @@
 """
 网络管理服务
 管理 Kurtosis 开发网络的启动、停止和状态查询
+通过 HTTP API 调用 kurtosis-manager 服务
 """
-import subprocess
-import json
 import logging
+import requests
 from typing import Dict, Optional, Any
 from app.config import settings
 
@@ -14,42 +14,62 @@ logger = logging.getLogger(__name__)
 class NetworkService:
     """Kurtosis 网络管理服务"""
     
-    def __init__(self, enclave_name: Optional[str] = None):
+    def __init__(self, enclave_name: Optional[str] = None, manager_url: Optional[str] = None):
         """
         初始化网络服务
         
         Args:
             enclave_name: Kurtosis enclave 名称，默认使用配置中的值
+            manager_url: Kurtosis 管理服务 URL，默认使用配置中的值
         """
         self.enclave_name = enclave_name or settings.kurtosis_enclave
+        self.manager_url = (manager_url or settings.kurtosis_manager_url).rstrip('/')
     
-    def _run_kurtosis_command(self, command: list[str]) -> tuple[bool, str, str]:
+    def _call_api(self, endpoint: str, method: str = "GET", **kwargs) -> Dict[str, Any]:
         """
-        执行 Kurtosis CLI 命令
+        调用 Kurtosis 管理服务 API
         
         Args:
-            command: Kurtosis 命令列表
+            endpoint: API 端点
+            method: HTTP 方法
+            **kwargs: 其他请求参数
             
         Returns:
-            (成功标志, stdout, stderr)
+            API 响应数据
         """
+        url = f"{self.manager_url}{endpoint}"
         try:
-            result = subprocess.run(
-                ["kurtosis"] + command,
-                capture_output=True,
-                text=True,
-                timeout=30
-            )
-            return result.returncode == 0, result.stdout, result.stderr
-        except FileNotFoundError:
-            logger.error("Kurtosis CLI 未找到，请确保已安装 Kurtosis")
-            return False, "", "Kurtosis CLI not found"
-        except subprocess.TimeoutExpired:
-            logger.error(f"Kurtosis 命令超时: {' '.join(command)}")
-            return False, "", "Command timeout"
+            logger.debug(f"调用 Kurtosis 管理服务: {method} {url}")
+            response = requests.request(method, url, timeout=30, **kwargs)
+            response.raise_for_status()
+            return response.json()
+        except requests.exceptions.ConnectionError as e:
+            logger.error(f"无法连接到 Kurtosis 管理服务: {url}, {e}")
+            return {
+                "error": f"无法连接到 Kurtosis 管理服务: {e}",
+                "is_running": False
+            }
+        except requests.exceptions.Timeout:
+            logger.error(f"Kurtosis 管理服务请求超时: {url}")
+            return {
+                "error": "请求超时",
+                "is_running": False
+            }
+        except requests.exceptions.HTTPError as e:
+            logger.error(f"Kurtosis 管理服务 HTTP 错误: {e}, 响应: {response.text[:200]}")
+            try:
+                return response.json()
+            except:
+                return {
+                    "error": f"HTTP 错误: {e}",
+                    "is_running": False
+                }
         except Exception as e:
-            logger.error(f"执行 Kurtosis 命令失败: {e}")
-            return False, "", str(e)
+            logger.error(f"调用 Kurtosis 管理服务失败: {e}", exc_info=True)
+            return {
+                "error": str(e),
+                "is_running": False
+            }
     
     def get_status(self) -> Dict[str, Any]:
         """
@@ -58,57 +78,13 @@ class NetworkService:
         Returns:
             网络状态信息
         """
-        # 检查 enclave 是否存在
-        success, stdout, stderr = self._run_kurtosis_command(["enclave", "ls"])
+        result = self._call_api("/status")
         
-        if not success:
-            return {
-                "enclave_name": self.enclave_name,
-                "status": "error",
-                "error": stderr or "无法查询 enclave 列表",
-                "is_running": False
-            }
+        # 确保包含 enclave_name
+        if "enclave_name" not in result:
+            result["enclave_name"] = self.enclave_name
         
-        # 检查 enclave 是否在运行
-        is_running = self.enclave_name in stdout
-        
-        if not is_running:
-            return {
-                "enclave_name": self.enclave_name,
-                "status": "stopped",
-                "is_running": False
-            }
-        
-        # 获取 enclave 详细信息
-        success, stdout, stderr = self._run_kurtosis_command(
-            ["enclave", "inspect", self.enclave_name]
-        )
-        
-        if not success:
-            return {
-                "enclave_name": self.enclave_name,
-                "status": "running",
-                "is_running": True,
-                "error": stderr or "无法获取 enclave 详细信息"
-            }
-        
-        # 解析 enclave 信息
-        try:
-            enclave_info = json.loads(stdout)
-            return {
-                "enclave_name": self.enclave_name,
-                "status": "running",
-                "is_running": True,
-                "enclave_info": enclave_info
-            }
-        except json.JSONDecodeError:
-            # 如果无法解析 JSON，返回原始输出
-            return {
-                "enclave_name": self.enclave_name,
-                "status": "running",
-                "is_running": True,
-                "raw_output": stdout
-            }
+        return result
     
     def start(self) -> Dict[str, Any]:
         """
@@ -117,40 +93,14 @@ class NetworkService:
         Returns:
             启动结果
         """
-        # 检查是否已经运行
-        status = self.get_status()
-        if status.get("is_running"):
-            return {
-                "success": True,
-                "message": f"Enclave '{self.enclave_name}' 已经在运行",
-                "status": status
-            }
+        logger.info(f"启动 Kurtosis 网络: {self.enclave_name}")
+        result = self._call_api("/start", method="POST")
         
-        # 启动 enclave
-        # 注意：这里需要根据实际的 Kurtosis 启动命令调整
-        # 通常需要指定配置文件或包
-        logger.info(f"启动 Kurtosis enclave: {self.enclave_name}")
+        # 确保包含 success 字段
+        if "success" not in result:
+            result["success"] = "error" not in result
         
-        # 尝试使用默认的启动命令
-        # 实际命令可能需要根据项目配置调整
-        success, stdout, stderr = self._run_kurtosis_command([
-            "run",
-            "github.com/ethpandaops/ethereum-package",
-            "--enclave", self.enclave_name
-        ])
-        
-        if success:
-            return {
-                "success": True,
-                "message": f"Enclave '{self.enclave_name}' 启动成功",
-                "output": stdout
-            }
-        else:
-            return {
-                "success": False,
-                "message": f"启动失败: {stderr}",
-                "error": stderr
-            }
+        return result
     
     def stop(self) -> Dict[str, Any]:
         """
@@ -159,34 +109,14 @@ class NetworkService:
         Returns:
             停止结果
         """
-        # 检查是否在运行
-        status = self.get_status()
-        if not status.get("is_running"):
-            return {
-                "success": True,
-                "message": f"Enclave '{self.enclave_name}' 未运行",
-                "status": status
-            }
+        logger.info(f"停止 Kurtosis 网络: {self.enclave_name}")
+        result = self._call_api("/stop", method="POST")
         
-        logger.info(f"停止 Kurtosis enclave: {self.enclave_name}")
+        # 确保包含 success 字段
+        if "success" not in result:
+            result["success"] = "error" not in result
         
-        # 停止 enclave
-        success, stdout, stderr = self._run_kurtosis_command([
-            "enclave", "stop", self.enclave_name
-        ])
-        
-        if success:
-            return {
-                "success": True,
-                "message": f"Enclave '{self.enclave_name}' 已停止",
-                "output": stdout
-            }
-        else:
-            return {
-                "success": False,
-                "message": f"停止失败: {stderr}",
-                "error": stderr
-            }
+        return result
     
     def get_info(self) -> Dict[str, Any]:
         """

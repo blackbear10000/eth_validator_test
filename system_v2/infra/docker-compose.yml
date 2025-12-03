@@ -211,6 +211,33 @@ services:
       timeout: 3s
       retries: 3
 
+  # Kurtosis 管理服务
+  kurtosis-manager:
+    build:
+      context: ./kurtosis-manager
+      dockerfile: Dockerfile
+    container_name: kurtosis-manager
+    ports:
+      - "8002:8002"
+    environment:
+      - KURTOSIS_CONFIG_FILE=/kurtosis-config/kurtosis-config.yaml
+      - KURTOSIS_ENCLAVE=eth-devnet
+    volumes:
+      # 挂载 Docker socket，让容器内的 Kurtosis CLI 可以管理主机上的 Docker
+      # 注意：这不是 Docker-in-Docker，Kurtosis 创建的容器会运行在主机上
+      - /var/run/docker.sock:/var/run/docker.sock
+      # 挂载 Kurtosis 配置文件目录（从项目根目录）
+      - ../../infra/kurtosis:/kurtosis-config:ro
+    networks:
+      - validator_network
+    # 注意：需要访问 Docker socket，可能需要 root 权限或 docker 组权限
+    # 在生产环境中应该使用更安全的配置
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8002/health"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+
   # 前端 Web 服务
   frontend:
     build:
