@@ -34,7 +34,6 @@ services:
       - "8200:8200"
     environment:
       - VAULT_ADDR=http://0.0.0.0:8200
-      - VAULT_DEV_ROOT_TOKEN_ID=dev-root-token
     cap_add:
       - IPC_LOCK
     volumes:
@@ -50,8 +49,9 @@ services:
       sh -c "
         vault server -config=/vault/config/vault.hcl &
         sleep 10 &&
-        chmod +x /vault/init/vault-init.sh &&
-        /vault/init/vault-init.sh &&
+        cp /vault/init/vault-init.sh /tmp/vault-init.sh &&
+        chmod +x /tmp/vault-init.sh &&
+        /tmp/vault-init.sh &&
         wait
       "
     healthcheck:

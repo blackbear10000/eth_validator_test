@@ -73,8 +73,8 @@ vault write auth/userpass/users/admin password=admin policies=admin || true
 
 # 如果 admin policy 不存在，创建它
 if ! vault policy read admin >/dev/null 2>&1; then
-  if [ -f /vault/config/../init/admin-policy.hcl ]; then
-    vault policy write admin /vault/config/../init/admin-policy.hcl
+  if [ -f /vault/init/admin-policy.hcl ]; then
+    vault policy write admin /vault/init/admin-policy.hcl
   else
     # 创建默认的 admin policy
     vault policy write admin - <<EOF
