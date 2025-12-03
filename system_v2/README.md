@@ -17,9 +17,6 @@ system_v2/
 ### 1. 环境准备
 
 ```bash
-# 复制环境变量文件
-cp backend/.env.example backend/.env
-
 # 运行初始化脚本
 cd scripts
 ./setup.sh
@@ -28,7 +25,7 @@ cd scripts
 ### 2. 启动基础设施
 
 ```bash
-cd infra
+cd ../infra
 docker-compose up -d
 ```
 

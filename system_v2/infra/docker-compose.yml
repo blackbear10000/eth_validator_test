@@ -40,6 +40,7 @@ services:
     volumes:
       - vault_data_1:/vault/data
       - ./vault/config:/vault/config:ro
+      - ./vault/init:/vault/init:ro
     networks:
       - validator_network
     depends_on:
@@ -48,11 +49,9 @@ services:
     command: >
       sh -c "
         vault server -config=/vault/config/vault.hcl &
-        sleep 5 &&
-        export VAULT_ADDR=http://localhost:8200 &&
-        export VAULT_TOKEN=dev-root-token &&
-        vault auth enable userpass || true &&
-        vault write auth/userpass/users/admin password=admin policies=admin || true &&
+        sleep 10 &&
+        chmod +x /vault/init/vault-init.sh &&
+        /vault/init/vault-init.sh &&
         wait
       "
     healthcheck:
