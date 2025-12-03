@@ -25,6 +25,7 @@ class KurtosisService:
         """
         self.config_file = config_file
         self.enclave_name = enclave_name
+        self._engine_restart_attempted = False  # 标记是否已尝试重启 engine
         
         # 验证 Kurtosis CLI 是否可用
         self._verify_kurtosis_cli()
@@ -33,6 +34,7 @@ class KurtosisService:
         self._disable_analytics()
         
         # 检查并启动 Kurtosis engine（如果需要）
+        # 注意：不强制要求 engine 运行，因为某些操作可能不需要 engine
         self._ensure_engine_running()
     
     def _verify_kurtosis_cli(self) -> bool:
@@ -126,62 +128,84 @@ class KurtosisService:
         """
         确保 Kurtosis engine 正在运行
         
-        处理以下情况：
-        1. Engine 未运行 -> 启动 engine
-        2. Engine 容器存在但无响应 -> 重启 engine
+        注意：不强制要求 engine 运行，因为某些操作可能不需要 engine。
+        如果 engine 无法启动，服务仍然可以启动，只是某些功能可能不可用。
+        
+        改进：使用实际命令测试 engine 可用性，而不是依赖 `engine status`。
         
         Returns:
             是否成功
         """
         try:
-            # 检查 engine 状态
-            success, stdout, stderr = self._run_kurtosis_command(["engine", "status"], timeout=10)
-            if success:
-                logger.info("Kurtosis engine 正在运行")
+            # 首先尝试执行一个简单的测试命令来验证 engine 是否真的可用
+            # 这比 `engine status` 更可靠，因为它实际测试了 engine 的响应能力
+            logger.info("验证 Kurtosis engine 是否可用...")
+            test_success, test_stdout, test_stderr = self._run_kurtosis_command(
+                ["enclave", "ls"], 
+                timeout=15
+            )
+            
+            if test_success:
+                logger.info("Kurtosis engine 可用且响应正常")
                 return True
             
-            # Engine 状态检查失败，可能的原因：
+            # 测试命令失败，可能的原因：
             # 1. Engine 未运行
-            # 2. Engine 容器存在但服务器无响应（需要重启）
+            # 2. Engine 容器存在但服务器无响应
             
-            # 检查错误信息中是否包含 "server isn't responding"
-            error_msg = (stdout + stderr).lower()
-            if "server isn't responding" in error_msg or "isn't responding" in error_msg:
-                logger.warning("检测到 Kurtosis engine 容器存在但服务器无响应，尝试重启...")
-                # 尝试重启 engine
-                restart_success, restart_stdout, restart_stderr = self._run_kurtosis_command(
-                    ["engine", "restart"], 
-                    timeout=60
-                )
-                if restart_success:
-                    logger.info("Kurtosis engine 重启成功")
-                    return True
+            error_msg = (test_stdout + test_stderr).lower()
+            
+            # 检查是否是 engine 相关错误
+            if "engine" in error_msg or "server isn't responding" in error_msg:
+                logger.warning("检测到 Kurtosis engine 问题，尝试修复...")
+                
+                # 只尝试一次重启，避免无限循环
+                if not self._engine_restart_attempted:
+                    self._engine_restart_attempted = True
+                    logger.info("尝试重启 engine...")
+                    
+                    # 尝试重启
+                    kurtosis_path = self._get_kurtosis_path()
+                    env = os.environ.copy()
+                    env['KURTOSIS_DISABLE_TELEMETRY'] = 'true'
+                    env['KURTOSIS_DISABLE_ANALYTICS'] = 'true'
+                    env['KURTOSIS_DISABLE_METRICS'] = 'true'
+                    
+                    try:
+                        restart_result = subprocess.run(
+                            [kurtosis_path, "engine", "restart"],
+                            capture_output=True,
+                            text=True,
+                            timeout=60,
+                            env=env
+                        )
+                        
+                        if restart_result.returncode == 0:
+                            logger.info("Engine 重启成功，等待几秒后验证...")
+                            import time
+                            time.sleep(5)  # 等待 engine 完全启动
+                            
+                            # 再次验证
+                            verify_success, _, _ = self._run_kurtosis_command(
+                                ["enclave", "ls"], 
+                                timeout=15
+                            )
+                            if verify_success:
+                                logger.info("Engine 重启后验证成功")
+                                return True
+                            else:
+                                logger.warning("Engine 重启后仍然无法响应")
+                        else:
+                            logger.warning(f"Engine 重启失败: {restart_result.stderr[:200]}")
+                    except Exception as restart_error:
+                        logger.warning(f"尝试重启 engine 时出错: {restart_error}")
                 else:
-                    logger.warning(f"Kurtosis engine 重启失败: {restart_stderr[:300]}")
-                    # 尝试停止并重新启动
-                    logger.info("尝试停止并重新启动 engine...")
-                    self._run_kurtosis_command(["engine", "stop"], timeout=30)
-                    start_success, start_stdout, start_stderr = self._run_kurtosis_command(
-                        ["engine", "start"], 
-                        timeout=60
-                    )
-                    if start_success:
-                        logger.info("Kurtosis engine 重新启动成功")
-                        return True
-                    else:
-                        logger.warning(f"Kurtosis engine 重新启动失败: {start_stderr[:300]}")
-                        return False
-            else:
-                # Engine 未运行，尝试启动
-                logger.info("Kurtosis engine 未运行，尝试启动...")
-                success, stdout, stderr = self._run_kurtosis_command(["engine", "start"], timeout=60)
-                if success:
-                    logger.info("Kurtosis engine 启动成功")
-                    return True
-                else:
-                    logger.warning(f"Kurtosis engine 启动失败: {stderr[:300]}")
-                    # 不阻止服务启动，某些操作可能不需要 engine
-                    return False
+                    logger.info("已尝试过重启 engine，跳过以避免循环")
+            
+            # Engine 无法启动或不可用，但不阻止服务启动
+            logger.info("Kurtosis engine 当前不可用，服务将继续运行（某些功能可能受限）")
+            return False
+            
         except Exception as e:
             logger.warning(f"检查 Kurtosis engine 状态时出错: {e}")
             # 不阻止服务启动
@@ -247,38 +271,43 @@ class KurtosisService:
                 # 检查是否是 engine 无响应的问题
                 error_output = result.stderr + result.stdout
                 if "server isn't responding" in error_output.lower() or "isn't responding" in error_output.lower():
-                    logger.warning(f"检测到 engine 无响应，错误信息: {error_output[:300]}")
-                    # 尝试自动修复：重启 engine（直接调用 subprocess 避免递归）
-                    logger.info("尝试自动重启 engine...")
-                    try:
-                        restart_result = subprocess.run(
-                            [kurtosis_path, "engine", "restart"],
-                            capture_output=True,
-                            text=True,
-                            timeout=60,
-                            env=env
-                        )
-                        if restart_result.returncode == 0:
-                            logger.info("Engine 重启成功，等待几秒后重试原命令...")
-                            import time
-                            time.sleep(3)  # 等待 engine 完全启动
-                            # 重试原命令
-                            retry_result = subprocess.run(
-                                [kurtosis_path] + command,
+                    # 如果已经尝试过重启，不再重复尝试（避免循环）
+                    if self._engine_restart_attempted:
+                        logger.debug("Engine 无响应，但已尝试过重启，跳过自动修复")
+                    else:
+                        logger.warning(f"检测到 engine 无响应，错误信息: {error_output[:300]}")
+                        # 尝试自动修复：重启 engine（直接调用 subprocess 避免递归）
+                        logger.info("尝试自动重启 engine...")
+                        self._engine_restart_attempted = True
+                        try:
+                            restart_result = subprocess.run(
+                                [kurtosis_path, "engine", "restart"],
                                 capture_output=True,
                                 text=True,
-                                timeout=timeout,
+                                timeout=60,
                                 env=env
                             )
-                            if retry_result.returncode == 0:
-                                logger.info("重试命令成功")
-                                return True, retry_result.stdout, retry_result.stderr
+                            if restart_result.returncode == 0:
+                                logger.info("Engine 重启成功，等待几秒后重试原命令...")
+                                import time
+                                time.sleep(5)  # 等待 engine 完全启动
+                                # 重试原命令
+                                retry_result = subprocess.run(
+                                    [kurtosis_path] + command,
+                                    capture_output=True,
+                                    text=True,
+                                    timeout=timeout,
+                                    env=env
+                                )
+                                if retry_result.returncode == 0:
+                                    logger.info("重试命令成功")
+                                    return True, retry_result.stdout, retry_result.stderr
+                                else:
+                                    logger.warning(f"重试命令仍然失败: {retry_result.stderr[:200]}")
                             else:
-                                logger.warning(f"重试命令仍然失败: {retry_result.stderr[:200]}")
-                        else:
-                            logger.warning(f"Engine 重启失败: {restart_result.stderr[:200]}")
-                    except Exception as restart_error:
-                        logger.warning(f"尝试重启 engine 时出错: {restart_error}")
+                                logger.warning(f"Engine 重启失败: {restart_result.stderr[:200]}")
+                        except Exception as restart_error:
+                            logger.warning(f"尝试重启 engine 时出错: {restart_error}")
                 else:
                     logger.warning(f"Kurtosis 命令失败: {result.stderr[:200]}")
             
