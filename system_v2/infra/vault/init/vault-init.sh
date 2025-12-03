@@ -73,11 +73,28 @@ if ! echo "$VAULT_STATUS_OUTPUT" | grep -q "Initialized.*true"; then
   
   # 保存到 Consul（持久化存储，即使 volume 丢失也能恢复）
   CONSUL_ADDR="${CONSUL_ADDR:-consul:8500}"
+  CONSUL_HOST=$(echo "$CONSUL_ADDR" | cut -d: -f1)
+  CONSUL_PORT=$(echo "$CONSUL_ADDR" | cut -d: -f2)
+  
+  # 使用 curl、wget 或 nc 保存到 Consul
   if command -v curl >/dev/null 2>&1; then
     curl -s -X PUT "http://$CONSUL_ADDR/v1/kv/vault/unseal_key" -d "$UNSEAL_KEY" >/dev/null 2>&1 && \
       echo "Unseal key saved to Consul" || echo "Warning: Failed to save unseal key to Consul"
     curl -s -X PUT "http://$CONSUL_ADDR/v1/kv/vault/root_token" -d "$ROOT_TOKEN" >/dev/null 2>&1 && \
       echo "Root token saved to Consul" || echo "Warning: Failed to save root token to Consul"
+  elif command -v wget >/dev/null 2>&1; then
+    wget -q -O /dev/null --method=PUT --body-data="$UNSEAL_KEY" "http://$CONSUL_ADDR/v1/kv/vault/unseal_key" 2>/dev/null && \
+      echo "Unseal key saved to Consul" || echo "Warning: Failed to save unseal key to Consul"
+    wget -q -O /dev/null --method=PUT --body-data="$ROOT_TOKEN" "http://$CONSUL_ADDR/v1/kv/vault/root_token" 2>/dev/null && \
+      echo "Root token saved to Consul" || echo "Warning: Failed to save root token to Consul"
+  elif command -v nc >/dev/null 2>&1; then
+    # 使用 nc 发送 HTTP PUT 请求
+    (echo -e "PUT /v1/kv/vault/unseal_key HTTP/1.1\r\nHost: $CONSUL_HOST:$CONSUL_PORT\r\nContent-Length: ${#UNSEAL_KEY}\r\n\r\n$UNSEAL_KEY" | nc "$CONSUL_HOST" "$CONSUL_PORT" >/dev/null 2>&1) && \
+      echo "Unseal key saved to Consul" || echo "Warning: Failed to save unseal key to Consul"
+    (echo -e "PUT /v1/kv/vault/root_token HTTP/1.1\r\nHost: $CONSUL_HOST:$CONSUL_PORT\r\nContent-Length: ${#ROOT_TOKEN}\r\n\r\n$ROOT_TOKEN" | nc "$CONSUL_HOST" "$CONSUL_PORT" >/dev/null 2>&1) && \
+      echo "Root token saved to Consul" || echo "Warning: Failed to save root token to Consul"
+  else
+    echo "Warning: No HTTP client found (curl/wget/nc), cannot save to Consul"
   fi
   
   # 使用 unseal key 解锁 Vault
@@ -125,11 +142,31 @@ else
     # 4. 尝试从 Consul 获取（如果可能）
     if [ -z "$UNSEAL_KEY" ]; then
       CONSUL_ADDR="${CONSUL_ADDR:-consul:8500}"
+      CONSUL_HOST=$(echo "$CONSUL_ADDR" | cut -d: -f1)
+      CONSUL_PORT=$(echo "$CONSUL_ADDR" | cut -d: -f2)
+      
       if command -v curl >/dev/null 2>&1; then
         CONSUL_KEY=$(curl -s "http://$CONSUL_ADDR/v1/kv/vault/unseal_key?raw" 2>/dev/null || echo "")
         if [ -n "$CONSUL_KEY" ]; then
           UNSEAL_KEY="$CONSUL_KEY"
-          echo "Found unseal key in Consul"
+          echo "Found unseal key in Consul (via curl)"
+          # 同时保存到本地文件以便下次使用
+          echo "$UNSEAL_KEY" > /vault/data/unseal_key.txt 2>/dev/null || true
+        fi
+      elif command -v wget >/dev/null 2>&1; then
+        CONSUL_KEY=$(wget -q -O- "http://$CONSUL_ADDR/v1/kv/vault/unseal_key?raw" 2>/dev/null || echo "")
+        if [ -n "$CONSUL_KEY" ]; then
+          UNSEAL_KEY="$CONSUL_KEY"
+          echo "Found unseal key in Consul (via wget)"
+          # 同时保存到本地文件以便下次使用
+          echo "$UNSEAL_KEY" > /vault/data/unseal_key.txt 2>/dev/null || true
+        fi
+      elif command -v nc >/dev/null 2>&1; then
+        # 使用 nc 发送 HTTP GET 请求
+        CONSUL_KEY=$(echo -e "GET /v1/kv/vault/unseal_key?raw HTTP/1.1\r\nHost: $CONSUL_HOST:$CONSUL_PORT\r\n\r\n" | nc "$CONSUL_HOST" "$CONSUL_PORT" 2>/dev/null | grep -v "^HTTP" | tail -n +2 | tr -d '\r\n')
+        if [ -n "$CONSUL_KEY" ] && [ "$CONSUL_KEY" != "404" ]; then
+          UNSEAL_KEY="$CONSUL_KEY"
+          echo "Found unseal key in Consul (via nc)"
           # 同时保存到本地文件以便下次使用
           echo "$UNSEAL_KEY" > /vault/data/unseal_key.txt 2>/dev/null || true
         fi
@@ -137,7 +174,7 @@ else
         CONSUL_KEY=$(consul kv get vault/unseal_key 2>/dev/null || echo "")
         if [ -n "$CONSUL_KEY" ]; then
           UNSEAL_KEY="$CONSUL_KEY"
-          echo "Found unseal key in Consul"
+          echo "Found unseal key in Consul (via consul CLI)"
           # 同时保存到本地文件以便下次使用
           echo "$UNSEAL_KEY" > /vault/data/unseal_key.txt 2>/dev/null || true
         fi
@@ -176,9 +213,31 @@ else
         
         # 尝试通过 Consul API 删除数据
         CONSUL_ADDR="${CONSUL_ADDR:-consul:8500}"
-        DELETE_RESULT=$(curl -s -X DELETE "http://$CONSUL_ADDR/v1/kv/vault/?recurse" 2>&1)
+        CONSUL_HOST=$(echo "$CONSUL_ADDR" | cut -d: -f1)
+        CONSUL_PORT=$(echo "$CONSUL_ADDR" | cut -d: -f2)
         
-        if [ $? -eq 0 ]; then
+        DELETE_SUCCESS=0
+        if command -v curl >/dev/null 2>&1; then
+          DELETE_RESULT=$(curl -s -X DELETE "http://$CONSUL_ADDR/v1/kv/vault/?recurse" 2>&1)
+          DELETE_SUCCESS=$?
+        elif command -v wget >/dev/null 2>&1; then
+          DELETE_RESULT=$(wget -q -O- --method=DELETE "http://$CONSUL_ADDR/v1/kv/vault/?recurse" 2>&1)
+          DELETE_SUCCESS=$?
+        elif command -v nc >/dev/null 2>&1; then
+          # 使用 nc 发送 HTTP DELETE 请求
+          DELETE_RESULT=$(echo -e "DELETE /v1/kv/vault/?recurse HTTP/1.1\r\nHost: $CONSUL_HOST:$CONSUL_PORT\r\n\r\n" | nc "$CONSUL_HOST" "$CONSUL_PORT" 2>&1)
+          # 检查响应是否包含 200 OK
+          if echo "$DELETE_RESULT" | grep -q "200 OK"; then
+            DELETE_SUCCESS=0
+          else
+            DELETE_SUCCESS=1
+          fi
+        else
+          DELETE_RESULT="Neither wget nor nc found"
+          DELETE_SUCCESS=1
+        fi
+        
+        if [ $DELETE_SUCCESS -eq 0 ]; then
           echo "Vault data deleted from Consul successfully."
           echo "Waiting for Vault to detect the change and become uninitialized..."
           
@@ -218,8 +277,18 @@ else
               # 保存到文件和 Consul
               echo "$ROOT_TOKEN" > /vault/data/root_token.txt
               echo "$UNSEAL_KEY" > /vault/data/unseal_key.txt
-              curl -s -X PUT "http://$CONSUL_ADDR/v1/kv/vault/unseal_key" -d "$UNSEAL_KEY" >/dev/null 2>&1
-              curl -s -X PUT "http://$CONSUL_ADDR/v1/kv/vault/root_token" -d "$ROOT_TOKEN" >/dev/null 2>&1
+              
+              # 保存到 Consul
+              if command -v curl >/dev/null 2>&1; then
+                curl -s -X PUT "http://$CONSUL_ADDR/v1/kv/vault/unseal_key" -d "$UNSEAL_KEY" >/dev/null 2>&1
+                curl -s -X PUT "http://$CONSUL_ADDR/v1/kv/vault/root_token" -d "$ROOT_TOKEN" >/dev/null 2>&1
+              elif command -v wget >/dev/null 2>&1; then
+                wget -q -O /dev/null --method=PUT --body-data="$UNSEAL_KEY" "http://$CONSUL_ADDR/v1/kv/vault/unseal_key" 2>/dev/null
+                wget -q -O /dev/null --method=PUT --body-data="$ROOT_TOKEN" "http://$CONSUL_ADDR/v1/kv/vault/root_token" 2>/dev/null
+              elif command -v nc >/dev/null 2>&1; then
+                (echo -e "PUT /v1/kv/vault/unseal_key HTTP/1.1\r\nHost: $CONSUL_HOST:$CONSUL_PORT\r\nContent-Length: ${#UNSEAL_KEY}\r\n\r\n$UNSEAL_KEY" | nc "$CONSUL_HOST" "$CONSUL_PORT" >/dev/null 2>&1)
+                (echo -e "PUT /v1/kv/vault/root_token HTTP/1.1\r\nHost: $CONSUL_HOST:$CONSUL_PORT\r\nContent-Length: ${#ROOT_TOKEN}\r\n\r\n$ROOT_TOKEN" | nc "$CONSUL_HOST" "$CONSUL_PORT" >/dev/null 2>&1)
+              fi
               
               # 解锁 Vault
               export VAULT_TOKEN="$ROOT_TOKEN"
