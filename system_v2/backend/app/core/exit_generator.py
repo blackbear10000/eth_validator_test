@@ -2,24 +2,18 @@
 验证者退出签名生成器
 使用 ethstaker-deposit-cli 生成 Voluntary Exit 签名
 """
-import os
-import sys
 import logging
 from typing import Dict, Any, Optional
 
-# 添加 ethstaker-deposit-cli 到路径
-project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
-ethstaker_path = os.path.join(project_root, "code", "external", "ethstaker-deposit-cli")
-if os.path.exists(ethstaker_path):
-    sys.path.insert(0, ethstaker_path)
-
+# 直接导入 ethstaker-deposit-cli（通过 pip 安装）
 try:
     from ethstaker_deposit.utils.exit_transaction import exit_transaction_generation
     from ethstaker_deposit.settings import get_chain_setting, BaseChainSetting
     from ethstaker_deposit.utils.ssz import SignedVoluntaryExit
     from ethstaker_deposit.utils.crypto import bls
 except ImportError as e:
-    logging.warning(f"无法导入 ethstaker-deposit-cli，退出功能可能不可用: {e}")
+    logging.error(f"无法导入 ethstaker-deposit-cli，退出功能不可用: {e}")
+    logging.error("请确保已安装 ethstaker-deposit-cli: pip install git+https://github.com/ethstaker/ethstaker-deposit-cli.git")
     exit_transaction_generation = None
     get_chain_setting = None
     BaseChainSetting = None

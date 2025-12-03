@@ -2,18 +2,11 @@
 Deposit Data 生成器
 使用 ethstaker-deposit-cli 生成 Deposit Data，支持动态绑定 0x01 类型提款地址
 """
-import os
-import sys
 import logging
 from typing import List, Dict, Any, Optional
 from eth_utils import to_bytes
 
-# 添加 ethstaker-deposit-cli 到路径
-project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
-ethstaker_path = os.path.join(project_root, "code", "external", "ethstaker-deposit-cli")
-if os.path.exists(ethstaker_path):
-    sys.path.insert(0, ethstaker_path)
-
+# 直接导入 ethstaker-deposit-cli（通过 pip 安装）
 try:
     from ethstaker_deposit.credentials import Credential
     from ethstaker_deposit.settings import get_chain_setting, BaseChainSetting
@@ -26,7 +19,8 @@ try:
     from ethstaker_deposit.utils.crypto import bls
     from eth_utils import to_canonical_address
 except ImportError as e:
-    logging.warning(f"无法导入 ethstaker-deposit-cli，Deposit Data 生成功能可能不可用: {e}")
+    logging.error(f"无法导入 ethstaker-deposit-cli，Deposit Data 生成功能不可用: {e}")
+    logging.error("请确保已安装 ethstaker-deposit-cli: pip install git+https://github.com/ethstaker/ethstaker-deposit-cli.git")
     Credential = None
     get_chain_setting = None
     BaseChainSetting = None  # 类型占位符

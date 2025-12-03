@@ -2,30 +2,25 @@
 密钥管理服务
 负责密钥生成、存储、状态管理
 """
-import os
-import sys
 import logging
 from datetime import datetime
 from typing import List, Optional, Dict, Any
 from sqlalchemy.orm import Session
 from sqlalchemy import and_
 
-# 添加 ethstaker-deposit-cli 到路径
-# 假设它在项目根目录的 code/external/ethstaker-deposit-cli
-project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
-ethstaker_path = os.path.join(project_root, "code", "external", "ethstaker-deposit-cli")
-if os.path.exists(ethstaker_path):
-    sys.path.insert(0, ethstaker_path)
-
+# 直接导入 ethstaker-deposit-cli（通过 pip 安装）
 try:
     from ethstaker_deposit.credentials import Credential
     from ethstaker_deposit.settings import get_chain_setting
     from ethstaker_deposit.key_handling.key_derivation.mnemonic import get_mnemonic
+    from ethstaker_deposit.utils.constants import WORD_LISTS_PATH
 except ImportError as e:
-    logging.warning(f"无法导入 ethstaker-deposit-cli，密钥生成功能可能不可用: {e}")
+    logging.error(f"无法导入 ethstaker-deposit-cli，密钥生成功能不可用: {e}")
+    logging.error("请确保已安装 ethstaker-deposit-cli: pip install git+https://github.com/ethstaker/ethstaker-deposit-cli.git")
     Credential = None
     get_chain_setting = None
     get_mnemonic = None
+    WORD_LISTS_PATH = None
 
 from app.models.database import ValidatorKey
 from app.models.enums import ValidatorKeyStatus
@@ -63,19 +58,12 @@ class KeyManagementService:
         Returns:
             BIP39 助记词字符串
         """
-        if get_mnemonic is None:
+        if get_mnemonic is None or WORD_LISTS_PATH is None:
             raise KeyGenerationError("ethstaker-deposit-cli 未正确导入")
         
-        words_path = os.path.join(
-            ethstaker_path,
-            "ethstaker_deposit",
-            "key_handling",
-            "key_derivation",
-            "word_lists"
-        )
-        
         try:
-            mnemonic = get_mnemonic(language='english', words_path=words_path)
+            # 使用包中的 WORD_LISTS_PATH 常量
+            mnemonic = get_mnemonic(language='english', words_path=WORD_LISTS_PATH)
             logger.info("助记词生成成功")
             return mnemonic
         except Exception as e:

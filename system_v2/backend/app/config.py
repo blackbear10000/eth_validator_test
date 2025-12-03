@@ -54,6 +54,9 @@ class Settings(BaseSettings):
     kurtosis_enclave: str = "eth-devnet"
     kurtosis_manager_url: str = os.getenv("KURTOSIS_MANAGER_URL", "http://kurtosis-manager:8002")
     
+    # ethstaker-deposit-cli 配置
+    ethstaker_deposit_cli_path: Optional[str] = os.getenv("ETHSTAKER_DEPOSIT_CLI_PATH", None)
+    
     # 日志配置
     log_level: str = "INFO"
     log_format: str = "json"
