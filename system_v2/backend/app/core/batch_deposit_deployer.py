@@ -46,29 +46,82 @@ class BatchDepositDeployer:
         self.deployer_account = Account.from_key(deployer_private_key)
         self.deployer_address = self.deployer_account.address
         
-        # 确保 solc 已安装
-        self._ensure_solc_installed()
+        # 注意：solc 版本将在获取源代码后根据 pragma 语句动态安装
     
-    def _ensure_solc_installed(self):
-        """确保 Solidity 编译器已安装"""
+    def _detect_solc_version(self, source_code: str) -> str:
+        """
+        从合约源代码中检测所需的 Solidity 版本
+        
+        Args:
+            source_code: 合约源代码
+            
+        Returns:
+            Solidity 版本字符串（如 '0.8.29'）
+        """
+        import re
+        # 匹配 pragma solidity 语句
+        # 格式：pragma solidity ^0.8.29; 或 pragma solidity 0.8.29; 或 pragma solidity >=0.8.0 <0.9.0;
+        pragma_match = re.search(r'pragma\s+solidity\s+([^;]+);', source_code)
+        if pragma_match:
+            pragma_str = pragma_match.group(1).strip()
+            logger.info(f"检测到 pragma solidity: {pragma_str}")
+            
+            # 提取版本号（处理 ^, >=, < 等符号）
+            # 优先提取精确版本号（如 0.8.29）
+            exact_version_match = re.search(r'(\d+\.\d+\.\d+)', pragma_str)
+            if exact_version_match:
+                version = exact_version_match.group(1)
+                logger.info(f"提取到精确版本号: {version}")
+                return version
+            
+            # 如果没有精确版本，提取主版本号（如 0.8）
+            major_version_match = re.search(r'(\d+\.\d+)', pragma_str)
+            if major_version_match:
+                major_version = major_version_match.group(1)
+                # 使用该主版本的最新版本（例如 0.8 -> 0.8.29）
+                logger.warning(f"未找到精确版本号，使用主版本: {major_version}，将尝试安装最新版本")
+                return major_version
+        
+        # 默认返回 0.8.29（BatchDeposits.sol 当前使用的版本）
+        logger.warning("无法从源代码检测 Solidity 版本，使用默认版本 0.8.29")
+        return '0.8.29'
+    
+    def _ensure_solc_installed(self, required_version: Optional[str] = None):
+        """
+        确保 Solidity 编译器已安装
+        
+        Args:
+            required_version: 所需的 Solidity 版本（如果为 None，则稍后从源代码检测）
+        """
         try:
-            # BatchDeposits.sol 使用 Solidity 0.8.x
-            # 尝试安装 0.8.19（一个稳定的版本）
-            try:
-                install_solc('0.8.19')
-                set_solc_version('0.8.19')
-                logger.info("已安装 Solidity 编译器 0.8.19")
-            except Exception as e:
-                logger.warning(f"安装 Solidity 编译器失败: {e}，尝试使用已安装的版本")
-                # 尝试使用已安装的版本
+            if required_version:
                 try:
-                    from solcx import get_installed_solc_versions
-                    versions = get_installed_solc_versions()
-                    if versions:
-                        set_solc_version(versions[-1])
-                        logger.info(f"使用已安装的 Solidity 编译器版本: {versions[-1]}")
-                except:
-                    pass
+                    install_solc(required_version)
+                    set_solc_version(required_version)
+                    logger.info(f"已安装 Solidity 编译器 {required_version}")
+                except Exception as e:
+                    logger.warning(f"安装 Solidity 编译器 {required_version} 失败: {e}，尝试使用已安装的版本")
+                    # 尝试使用已安装的版本
+                    try:
+                        from solcx import get_installed_solc_versions
+                        versions = get_installed_solc_versions()
+                        if versions:
+                            # 尝试找到匹配的版本
+                            matching_version = None
+                            for v in sorted(versions, reverse=True):
+                                if v.startswith(required_version.split('.')[0] + '.' + required_version.split('.')[1]):
+                                    matching_version = v
+                                    break
+                            
+                            if matching_version:
+                                set_solc_version(matching_version)
+                                logger.info(f"使用已安装的匹配版本: {matching_version}")
+                            else:
+                                set_solc_version(versions[-1])
+                                logger.warning(f"未找到匹配版本，使用已安装的最新版本: {versions[-1]}")
+                    except Exception as e2:
+                        logger.error(f"无法设置 Solidity 编译器版本: {e2}")
+                        raise
         except Exception as e:
             logger.error(f"无法设置 Solidity 编译器: {e}")
             raise
@@ -131,17 +184,23 @@ class BatchDepositDeployer:
         try:
             logger.info("开始编译 Batch Deposit 合约...")
             
+            # 首先检测所需的 Solidity 版本
+            required_version = self._detect_solc_version(source_code)
+            logger.info(f"检测到所需的 Solidity 版本: {required_version}")
+            
+            # 安装并设置对应的编译器版本
+            self._ensure_solc_installed(required_version)
+            
             # 编译合约
-            # 注意：solcx 的 compile_source 可能需要不同的参数格式
             try:
                 compiled_sol = compile_source(
                     source_code,
                     output_values=['abi', 'bin'],
-                    solc_version='0.8.19'
+                    solc_version=required_version
                 )
             except Exception as e:
                 # 如果失败，尝试不指定版本（使用当前设置的版本）
-                logger.warning(f"使用指定版本编译失败: {e}，尝试使用当前设置的版本")
+                logger.warning(f"使用指定版本 {required_version} 编译失败: {e}，尝试使用当前设置的版本")
                 compiled_sol = compile_source(
                     source_code,
                     output_values=['abi', 'bin']
@@ -188,7 +247,7 @@ class BatchDepositDeployer:
             # 获取合约源代码
             source_code = self._get_contract_source()
             
-            # 编译合约
+            # 编译合约（会自动检测并安装所需的 Solidity 版本）
             contract_interface = self._compile_contract(source_code)
             
             # 获取 bytecode（可能是 'bin' 或 'bytecode'）

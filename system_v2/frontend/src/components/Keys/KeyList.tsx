@@ -40,12 +40,19 @@ const KeyList: React.FC = () => {
   const loadKeys = async () => {
     setLoading(true)
     try {
-      const response = await keysApi.list({
+      const params: any = {
         status: statusFilter,
         batch_id: batchIdFilter,
         limit: pagination.pageSize,
         offset: (pagination.current - 1) * pagination.pageSize,
-      }) as any
+      }
+      
+      // 如果后端支持搜索，添加搜索参数
+      if (searchText) {
+        params.search = searchText
+      }
+      
+      const response = await keysApi.list(params) as any
 
       setKeys(response.items || [])
       setPagination({
@@ -61,7 +68,17 @@ const KeyList: React.FC = () => {
 
   useEffect(() => {
     loadKeys()
-  }, [pagination.current, pagination.pageSize, statusFilter, batchIdFilter])
+  }, [pagination.current, pagination.pageSize, statusFilter, batchIdFilter, searchText])
+
+  // 当筛选条件改变时，重置到第一页
+  useEffect(() => {
+    if (pagination.current !== 1) {
+      setPagination({
+        ...pagination,
+        current: 1,
+      })
+    }
+  }, [statusFilter, batchIdFilter, searchText])
 
   // 获取状态标签
   const getStatusTag = (status: string) => {
@@ -113,18 +130,13 @@ const KeyList: React.FC = () => {
     })
   }
 
-  // 搜索过滤
-  const filteredKeys = keys.filter((key) => {
-    if (searchText) {
-      const searchLower = searchText.toLowerCase()
-      return (
-        key.pubkey.toLowerCase().includes(searchLower) ||
-        key.withdrawal_pubkey.toLowerCase().includes(searchLower) ||
-        (key.batch_id && key.batch_id.toLowerCase().includes(searchLower))
-      )
+  // 格式化 key 显示：前6位 + ... + 最后6位
+  const formatKeyDisplay = (key: string) => {
+    if (key.length <= 12) {
+      return key
     }
-    return true
-  })
+    return `${key.slice(0, 6)}...${key.slice(-6)}`
+  }
 
   // 表格列定义
   const columns = [
@@ -135,7 +147,7 @@ const KeyList: React.FC = () => {
       width: 200,
       render: (text: string) => (
         <Text copyable={{ text }} style={{ fontFamily: 'monospace', fontSize: '12px' }}>
-          {text.slice(0, 20)}...
+          {formatKeyDisplay(text)}
         </Text>
       ),
     },
@@ -184,7 +196,8 @@ const KeyList: React.FC = () => {
     },
   ]
 
-  // 获取所有批次ID（用于筛选）
+  // 获取所有批次ID（用于筛选）- 需要从后端获取或使用缓存
+  // 注意：这里只显示当前页的批次ID，如果需要所有批次ID，需要单独调用API
   const batchIds = Array.from(new Set(keys.map((k) => k.batch_id).filter(Boolean)))
 
   return (
@@ -197,8 +210,24 @@ const KeyList: React.FC = () => {
               placeholder="搜索公钥、批次ID"
               allowClear
               style={{ width: 300 }}
-              onSearch={setSearchText}
-              onChange={(e) => !e.target.value && setSearchText('')}
+              value={searchText}
+              onSearch={(value) => {
+                setSearchText(value)
+                // 搜索时重置到第一页
+                setPagination({
+                  ...pagination,
+                  current: 1,
+                })
+              }}
+              onChange={(e) => {
+                if (!e.target.value) {
+                  setSearchText('')
+                  setPagination({
+                    ...pagination,
+                    current: 1,
+                  })
+                }
+              }}
             />
             <Select
               placeholder="筛选状态"
@@ -245,7 +274,7 @@ const KeyList: React.FC = () => {
           {/* 密钥列表表格 */}
           <Table
             columns={columns}
-            dataSource={filteredKeys}
+            dataSource={keys}
             rowKey="pubkey"
             loading={loading}
             rowSelection={{
@@ -253,14 +282,25 @@ const KeyList: React.FC = () => {
               onChange: setSelectedRowKeys,
             }}
             pagination={{
-              ...pagination,
+              current: pagination.current,
+              pageSize: pagination.pageSize,
+              total: pagination.total,
               showSizeChanger: true,
-              showTotal: (total) => `共 ${total} 条`,
+              showQuickJumper: true,
+              showTotal: (total, range) => `第 ${range[0]}-${range[1]} 条，共 ${total} 条`,
+              pageSizeOptions: ['10', '20', '50', '100'],
               onChange: (page, pageSize) => {
                 setPagination({
                   ...pagination,
                   current: page,
-                  pageSize,
+                  pageSize: pageSize || pagination.pageSize,
+                })
+              },
+              onShowSizeChange: (current, size) => {
+                setPagination({
+                  ...pagination,
+                  current: 1, // 重置到第一页
+                  pageSize: size,
                 })
               },
             }}
@@ -283,12 +323,12 @@ const KeyList: React.FC = () => {
           <Descriptions column={2} bordered>
             <Descriptions.Item label="公钥" span={2}>
               <Text copyable={{ text: selectedKey.pubkey }} style={{ fontFamily: 'monospace' }}>
-                {selectedKey.pubkey}
+                {formatKeyDisplay(selectedKey.pubkey)}
               </Text>
             </Descriptions.Item>
             <Descriptions.Item label="提款公钥" span={2}>
               <Text copyable={{ text: selectedKey.withdrawal_pubkey }} style={{ fontFamily: 'monospace' }}>
-                {selectedKey.withdrawal_pubkey}
+                {formatKeyDisplay(selectedKey.withdrawal_pubkey)}
               </Text>
             </Descriptions.Item>
             <Descriptions.Item label="状态">
@@ -322,14 +362,14 @@ const KeyList: React.FC = () => {
             {selectedKey.deposit_tx_hash && (
               <Descriptions.Item label="存款交易哈希" span={2}>
                 <Text copyable={{ text: selectedKey.deposit_tx_hash }} style={{ fontFamily: 'monospace' }}>
-                  {selectedKey.deposit_tx_hash}
+                  {formatKeyDisplay(selectedKey.deposit_tx_hash)}
                 </Text>
               </Descriptions.Item>
             )}
             {selectedKey.withdrawal_address && (
               <Descriptions.Item label="提款地址" span={2}>
                 <Text copyable={{ text: selectedKey.withdrawal_address }} style={{ fontFamily: 'monospace' }}>
-                  {selectedKey.withdrawal_address}
+                  {formatKeyDisplay(selectedKey.withdrawal_address)}
                 </Text>
               </Descriptions.Item>
             )}

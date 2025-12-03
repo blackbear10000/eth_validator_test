@@ -203,11 +203,19 @@ const KeyPoolOverview: React.FC = () => {
               dataIndex: 'pubkey',
               key: 'pubkey',
               width: 200,
-              render: (text: string) => (
-                <Text copyable={{ text }} style={{ fontFamily: 'monospace', fontSize: '12px' }}>
-                  {text.slice(0, 20)}...
-                </Text>
-              ),
+              render: (text: string) => {
+                const formatKeyDisplay = (key: string) => {
+                  if (key.length <= 12) {
+                    return key
+                  }
+                  return `${key.slice(0, 6)}...${key.slice(-6)}`
+                }
+                return (
+                  <Text copyable={{ text }} style={{ fontFamily: 'monospace', fontSize: '12px' }}>
+                    {formatKeyDisplay(text)}
+                  </Text>
+                )
+              },
             },
             {
               title: '状态',

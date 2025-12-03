@@ -229,9 +229,10 @@ class NetworkService:
                 if rpc_match:
                     host_ip = rpc_match.group(1)
                     host_port = rpc_match.group(2)
-                    # 如果映射到 localhost，使用 localhost；否则使用实际 IP
+                    # 默认使用 host.docker.internal（因为后端在容器中运行）
+                    # 如果映射到 localhost，使用 host.docker.internal；否则使用实际 IP
                     if host_ip == '127.0.0.1' or host_ip == '0.0.0.0':
-                        rpc_url = f"http://localhost:{host_port}"
+                        rpc_url = f"http://host.docker.internal:{host_port}"
                     else:
                         rpc_url = f"http://{host_ip}:{host_port}"
                     logger.info(f"找到 RPC 端口映射: {host_ip}:{host_port} -> {rpc_url}")
@@ -242,7 +243,7 @@ class NetworkService:
                     host_ip = ws_match.group(1)
                     host_port = ws_match.group(2)
                     if host_ip == '127.0.0.1' or host_ip == '0.0.0.0':
-                        ws_url = f"ws://localhost:{host_port}"
+                        ws_url = f"ws://host.docker.internal:{host_port}"
                     else:
                         ws_url = f"ws://{host_ip}:{host_port}"
                     logger.info(f"找到 WS 端口映射: {host_ip}:{host_port} -> {ws_url}")
@@ -259,25 +260,17 @@ class NetworkService:
                 current_service = None
         
         if rpc_url:
-            # 注意：如果后端在 Docker 容器中运行，需要将 localhost 替换为 host.docker.internal
-            # 或者使用主机 IP（通常是 172.18.0.1）
-            # 但这里返回的 URL 是给后端容器使用的，所以需要特殊处理
-            # 实际上，如果后端容器需要访问主机上的端口，应该使用 host.docker.internal
+            # 生成主机可访问的 URL（用于前端显示）
+            # 将 host.docker.internal 替换回 localhost
+            host_rpc_url = rpc_url.replace('host.docker.internal', 'localhost')
+            host_ws_url = ws_url.replace('host.docker.internal', 'localhost') if ws_url else None
             
-            # 检查是否在容器环境中（通过环境变量判断）
-            import os
-            container_rpc_url = rpc_url
-            if os.path.exists('/.dockerenv'):
-                # 在容器中，如果 RPC URL 是 localhost，需要替换为 host.docker.internal
-                if 'localhost' in rpc_url or '127.0.0.1' in rpc_url:
-                    container_rpc_url = rpc_url.replace('localhost', 'host.docker.internal').replace('127.0.0.1', 'host.docker.internal')
-                    logger.info(f"检测到容器环境，将 RPC URL 转换为容器可访问的地址: {container_rpc_url}")
-            
-            logger.info(f"成功提取 RPC 端点: {rpc_url} (容器内: {container_rpc_url}), 服务: {current_service}")
+            logger.info(f"成功提取 RPC 端点: 容器内={rpc_url}, 主机={host_rpc_url}, 服务={current_service}")
             return {
-                "rpc_url": container_rpc_url,  # 返回容器可访问的 URL
-                "host_rpc_url": rpc_url,  # 返回主机可访问的 URL（用于前端显示）
+                "rpc_url": rpc_url,  # 返回容器可访问的 URL（默认使用 host.docker.internal）
+                "host_rpc_url": host_rpc_url,  # 返回主机可访问的 URL（用于前端显示）
                 "ws_url": ws_url,
+                "host_ws_url": host_ws_url,
                 "service": current_service
             }
         else:
@@ -305,6 +298,22 @@ class NetworkService:
                 "status": status
             }
         
+        # 尝试从 Kurtosis 配置文件读取 deposit_contract_address
+        deposit_contract_address = None
+        try:
+            import yaml
+            import os
+            config_file = os.getenv("KURTOSIS_CONFIG_FILE", "/kurtosis-config/kurtosis-config.yaml")
+            if os.path.exists(config_file):
+                with open(config_file, 'r') as f:
+                    config = yaml.safe_load(f)
+                    if config and 'network_params' in config:
+                        deposit_contract_address = config['network_params'].get('deposit_contract_address')
+                        if deposit_contract_address:
+                            logger.info(f"从 Kurtosis 配置文件读取到 deposit_contract_address: {deposit_contract_address}")
+        except Exception as e:
+            logger.warning(f"无法从 Kurtosis 配置文件读取 deposit_contract_address: {e}")
+        
         # 尝试从 Beacon API 获取网络信息
         try:
             from app.core.beacon_api import BeaconAPIClient
@@ -319,17 +328,27 @@ class NetworkService:
             except Exception:
                 fork_schedule = None
             
-            return {
+            result = {
                 "enclave_name": self.enclave_name,
                 "genesis": genesis_info,
                 "fork_schedule": fork_schedule,
                 "beacon_api_url": settings.beacon_api_url
             }
+            
+            # 添加 deposit_contract_address（如果从配置文件读取到）
+            if deposit_contract_address:
+                result["deposit_contract_address"] = deposit_contract_address
+            
+            return result
         except Exception as e:
             logger.error(f"获取网络信息失败: {e}")
-            return {
+            result = {
                 "enclave_name": self.enclave_name,
                 "error": str(e),
                 "status": status
             }
+            # 即使 Beacon API 失败，也返回 deposit_contract_address（如果从配置文件读取到）
+            if deposit_contract_address:
+                result["deposit_contract_address"] = deposit_contract_address
+            return result
 

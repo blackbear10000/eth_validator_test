@@ -134,17 +134,19 @@ async def submit_deposits(
             if not official_contract_address:
                 try:
                     network_info = NetworkService().get_info()
-                    # 尝试从网络信息中提取合约地址（如果可用）
-                    # 注意：Kurtosis 网络可能不包含这个信息，所以使用标准地址
-                    official_contract_address = None
-                except:
-                    pass
+                    # 尝试从网络信息中提取合约地址（从 Kurtosis 配置文件读取）
+                    official_contract_address = network_info.get("deposit_contract_address")
+                    if official_contract_address:
+                        logger.info(f"从 Kurtosis 网络信息获取到 deposit_contract_address: {official_contract_address}")
+                except Exception as e:
+                    logger.warning(f"无法从网络信息获取合约地址: {e}")
             
             # 如果仍然没有，尝试使用标准地址（根据网络名称）
             if not official_contract_address:
-                # 对于 Kurtosis devnet，可能需要使用配置或默认地址
-                # 这里假设是 devnet，使用一个占位符地址或从配置读取
-                official_contract_address = settings.batch_deposit_contract_address  # 临时使用，实际应该从网络配置获取
+                # 对于 Kurtosis devnet，使用配置中的地址
+                official_contract_address = settings.official_deposit_contract_address
+                if official_contract_address:
+                    logger.info(f"使用配置的官方合约地址: {official_contract_address}")
             
             # 如果还是没有，返回错误
             if not official_contract_address:
