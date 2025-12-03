@@ -101,16 +101,45 @@ async def startup_event():
         from alembic.config import Config
         from alembic import command
         import os
+        import traceback
         
         # 获取 alembic.ini 路径
         backend_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-        alembic_cfg = Config(os.path.join(backend_dir, "alembic.ini"))
+        alembic_ini_path = os.path.join(backend_dir, "alembic.ini")
+        
+        logger.info(f"使用 Alembic 配置文件: {alembic_ini_path}")
+        
+        if not os.path.exists(alembic_ini_path):
+            logger.error(f"Alembic 配置文件不存在: {alembic_ini_path}")
+            raise FileNotFoundError(f"Alembic 配置文件不存在: {alembic_ini_path}")
+        
+        alembic_cfg = Config(alembic_ini_path)
         
         # 执行迁移
+        logger.info("开始执行数据库迁移...")
         command.upgrade(alembic_cfg, "head")
         logger.info("数据库迁移完成")
+        
+        # 验证表是否创建成功
+        from app.dependencies import SessionLocal
+        db = SessionLocal()
+        try:
+            from sqlalchemy import inspect
+            inspector = inspect(db.bind)
+            tables = inspector.get_table_names()
+            logger.info(f"数据库中的表: {tables}")
+            if 'validator_keys' not in tables:
+                logger.warning("validator_keys 表不存在，迁移可能未成功")
+            else:
+                logger.info("validator_keys 表已存在")
+        except Exception as e:
+            logger.error(f"验证数据库表时出错: {e}")
+        finally:
+            db.close()
+            
     except Exception as e:
         logger.error(f"数据库迁移失败: {e}")
+        logger.error(traceback.format_exc())
         # 迁移失败不应该阻止应用启动，但会记录错误
     
     logger.info("初始化后台任务...")
