@@ -72,6 +72,7 @@ class KeyManagementService:
             import os
             import tempfile
             import shutil
+            import urllib.request
             
             # 尝试获取正确的 word lists 路径
             words_path = None
@@ -140,7 +141,7 @@ class KeyManagementService:
                                 words_path = temp_word_lists_dir
                                 logger.info(f"使用 importlib.resources 创建临时 word lists 目录: {words_path}")
                             except Exception as e:
-                                logger.warning(f"无法读取 english.txt: {e}")
+                                logger.warning(f"无法通过 importlib.resources 读取文件: {e}")
                                 if temp_dir and os.path.exists(temp_dir):
                                     shutil.rmtree(temp_dir)
                         else:
@@ -157,12 +158,58 @@ class KeyManagementService:
                 except Exception as e:
                     logger.warning(f"importlib.resources 方法失败: {e}")
             
+            # 方法4: 从 GitHub 下载 word lists 文件（如果前面的方法都失败）
+            if not words_path:
+                try:
+                    logger.info("尝试从 GitHub 下载 word lists 文件...")
+                    
+                    # 检查是否已有缓存的临时目录
+                    if KeyManagementService._temp_word_lists_dir and os.path.exists(KeyManagementService._temp_word_lists_dir):
+                        english_file = os.path.join(KeyManagementService._temp_word_lists_dir, 'english.txt')
+                        if os.path.exists(english_file):
+                            words_path = KeyManagementService._temp_word_lists_dir
+                            logger.debug(f"使用缓存的临时目录: {words_path}")
+                    
+                    if not words_path:
+                        # 创建临时目录
+                        temp_dir = tempfile.mkdtemp(prefix='ethstaker_word_lists_')
+                        temp_word_lists_dir = os.path.join(temp_dir, 'word_lists')
+                        os.makedirs(temp_word_lists_dir, exist_ok=True)
+                        
+                        # 从 GitHub 下载 english.txt
+                        github_url = "https://raw.githubusercontent.com/ethstaker/ethstaker-deposit-cli/main/ethstaker_deposit/key_handling/key_derivation/word_lists/english.txt"
+                        
+                        try:
+                            logger.info(f"从 GitHub 下载: {github_url}")
+                            with urllib.request.urlopen(github_url, timeout=10) as response:
+                                english_content = response.read().decode('utf-8')
+                            
+                            # 验证内容（应该包含 2048 行）
+                            lines = [l.strip() for l in english_content.split('\n') if l.strip()]
+                            if len(lines) != 2048:
+                                raise ValueError(f"Word list 文件行数不正确: 期望 2048，实际 {len(lines)}")
+                            
+                            # 写入文件
+                            english_file_path = os.path.join(temp_word_lists_dir, 'english.txt')
+                            with open(english_file_path, 'w', encoding='utf-8') as f:
+                                f.write(english_content)
+                            
+                            # 缓存临时目录路径
+                            KeyManagementService._temp_word_lists_dir = temp_word_lists_dir
+                            words_path = temp_word_lists_dir
+                            logger.info(f"成功从 GitHub 下载并创建临时 word lists 目录: {words_path}")
+                        except Exception as e:
+                            logger.warning(f"从 GitHub 下载失败: {e}")
+                            if temp_dir and os.path.exists(temp_dir):
+                                shutil.rmtree(temp_dir)
+                except Exception as e:
+                    logger.warning(f"GitHub 下载方法失败: {e}")
+            
             # 如果仍然找不到路径，抛出错误
             if not words_path:
                 raise KeyGenerationError(
-                    "无法找到 word lists 文件路径。"
-                    "请确保 ethstaker-deposit-cli 包已正确安装，"
-                    "且包含 word_lists 目录。"
+                    "无法找到或下载 word lists 文件。"
+                    "请检查网络连接或手动下载 word_lists 文件。"
                 )
             
             # 验证路径是否存在
