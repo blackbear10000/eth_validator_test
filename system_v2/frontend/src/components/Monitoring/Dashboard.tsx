@@ -129,8 +129,8 @@ const Dashboard: React.FC = () => {
             </Col>
             <Col span={4}>
               <Space direction="vertical" align="center">
-                <Text>Beacon API</Text>
-                {getHealthTag(overview.system_health.beacon_api)}
+                <Text>Kurtosis Manager</Text>
+                {getHealthTag(networkStatus ? !networkStatus.error : false)}
               </Space>
             </Col>
           </Row>
@@ -199,15 +199,24 @@ const Dashboard: React.FC = () => {
             </Space>
           </Col>
           <Col span={12}>
-            {networkStatus?.is_running && overview?.system_health?.beacon_api && (
-              <Space direction="vertical">
-                <Text strong>Beacon API</Text>
+            <Space direction="vertical">
+              <Text strong>Kurtosis Manager</Text>
+              <div>
+                <Text>状态: </Text>
+                {networkStatus && !networkStatus.error ? (
+                  getHealthTag(true)
+                ) : (
+                  getHealthTag(false)
+                )}
+              </div>
+              {networkStatus?.error && (
                 <div>
-                  <Text>状态: </Text>
-                  {getHealthTag(overview.system_health.beacon_api)}
+                  <Text type="danger" style={{ fontSize: '12px' }}>
+                    {networkStatus.error}
+                  </Text>
                 </div>
-              </Space>
-            )}
+              )}
+            </Space>
           </Col>
         </Row>
       </Card>

@@ -213,9 +213,25 @@ const NetworkManager: React.FC = () => {
         <>
           <Divider />
           <Card title="Enclave 详细信息">
-            <pre style={{ fontSize: '12px', maxHeight: '400px', overflow: 'auto' }}>
-              {JSON.stringify(status.enclave_info, null, 2)}
-            </pre>
+            {status.enclave_info.raw_output ? (
+              <pre style={{ 
+                fontSize: '12px', 
+                maxHeight: '400px', 
+                overflow: 'auto',
+                whiteSpace: 'pre-wrap',
+                wordBreak: 'break-word',
+                fontFamily: 'monospace',
+                backgroundColor: '#f5f5f5',
+                padding: '12px',
+                borderRadius: '4px'
+              }}>
+                {status.enclave_info.raw_output}
+              </pre>
+            ) : (
+              <pre style={{ fontSize: '12px', maxHeight: '400px', overflow: 'auto' }}>
+                {JSON.stringify(status.enclave_info, null, 2)}
+              </pre>
+            )}
           </Card>
         </>
       )}
