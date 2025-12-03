@@ -385,12 +385,23 @@ fi
 
 echo "Vault is unsealed and ready"
 
-# 启用 userpass 认证
+# 启用 userpass 认证（如果尚未启用）
 echo "Setting up authentication..."
-vault auth enable userpass 2>&1 || echo "userpass auth may already be enabled"
+if ! vault auth list | grep -q "^userpass/"; then
+  echo "Enabling userpass auth method..."
+  vault auth enable userpass
+else
+  echo "userpass auth method is already enabled"
+fi
 
-# 创建 admin 用户
-vault write auth/userpass/users/admin password=admin policies=admin 2>&1 || echo "admin user may already exist"
+# 创建 admin 用户（如果不存在）
+if ! vault read auth/userpass/users/admin >/dev/null 2>&1; then
+  echo "Creating admin user..."
+  vault write auth/userpass/users/admin password=admin policies=admin
+else
+  echo "Admin user already exists, updating password..."
+  vault write auth/userpass/users/admin password=admin policies=admin
+fi
 
 # 如果 admin policy 不存在，创建它
 if ! vault policy read admin >/dev/null 2>&1; then
