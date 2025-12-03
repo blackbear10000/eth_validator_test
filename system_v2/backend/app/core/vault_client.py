@@ -53,7 +53,7 @@ class VaultClient:
                 logger.info("从 Consul 读取到新的 Vault token，更新客户端")
                 self.vault_token = consul_token
                 self.client = hvac.Client(url=self.vault_url, token=self.vault_token)
-        self._ensure_authenticated()
+                self._ensure_authenticated()
             else:
                 raise
         
