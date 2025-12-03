@@ -37,8 +37,21 @@ const NetworkManager: React.FC = () => {
     try {
       const response = await networkApi.getStatus() as any
       setStatus(response as NetworkStatus)
+      // 如果状态是 error，但 is_running 为 false，可能是 dev net 未启动（正常情况）
+      if (response.status === 'error' && !response.is_running) {
+        // 不显示错误消息，因为 dev net 未启动是正常状态
+        console.log('Dev net 未启动或 engine 未就绪:', response.message || response.error)
+      }
     } catch (error: any) {
-      message.error(`加载网络状态失败: ${error.message}`)
+      // 如果请求失败，设置默认的 stopped 状态
+      console.error('加载网络状态失败:', error)
+      setStatus({
+        enclave_name: 'eth-devnet',
+        status: 'stopped',
+        is_running: false,
+        error: error.message
+      } as NetworkStatus)
+      // 不显示错误消息，因为 dev net 未启动是正常状态
     } finally {
       setLoading(false)
     }

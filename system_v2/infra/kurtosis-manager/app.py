@@ -51,7 +51,11 @@ async def health():
 
 @app.get("/status")
 async def get_status():
-    """获取网络状态"""
+    """
+    获取网络状态
+    
+    即使 dev net 未启动，也会返回一个合理的状态（stopped），不会抛出异常。
+    """
     if kurtosis_service is None:
         raise HTTPException(
             status_code=503,
@@ -59,10 +63,22 @@ async def get_status():
         )
     try:
         status = kurtosis_service.get_status()
+        # 确保返回的状态包含必要字段
+        if "is_running" not in status:
+            status["is_running"] = False
+        if "status" not in status:
+            status["status"] = "stopped"
         return status
     except Exception as e:
         logger.error(f"获取状态失败: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=str(e))
+        # 即使出现异常，也返回一个合理的默认状态，而不是抛出 HTTP 异常
+        # 这样前端可以正常显示"未启动"状态
+        return {
+            "enclave_name": os.getenv("KURTOSIS_ENCLAVE", "eth-devnet"),
+            "status": "stopped",
+            "is_running": False,
+            "error": f"查询状态时出错: {str(e)}"
+        }
 
 
 @app.post("/start")
