@@ -19,7 +19,7 @@ mkdir -p ../data/logs
 mkdir -p ../infra/web3signer/keys
 
 # 复制迁移文件（如果还没有）
-if [ ! -d "infra/web3signer/migrations/postgresql" ]; then
+if [ ! -d "../infra/web3signer/migrations/postgresql" ]; then
     echo "复制 Web3Signer 数据库迁移文件..."
     mkdir -p infra/web3signer/migrations/postgresql
     # 迁移文件应该已经从现有系统复制
