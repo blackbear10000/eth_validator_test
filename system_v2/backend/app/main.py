@@ -115,6 +115,10 @@ async def startup_event():
         
         alembic_cfg = Config(alembic_ini_path)
         
+        # 确保使用环境变量中的数据库 URL（而不是 alembic.ini 中的硬编码值）
+        alembic_cfg.set_main_option("sqlalchemy.url", settings.database_url)
+        logger.info(f"使用数据库 URL: {settings.database_url.split('@')[-1]}")  # 只显示主机部分，隐藏密码
+        
         # 执行迁移
         logger.info("开始执行数据库迁移...")
         command.upgrade(alembic_cfg, "head")
