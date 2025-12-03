@@ -46,39 +46,47 @@ const KeyList: React.FC = () => {
   const loadKeys = useCallback(async () => {
     setLoading(true)
     try {
-      const currentPagination = paginationRef.current
-      const params: any = {
-        status: statusFilter,
-        batch_id: batchIdFilter,
-        limit: currentPagination.pageSize,
-        offset: (currentPagination.current - 1) * currentPagination.pageSize,
-      }
-      
-      // 如果后端支持搜索，添加搜索参数
-      if (searchText) {
-        params.search = searchText
-      }
-      
-      const response = await keysApi.list(params) as any
+      // 使用函数式更新获取最新的 pagination 状态
+      setPagination((prev) => {
+        const params: any = {
+          status: statusFilter,
+          batch_id: batchIdFilter,
+          limit: prev.pageSize,
+          offset: (prev.current - 1) * prev.pageSize,
+        }
+        
+        // 如果后端支持搜索，添加搜索参数
+        if (searchText) {
+          params.search = searchText
+        }
+        
+        // 立即执行 API 调用
+        keysApi.list(params).then((response: any) => {
+          // 调试日志
+          console.log('密钥列表 API 响应:', {
+            itemsCount: response.items?.length || 0,
+            total: response.total,
+            currentPage: prev.current,
+            pageSize: prev.pageSize,
+            offset: params.offset,
+            limit: params.limit
+          })
 
-      // 调试日志
-      console.log('密钥列表 API 响应:', {
-        itemsCount: response.items?.length || 0,
-        total: response.total,
-        currentPage: currentPagination.current,
-        pageSize: currentPagination.pageSize,
-        offset: params.offset,
-        limit: params.limit
+          setKeys(response.items || [])
+          setPagination((current) => ({
+            ...current,
+            total: response.total || 0,
+          }))
+          setLoading(false)
+        }).catch((error: any) => {
+          message.error(`加载密钥列表失败: ${error.message}`)
+          setLoading(false)
+        })
+        
+        return prev // 返回当前状态，不改变
       })
-
-      setKeys(response.items || [])
-      setPagination((prev) => ({
-        ...prev,
-        total: response.total || 0,
-      }))
     } catch (error: any) {
       message.error(`加载密钥列表失败: ${error.message}`)
-    } finally {
       setLoading(false)
     }
   }, [statusFilter, batchIdFilter, searchText])
@@ -99,7 +107,7 @@ const KeyList: React.FC = () => {
   // 当分页参数改变时，加载数据
   useEffect(() => {
     loadKeys()
-  }, [loadKeys, pagination.current, pagination.pageSize])
+  }, [pagination.current, pagination.pageSize, statusFilter, batchIdFilter, searchText])
 
   // 获取状态标签
   const getStatusTag = (status: string) => {

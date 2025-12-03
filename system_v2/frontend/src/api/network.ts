@@ -14,6 +14,7 @@ export interface NetworkInfo {
   genesis?: any
   fork_schedule?: any
   beacon_api_url?: string
+  deposit_contract_address?: string
   error?: string
   status?: any
 }

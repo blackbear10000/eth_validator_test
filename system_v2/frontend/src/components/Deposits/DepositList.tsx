@@ -146,10 +146,24 @@ const DepositList: React.FC = () => {
     deployer_private_key: string
     network_name: string
     rpc_url?: string
+    deposit_contract_address?: string
+    initial_fee?: number
     gas_price?: number
     gas_limit?: number
   }) => {
     try {
+      // 如果没有提供 deposit_contract_address，尝试从网络信息获取
+      if (!values.deposit_contract_address) {
+        try {
+          const networkInfo = await networkApi.getInfo()
+          if (networkInfo.deposit_contract_address) {
+            values.deposit_contract_address = networkInfo.deposit_contract_address
+          }
+        } catch (e) {
+          console.warn('无法从网络信息获取 deposit_contract_address:', e)
+        }
+      }
+      
       const result = await depositsApi.deployBatchContract(values) as any
       message.success(`Batch Deposit 合约部署成功: ${result.contract_address}`)
       setDeployModalVisible(false)
@@ -597,6 +611,25 @@ const DepositList: React.FC = () => {
             ]}
           >
             <Input.Password placeholder="0x..." />
+          </Form.Item>
+          <Form.Item
+            name="deposit_contract_address"
+            label="官方 Deposit 合约地址（可选，留空则自动从网络配置获取）"
+            help="如果不提供，系统会尝试从 Kurtosis 网络配置中自动获取"
+          >
+            <Input placeholder="0x4242424242424242424242424242424242424242（留空则自动获取）" />
+          </Form.Item>
+          <Form.Item
+            name="initial_fee"
+            label="初始费用（可选，默认 0，必须是 gwei 的倍数）"
+            help="1 gwei = 10^9 wei，例如：0 gwei = 0, 1 gwei = 1000000000"
+          >
+            <InputNumber
+              style={{ width: '100%' }}
+              placeholder="初始费用（wei）"
+              min={0}
+              step={1000000000}
+            />
           </Form.Item>
           <Form.Item
             name="gas_price"
