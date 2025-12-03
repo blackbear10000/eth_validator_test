@@ -206,6 +206,10 @@ services:
       - ../code/external:/app/external:ro
     networks:
       - validator_network
+    # 添加 extra_hosts，让容器能够解析 host.docker.internal
+    # 这样后端可以访问使用 host 网络的 kurtosis-manager
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     depends_on:
       postgres:
         condition: service_healthy
