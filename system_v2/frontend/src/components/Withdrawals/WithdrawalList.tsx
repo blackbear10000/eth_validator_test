@@ -3,7 +3,6 @@ import {
   Table,
   Card,
   Button,
-  Input,
   Space,
   message,
   Statistic,
@@ -30,7 +29,7 @@ const WithdrawalList: React.FC = () => {
   // 加载验证者列表
   const loadKeys = async () => {
     try {
-      const response = await keysApi.list({ limit: 1000 })
+      const response = await keysApi.list({ limit: 1000 }) as any
       setKeys(response.items || [])
       if (response.items?.length > 0 && !selectedPubkey) {
         setSelectedPubkey(response.items[0].pubkey)
@@ -50,8 +49,8 @@ const WithdrawalList: React.FC = () => {
         withdrawalsApi.getValidatorWithdrawals(selectedPubkey, 100, 0),
         withdrawalsApi.getStatistics(selectedPubkey),
       ])
-      setWithdrawals(withdrawalsRes.items || [])
-      setStatistics(statsRes)
+      setWithdrawals((withdrawalsRes as any).items || [])
+      setStatistics(statsRes as WithdrawalStatistics)
     } catch (error: any) {
       message.error(`加载取款历史失败: ${error.message}`)
     } finally {
@@ -164,9 +163,13 @@ const WithdrawalList: React.FC = () => {
               placeholder="选择验证者"
               showSearch
               filterOption={(input, option) => {
-                const children = option?.children
+                const children = option?.children as any
                 if (typeof children === 'string') {
                   return children.toLowerCase().includes(input.toLowerCase())
+                }
+                if (Array.isArray(children) && children.length > 0) {
+                  const text = String(children[0])
+                  return text.toLowerCase().includes(input.toLowerCase())
                 }
                 return false
               }}

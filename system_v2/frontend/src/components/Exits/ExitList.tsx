@@ -44,7 +44,7 @@ const ExitList: React.FC = () => {
       const response = await keysApi.list({
         status: 'active_on_chain',
         limit: 1000,
-      })
+      }) as any
       setKeys(response.items || [])
     } catch (error: any) {
       message.error(`加载验证者列表失败: ${error.message}`)
@@ -97,7 +97,7 @@ const ExitList: React.FC = () => {
       content: `确定要退出 ${selectedKeys.length} 个验证者吗？`,
       onOk: async () => {
         try {
-          const response = await exitsApi.batchExit(selectedKeys)
+          const response = await exitsApi.batchExit(selectedKeys) as any
           const successCount = response.results?.filter(
             (r: any) => r.status === 'success'
           ).length || 0

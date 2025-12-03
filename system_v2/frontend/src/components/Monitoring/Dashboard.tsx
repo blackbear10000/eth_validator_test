@@ -14,8 +14,8 @@ const Dashboard: React.FC = () => {
 
   const loadOverview = async () => {
     try {
-      const response = await monitoringApi.overview()
-      setOverview(response)
+      const response = await monitoringApi.overview() as any
+      setOverview(response as SystemOverview)
     } catch (error) {
       console.error('加载系统概览失败:', error)
     } finally {
