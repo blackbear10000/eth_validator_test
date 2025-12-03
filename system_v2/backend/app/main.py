@@ -121,8 +121,13 @@ async def startup_event():
         
         # 执行迁移
         logger.info("开始执行数据库迁移...")
-        command.upgrade(alembic_cfg, "head")
-        logger.info("数据库迁移完成")
+        try:
+            command.upgrade(alembic_cfg, "head")
+            logger.info("数据库迁移完成")
+        except Exception as migration_error:
+            logger.error(f"迁移执行过程中出错: {migration_error}")
+            logger.error(traceback.format_exc())
+            raise
         
         # 验证表是否创建成功
         from app.dependencies import SessionLocal
