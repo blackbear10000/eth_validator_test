@@ -107,10 +107,24 @@ class Web3SignerClient:
         
         url = url_map.get(instance, self.haproxy_url)
         
+        if not url:
+            logger.warning(f"Web3Signer {instance} URL 未配置")
+            return False
+        
         try:
             response = self.session.get(f"{url}/upcheck", timeout=5)
-            return response.status_code == 200
-        except Exception:
+            is_healthy = response.status_code == 200
+            if not is_healthy:
+                logger.warning(f"Web3Signer {instance} 健康检查失败: HTTP {response.status_code}")
+            return is_healthy
+        except requests.exceptions.Timeout:
+            logger.warning(f"Web3Signer {instance} 健康检查超时: {url}")
+            return False
+        except requests.exceptions.ConnectionError as e:
+            logger.warning(f"Web3Signer {instance} 连接失败: {url}, {e}")
+            return False
+        except Exception as e:
+            logger.warning(f"Web3Signer {instance} 健康检查失败: {url}, {e}")
             return False
     
     def get_public_keys(self, instance: str = "haproxy") -> List[str]:

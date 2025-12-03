@@ -127,10 +127,11 @@ class WithdrawalService:
         
         total = query.count()
         
+        # 按取款时间倒序（必须在 limit/offset 之前）
+        query = query.order_by(WithdrawalEvent.withdrawn_at.desc())
+        
         if limit:
             query = query.limit(limit).offset(offset)
-        
-        query = query.order_by(WithdrawalEvent.withdrawn_at.desc())
         
         withdrawals = query.all()
         return withdrawals, total

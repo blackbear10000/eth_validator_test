@@ -259,12 +259,12 @@ class DepositManagementService:
         # 获取总数
         total = query.count()
         
+        # 按提交时间倒序（必须在 limit/offset 之前）
+        query = query.order_by(DepositTransaction.submitted_at.desc())
+        
         # 应用分页
         if limit:
             query = query.limit(limit).offset(offset)
-        
-        # 按提交时间倒序
-        query = query.order_by(DepositTransaction.submitted_at.desc())
         
         transactions = query.all()
         return transactions, total

@@ -428,12 +428,12 @@ class KeyManagementService:
         # 获取总数
         total = query.count()
         
+        # 按创建时间倒序（必须在 limit/offset 之前）
+        query = query.order_by(ValidatorKey.created_at.desc())
+        
         # 应用分页
         if limit:
             query = query.limit(limit).offset(offset)
-        
-        # 按创建时间倒序
-        query = query.order_by(ValidatorKey.created_at.desc())
         
         keys = query.all()
         return keys, total
