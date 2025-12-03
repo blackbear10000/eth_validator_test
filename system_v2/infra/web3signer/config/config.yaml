@@ -1,14 +1,19 @@
-server:
-  type: "http"
-  httpHost: "0.0.0.0"
-  httpPort: 9000
-  allowedCorsOrigins: ["*"]
+# Web3Signer Main Configuration File
+# Based on official documentation: https://docs.web3signer.consensys.io/how-to/use-configuration-file-starting-web3signer
 
-logging:
-  level: "INFO"
+# Signing key locations
+key-store-path: "/keys"
 
-keyStorePath: "/keys"
+# HTTP settings
+http-listen-host: "0.0.0.0"
+http-listen-port: 9000
 
-ssl:
-  tlsEnabled: false
+# Metrics settings
+metrics-enabled: true
+metrics-host: "0.0.0.0"
+metrics-port: 9001
+
+# Network settings
+# 使用 mainnet 配置
+eth2.network: "mainnet"
 
