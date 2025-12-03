@@ -67,7 +67,7 @@ async def system_health():
         beacon_api_health = False
         try:
             beacon_api = BeaconAPIClient()
-        beacon_api_health = beacon_api.health_check()
+            beacon_api_health = beacon_api.health_check()
         except Exception as e:
             logger.error(f"Beacon API 健康检查失败: {e}")
         
@@ -124,7 +124,7 @@ async def system_overview(db: Session = Depends(get_db)):
         vault_health = False
         try:
             # 使用 VaultClient 的健康检查方法（内部使用 requests，更可靠）
-        vault_client = VaultClient()
+            vault_client = VaultClient()
             vault_health = vault_client.health_check()
             logger.info(f"Vault 健康检查成功: healthy={vault_health}")
         except Exception as health_error:
@@ -151,9 +151,9 @@ async def system_overview(db: Session = Depends(get_db)):
         haproxy = False
         try:
             web3signer_client = Web3SignerClient()
-        web3signer_primary = web3signer_client.health_check("primary")
-        web3signer_secondary = web3signer_client.health_check("secondary")
-        haproxy = web3signer_client.health_check("haproxy")
+            web3signer_primary = web3signer_client.health_check("primary")
+            web3signer_secondary = web3signer_client.health_check("secondary")
+            haproxy = web3signer_client.health_check("haproxy")
             logger.info(f"Web3Signer 健康检查: primary={web3signer_primary}, secondary={web3signer_secondary}, haproxy={haproxy}")
         except Exception as e:
             logger.error(f"Web3Signer 健康检查失败: {e}", exc_info=True)
@@ -161,7 +161,7 @@ async def system_overview(db: Session = Depends(get_db)):
         beacon_api_health = False
         try:
             beacon_api = BeaconAPIClient()
-        beacon_api_health = beacon_api.health_check()
+            beacon_api_health = beacon_api.health_check()
         except Exception as e:
             logger.error(f"Beacon API 健康检查失败: {e}")
         

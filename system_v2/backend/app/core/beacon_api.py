@@ -193,8 +193,18 @@ class BeaconAPIClient:
             是否健康
         """
         try:
-            response = self._get("/eth/v1/node/health")
-            return True
-        except Exception:
+            # 使用更短的超时时间，避免阻塞
+            url = f"{self.base_url}/eth/v1/node/health"
+            response = requests.get(url, timeout=3)
+            # 200 或 206 都表示健康
+            return response.status_code in [200, 206]
+        except requests.exceptions.Timeout:
+            logger.debug(f"Beacon API 健康检查超时: {self.base_url}")
+            return False
+        except requests.exceptions.ConnectionError:
+            logger.debug(f"Beacon API 连接失败（可能未启动）: {self.base_url}")
+            return False
+        except Exception as e:
+            logger.debug(f"Beacon API 健康检查失败: {e}")
             return False
 
