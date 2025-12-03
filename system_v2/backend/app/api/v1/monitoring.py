@@ -32,7 +32,19 @@ async def system_health():
             vault_url = settings.vault_url
             logger.debug(f"尝试连接 Vault: {vault_url}")
             unauthenticated_client = hvac.Client(url=vault_url)
-            health = unauthenticated_client.sys.read_health_status()
+            health_response = unauthenticated_client.sys.read_health_status()
+            
+            # hvac 库可能返回 Response 对象或字典，需要处理两种情况
+            if hasattr(health_response, 'json'):
+                # 如果是 Response 对象，调用 json() 方法
+                health = health_response.json()
+            elif isinstance(health_response, dict):
+                # 如果已经是字典，直接使用
+                health = health_response
+            else:
+                # 尝试转换为字典
+                health = dict(health_response) if hasattr(health_response, '__dict__') else {}
+            
             initialized = health.get('initialized', False)
             sealed = health.get('sealed', True)
             vault_health = initialized and not sealed
@@ -126,7 +138,19 @@ async def system_overview(db: Session = Depends(get_db)):
             vault_url = settings.vault_url
             logger.debug(f"尝试连接 Vault: {vault_url}")
             unauthenticated_client = hvac.Client(url=vault_url)
-            health = unauthenticated_client.sys.read_health_status()
+            health_response = unauthenticated_client.sys.read_health_status()
+            
+            # hvac 库可能返回 Response 对象或字典，需要处理两种情况
+            if hasattr(health_response, 'json'):
+                # 如果是 Response 对象，调用 json() 方法
+                health = health_response.json()
+            elif isinstance(health_response, dict):
+                # 如果已经是字典，直接使用
+                health = health_response
+            else:
+                # 尝试转换为字典
+                health = dict(health_response) if hasattr(health_response, '__dict__') else {}
+            
             initialized = health.get('initialized', False)
             sealed = health.get('sealed', True)
             vault_health = initialized and not sealed

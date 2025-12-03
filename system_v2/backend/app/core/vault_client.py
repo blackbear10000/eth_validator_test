@@ -274,7 +274,18 @@ class VaultClient:
             # 创建一个不需要 token 的客户端来检查健康状态
             # read_health_status 是一个不需要认证的端点
             unauthenticated_client = hvac.Client(url=self.vault_url)
-            health = unauthenticated_client.sys.read_health_status()
+            health_response = unauthenticated_client.sys.read_health_status()
+            
+            # hvac 库可能返回 Response 对象或字典，需要处理两种情况
+            if hasattr(health_response, 'json'):
+                # 如果是 Response 对象，调用 json() 方法
+                health = health_response.json()
+            elif isinstance(health_response, dict):
+                # 如果已经是字典，直接使用
+                health = health_response
+            else:
+                # 尝试转换为字典
+                health = dict(health_response) if hasattr(health_response, '__dict__') else {}
             
             initialized = health.get('initialized', False)
             sealed = health.get('sealed', True)
@@ -289,6 +300,6 @@ class VaultClient:
             
             return is_healthy
         except Exception as e:
-            logger.error(f"Vault 健康检查失败: {e}")
+            logger.error(f"Vault 健康检查失败: {e}", exc_info=True)
             return False
 
