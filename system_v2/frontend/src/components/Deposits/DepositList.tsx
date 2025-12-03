@@ -24,7 +24,7 @@ import {
 } from '@ant-design/icons'
 import { depositsApi, DepositTransaction, DepositData, BatchDepositContract } from '../../api/deposits'
 import { keysApi } from '../../api/keys'
-import { networkApi, RpcEndpoints } from '../../api/network'
+import { networkApi, RpcEndpoints, NetworkInfo } from '../../api/network'
 
 const { Title, Text } = Typography
 const { Option } = Select
@@ -155,7 +155,8 @@ const DepositList: React.FC = () => {
       // 如果没有提供 deposit_contract_address，尝试从网络信息获取
       if (!values.deposit_contract_address) {
         try {
-          const networkInfo = await networkApi.getInfo()
+          const response = await networkApi.getInfo()
+          const networkInfo = response.data as NetworkInfo
           if (networkInfo.deposit_contract_address) {
             values.deposit_contract_address = networkInfo.deposit_contract_address
           }
