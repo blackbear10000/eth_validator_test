@@ -29,6 +29,7 @@ except ImportError as e:
     logging.warning(f"无法导入 ethstaker-deposit-cli，Deposit Data 生成功能可能不可用: {e}")
     Credential = None
     get_chain_setting = None
+    BaseChainSetting = None  # 类型占位符
     bls = None
 
 from app.core.vault_client import VaultClient
@@ -65,7 +66,7 @@ class DepositGenerator:
         # 获取链设置
         self.chain_setting = self._get_chain_setting()
     
-    def _get_chain_setting(self) -> BaseChainSetting:
+    def _get_chain_setting(self):
         """获取链设置"""
         if get_chain_setting is None:
             raise DepositGenerationError("ethstaker-deposit-cli 未正确导入")

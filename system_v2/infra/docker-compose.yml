@@ -121,7 +121,7 @@ services:
       --slashing-protection-db-username=postgres
       --slashing-protection-db-password=password
       --slashing-protection-pruning-enabled=true
-      --key-store-path=/keys
+      --keystores-path=/keys
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:9000/upcheck"]
       interval: 15s
@@ -154,7 +154,7 @@ services:
       --slashing-protection-db-username=postgres
       --slashing-protection-db-password=password
       --slashing-protection-pruning-enabled=true
-      --key-store-path=/keys
+      --keystores-path=/keys
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:9000/upcheck"]
       interval: 15s
