@@ -7,6 +7,8 @@ key-store-path: "/keys"
 # HTTP settings
 http-listen-host: "0.0.0.0"
 http-listen-port: 9000
+# CORS settings - 允许所有来源，避免健康检查 403 错误
+http-cors-origins: ["*"]
 
 # Metrics settings
 metrics-enabled: true
