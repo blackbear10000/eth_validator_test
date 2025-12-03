@@ -40,6 +40,9 @@ class KeyManagementService:
     提供密钥生成、存储、状态管理等核心功能
     """
     
+    # 类级别的临时目录缓存（避免重复创建）
+    _temp_word_lists_dir = None
+    
     def __init__(
         self,
         db: Session,
@@ -66,42 +69,22 @@ class KeyManagementService:
             raise KeyGenerationError("ethstaker-deposit-cli 未正确导入")
         
         try:
+            import os
+            import tempfile
+            import shutil
+            
             # 尝试获取正确的 word lists 路径
             words_path = None
             
-            # 方法1: 使用 WORD_LISTS_PATH 常量（如果可用）
+            # 方法1: 使用 WORD_LISTS_PATH 常量（如果可用且路径存在）
             if WORD_LISTS_PATH:
-                import os
                 if os.path.exists(WORD_LISTS_PATH):
                     words_path = WORD_LISTS_PATH
                     logger.debug(f"使用 WORD_LISTS_PATH: {words_path}")
             
-            # 方法2: 使用 importlib.resources 获取包内资源路径
-            if not words_path and HAS_IMPORTLIB:
-                try:
-                    # Python 3.9+ 使用 files() API
-                    if hasattr(importlib.resources, 'files'):
-                        word_lists_ref = importlib.resources.files('ethstaker_deposit').joinpath(
-                            'key_handling', 'key_derivation', 'word_lists'
-                        )
-                        words_path = str(word_lists_ref)
-                        logger.debug(f"使用 importlib.resources.files: {words_path}")
-                    else:
-                        # Python < 3.9 使用 path() API
-                        word_lists_ref = importlib.resources.path(
-                            'ethstaker_deposit.key_handling.key_derivation.word_lists', 
-                            'english.txt'
-                        )
-                        with word_lists_ref as path:
-                            words_path = str(path.parent)
-                            logger.debug(f"使用 importlib.resources.path: {words_path}")
-                except Exception as e:
-                    logger.warning(f"无法通过 importlib.resources 获取路径: {e}")
-            
-            # 方法3: 尝试使用包的 __file__ 属性
+            # 方法2: 尝试使用包的 __file__ 属性
             if not words_path:
                 try:
-                    import os
                     package_path = os.path.dirname(ethstaker_deposit.__file__)
                     words_path = os.path.join(
                         package_path, 
@@ -109,28 +92,88 @@ class KeyManagementService:
                         'key_derivation', 
                         'word_lists'
                     )
-                    if os.path.exists(words_path):
+                    if os.path.exists(words_path) and os.path.exists(os.path.join(words_path, 'english.txt')):
                         logger.debug(f"使用包路径: {words_path}")
                     else:
                         words_path = None
                 except Exception as e:
                     logger.warning(f"无法通过包路径获取: {e}")
             
-            # 如果仍然找不到路径，尝试不传 words_path（让函数使用默认路径）
-            if words_path:
-                mnemonic = get_mnemonic(language='english', words_path=words_path)
-            else:
-                logger.warning("无法找到 word lists 路径，尝试使用默认路径")
-                # 尝试不传 words_path，让函数自己找
+            # 方法3: 使用 importlib.resources 读取文件内容并创建临时目录
+            if not words_path and HAS_IMPORTLIB:
                 try:
-                    mnemonic = get_mnemonic(language='english')
-                except TypeError:
-                    # 如果函数必须传 words_path，抛出错误
-                    raise KeyGenerationError(
-                        "无法找到 word lists 文件路径。"
-                        "请确保 ethstaker-deposit-cli 包已正确安装，"
-                        "且包含 word_lists 目录。"
-                    )
+                    # 检查是否已有缓存的临时目录
+                    if KeyManagementService._temp_word_lists_dir and os.path.exists(KeyManagementService._temp_word_lists_dir):
+                        english_file = os.path.join(KeyManagementService._temp_word_lists_dir, 'english.txt')
+                        if os.path.exists(english_file):
+                            words_path = KeyManagementService._temp_word_lists_dir
+                            logger.debug(f"使用缓存的临时目录: {words_path}")
+                    
+                    if not words_path:
+                        # 创建临时目录
+                        temp_dir = tempfile.mkdtemp(prefix='ethstaker_word_lists_')
+                        logger.debug(f"创建临时目录: {temp_dir}")
+                        
+                        # 使用 importlib.resources 读取文件内容
+                        if hasattr(importlib.resources, 'files'):
+                            # Python 3.9+ 使用 files() API
+                            word_lists_ref = importlib.resources.files('ethstaker_deposit').joinpath(
+                                'key_handling', 'key_derivation', 'word_lists'
+                            )
+                            
+                            # 尝试读取 english.txt 文件
+                            try:
+                                english_file_ref = word_lists_ref.joinpath('english.txt')
+                                english_content = english_file_ref.read_text(encoding='utf-8')
+                                
+                                # 创建 word_lists 目录
+                                temp_word_lists_dir = os.path.join(temp_dir, 'word_lists')
+                                os.makedirs(temp_word_lists_dir, exist_ok=True)
+                                
+                                # 写入 english.txt
+                                english_file_path = os.path.join(temp_word_lists_dir, 'english.txt')
+                                with open(english_file_path, 'w', encoding='utf-8') as f:
+                                    f.write(english_content)
+                                
+                                # 缓存临时目录路径
+                                KeyManagementService._temp_word_lists_dir = temp_word_lists_dir
+                                words_path = temp_word_lists_dir
+                                logger.info(f"使用 importlib.resources 创建临时 word lists 目录: {words_path}")
+                            except Exception as e:
+                                logger.warning(f"无法读取 english.txt: {e}")
+                                if temp_dir and os.path.exists(temp_dir):
+                                    shutil.rmtree(temp_dir)
+                        else:
+                            # Python < 3.9 使用 path() API
+                            word_lists_ref = importlib.resources.path(
+                                'ethstaker_deposit.key_handling.key_derivation.word_lists', 
+                                'english.txt'
+                            )
+                            with word_lists_ref as path:
+                                # 如果文件存在，使用其父目录
+                                if os.path.exists(path):
+                                    words_path = str(path.parent)
+                                    logger.info(f"使用 importlib.resources.path: {words_path}")
+                except Exception as e:
+                    logger.warning(f"importlib.resources 方法失败: {e}")
+            
+            # 如果仍然找不到路径，抛出错误
+            if not words_path:
+                raise KeyGenerationError(
+                    "无法找到 word lists 文件路径。"
+                    "请确保 ethstaker-deposit-cli 包已正确安装，"
+                    "且包含 word_lists 目录。"
+                )
+            
+            # 验证路径是否存在
+            english_file = os.path.join(words_path, 'english.txt')
+            if not os.path.exists(english_file):
+                raise KeyGenerationError(
+                    f"Word lists 文件不存在: {english_file}"
+                )
+            
+            # 生成助记词
+            mnemonic = get_mnemonic(language='english', words_path=words_path)
             
             logger.info("助记词生成成功")
             return mnemonic
