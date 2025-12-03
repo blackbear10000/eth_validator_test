@@ -35,12 +35,30 @@ if ! echo "$VAULT_STATUS_OUTPUT" | grep -q "Initialized.*true"; then
   fi
   
   # 提取 root token 和 unseal key
-  ROOT_TOKEN=$(echo "$INIT_OUTPUT" | grep -o '"root_token":"[^"]*' | cut -d'"' -f4)
-  UNSEAL_KEY=$(echo "$INIT_OUTPUT" | grep -o '"unseal_keys_b64":\["[^"]*' | cut -d'"' -f4)
+  # 将 JSON 压缩为单行以便处理
+  INIT_JSON=$(echo "$INIT_OUTPUT" | tr -d '\n' | tr -d ' ')
   
-  if [ -z "$ROOT_TOKEN" ] || [ -z "$UNSEAL_KEY" ]; then
+  # 提取 root_token 值
+  ROOT_TOKEN=$(echo "$INIT_JSON" | sed 's/.*"root_token":"\([^"]*\)".*/\1/')
+  
+  # 提取 unseal_keys_b64 数组中的第一个值
+  UNSEAL_KEY=$(echo "$INIT_JSON" | sed 's/.*"unseal_keys_b64":\["\([^"]*\)".*/\1/')
+  
+  # 如果压缩后提取失败，尝试从原始输出中提取
+  if [ -z "$ROOT_TOKEN" ] || [ "$ROOT_TOKEN" = "$INIT_JSON" ]; then
+    ROOT_TOKEN=$(echo "$INIT_OUTPUT" | grep '"root_token"' | sed 's/.*"root_token"[^"]*"\([^"]*\)".*/\1/')
+  fi
+  
+  if [ -z "$UNSEAL_KEY" ] || [ "$UNSEAL_KEY" = "$INIT_JSON" ]; then
+    # 查找 unseal_keys_b64 数组中的第一个字符串
+    UNSEAL_KEY=$(echo "$INIT_OUTPUT" | grep -A 2 '"unseal_keys_b64"' | grep -o '"[^"]*"' | head -1 | tr -d '"')
+  fi
+  
+  if [ -z "$ROOT_TOKEN" ] || [ -z "$UNSEAL_KEY" ] || [ "$ROOT_TOKEN" = "$INIT_JSON" ] || [ "$UNSEAL_KEY" = "$INIT_JSON" ]; then
     echo "Error: Failed to extract root token or unseal key from init output"
     echo "Init output: $INIT_OUTPUT"
+    echo "Extracted ROOT_TOKEN: $ROOT_TOKEN"
+    echo "Extracted UNSEAL_KEY: $UNSEAL_KEY"
     exit 1
   fi
   
