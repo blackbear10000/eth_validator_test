@@ -11,17 +11,24 @@ import {
   Modal,
   message,
   Space,
+  Table,
+  Tag,
+  Typography,
 } from 'antd'
 import {
   PlusOutlined,
   CheckCircleOutlined,
   ReloadOutlined,
 } from '@ant-design/icons'
-import { keysApi, KeyPoolStatus } from '../../api/keys'
+import { keysApi, KeyPoolStatus, ValidatorKey } from '../../api/keys'
+
+const { Text } = Typography
 
 const KeyPoolOverview: React.FC = () => {
   const [status, setStatus] = useState<KeyPoolStatus | null>(null)
+  const [keys, setKeys] = useState<ValidatorKey[]>([])
   const [loading, setLoading] = useState(true)
+  const [keysLoading, setKeysLoading] = useState(false)
   const [generateModalVisible, setGenerateModalVisible] = useState(false)
   const [activateModalVisible, setActivateModalVisible] = useState(false)
   const [generateLoading, setGenerateLoading] = useState(false)
@@ -31,6 +38,7 @@ const KeyPoolOverview: React.FC = () => {
 
   useEffect(() => {
     loadStatus()
+    loadKeys()
   }, [])
 
   const loadStatus = async () => {
@@ -45,6 +53,21 @@ const KeyPoolOverview: React.FC = () => {
     }
   }
 
+  const loadKeys = async () => {
+    try {
+      setKeysLoading(true)
+      const response = await keysApi.list({
+        limit: 20,
+        offset: 0,
+      }) as any
+      setKeys(response.items || [])
+    } catch (error: any) {
+      message.error(`加载密钥列表失败: ${error.message}`)
+    } finally {
+      setKeysLoading(false)
+    }
+  }
+
   // 批量生成密钥
   const handleGenerate = async (values: { count: number; batch_id?: string }) => {
     setGenerateLoading(true)
@@ -53,7 +76,8 @@ const KeyPoolOverview: React.FC = () => {
       message.success(`成功生成 ${values.count} 个密钥`)
       setGenerateModalVisible(false)
       generateForm.resetFields()
-      loadStatus()
+      // 刷新状态和列表
+      await Promise.all([loadStatus(), loadKeys()])
     } catch (error: any) {
       message.error(`生成密钥失败: ${error.message}`)
     } finally {
@@ -69,12 +93,28 @@ const KeyPoolOverview: React.FC = () => {
       message.success(`成功激活 ${values.count} 个密钥`)
       setActivateModalVisible(false)
       activateForm.resetFields()
-      loadStatus()
+      // 刷新状态和列表
+      await Promise.all([loadStatus(), loadKeys()])
     } catch (error: any) {
       message.error(`激活密钥失败: ${error.message}`)
     } finally {
       setActivateLoading(false)
     }
+  }
+
+  // 获取状态标签
+  const getStatusTag = (status: string) => {
+    const statusConfig: Record<string, { color: string; text: string }> = {
+      unused: { color: 'default', text: '未使用' },
+      active: { color: 'processing', text: '已激活' },
+      pending: { color: 'warning', text: '待处理' },
+      deposited: { color: 'blue', text: '已存款' },
+      active_on_chain: { color: 'success', text: '链上激活' },
+      pending_exit: { color: 'orange', text: '退出中' },
+      exited: { color: 'error', text: '已退出' },
+    }
+    const config = statusConfig[status] || { color: 'default', text: status }
+    return <Tag color={config.color}>{config.text}</Tag>
   }
 
   return (
@@ -144,11 +184,68 @@ const KeyPoolOverview: React.FC = () => {
           </Button>
           <Button
             icon={<ReloadOutlined />}
-            onClick={loadStatus}
+            onClick={() => {
+              loadStatus()
+              loadKeys()
+            }}
           >
-            刷新状态
+            刷新
           </Button>
         </Space>
+      </Card>
+
+      {/* 密钥列表 */}
+      <Card title="最近生成的密钥" style={{ marginTop: 24 }}>
+        <Table
+          columns={[
+            {
+              title: '公钥',
+              dataIndex: 'pubkey',
+              key: 'pubkey',
+              width: 200,
+              render: (text: string) => (
+                <Text copyable={{ text }} style={{ fontFamily: 'monospace', fontSize: '12px' }}>
+                  {text.slice(0, 20)}...
+                </Text>
+              ),
+            },
+            {
+              title: '状态',
+              dataIndex: 'status',
+              key: 'status',
+              width: 120,
+              render: (status: string) => getStatusTag(status),
+            },
+            {
+              title: '索引',
+              dataIndex: 'index',
+              key: 'index',
+              width: 80,
+            },
+            {
+              title: '批次ID',
+              dataIndex: 'batch_id',
+              key: 'batch_id',
+              width: 150,
+              render: (text: string) => text || '-',
+            },
+            {
+              title: '创建时间',
+              dataIndex: 'created_at',
+              key: 'created_at',
+              width: 180,
+              render: (text: string) => new Date(text).toLocaleString(),
+            },
+          ]}
+          dataSource={keys}
+          rowKey="pubkey"
+          loading={keysLoading}
+          pagination={{
+            pageSize: 20,
+            showTotal: (total) => `共 ${total} 条`,
+            showSizeChanger: false,
+          }}
+        />
       </Card>
 
       {/* 批量生成密钥模态框 */}
