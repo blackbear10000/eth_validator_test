@@ -90,20 +90,106 @@ else
   # 如果已初始化但未解锁，尝试使用保存的 unseal key
   VAULT_STATUS_CHECK=$(vault status 2>&1)
   if echo "$VAULT_STATUS_CHECK" | grep -q "Sealed.*true"; then
+    echo "Vault is sealed, attempting to unseal..."
+    
+    # 尝试从多个位置获取 unseal key
+    UNSEAL_KEY=""
+    
+    # 1. 从本地文件
     if [ -f /vault/data/unseal_key.txt ]; then
       UNSEAL_KEY=$(cat /vault/data/unseal_key.txt)
-      vault operator unseal "$UNSEAL_KEY"
-      echo "Vault unsealed"
-    else
-      echo "Warning: Vault is sealed but no unseal key found"
+      echo "Found unseal key in /vault/data/unseal_key.txt"
     fi
+    
+    # 2. 从共享位置
+    if [ -z "$UNSEAL_KEY" ] && [ -f /vault/data/shared/unseal_key.txt ]; then
+      UNSEAL_KEY=$(cat /vault/data/shared/unseal_key.txt)
+      echo "Found unseal key in /vault/data/shared/unseal_key.txt"
+    fi
+    
+    # 3. 从环境变量
+    if [ -z "$UNSEAL_KEY" ] && [ -n "$VAULT_UNSEAL_KEY" ]; then
+      UNSEAL_KEY="$VAULT_UNSEAL_KEY"
+      echo "Using unseal key from environment variable"
+    fi
+    
+    # 4. 尝试从 Consul 获取（如果可能）
+    if [ -z "$UNSEAL_KEY" ] && command -v consul >/dev/null 2>&1; then
+      CONSUL_KEY=$(consul kv get vault/unseal_key 2>/dev/null || echo "")
+      if [ -n "$CONSUL_KEY" ]; then
+        UNSEAL_KEY="$CONSUL_KEY"
+        echo "Found unseal key in Consul"
+      fi
+    fi
+    
+    if [ -n "$UNSEAL_KEY" ]; then
+      echo "Unsealing Vault..."
+      UNSEAL_OUTPUT=$(vault operator unseal "$UNSEAL_KEY" 2>&1)
+      if [ $? -eq 0 ]; then
+        echo "Vault unsealed successfully"
+      else
+        echo "Error unsealing Vault: $UNSEAL_OUTPUT"
+        echo "The unseal key may be incorrect"
+        exit 1
+      fi
+    else
+      echo "ERROR: Vault is sealed but no unseal key found!"
+      echo ""
+      echo "Options to resolve this:"
+      echo ""
+      echo "Option 1: Provide the unseal key"
+      echo "  - Place it in /vault/data/unseal_key.txt"
+      echo "  - Set environment variable VAULT_UNSEAL_KEY in docker-compose.yml"
+      echo "  - Store it in Consul at key 'vault/unseal_key'"
+      echo ""
+      echo "Option 2: Reset Vault (for test environments only)"
+      echo "  If VAULT_AUTO_RESET=true is set, Vault data will be deleted and re-initialized"
+      echo "  WARNING: This will delete all existing Vault data!"
+      echo ""
+      
+      # 检查是否允许自动重置
+      if [ "$VAULT_AUTO_RESET" = "true" ]; then
+        echo "VAULT_AUTO_RESET=true detected. Resetting Vault..."
+        echo "Deleting Vault data from Consul..."
+        
+        # 尝试通过 Consul API 删除数据
+        CONSUL_ADDR="${CONSUL_ADDR:-consul:8500}"
+        DELETE_RESULT=$(curl -s -X DELETE "http://$CONSUL_ADDR/v1/kv/vault/?recurse" 2>&1)
+        
+        if [ $? -eq 0 ]; then
+          echo "Vault data deleted. Vault will be re-initialized on next startup."
+          echo "Please restart the container to complete the reset."
+          exit 0
+        else
+          echo "Failed to delete Vault data: $DELETE_RESULT"
+          echo "You may need to delete it manually:"
+          echo "  docker exec consul consul kv delete -recurse vault/"
+          exit 1
+        fi
+      else
+        echo "To enable auto-reset, set VAULT_AUTO_RESET=true in docker-compose.yml"
+        echo "Or manually reset by running:"
+        echo "  docker exec consul consul kv delete -recurse vault/"
+        echo "  docker restart vault-1"
+        exit 1
+      fi
+    fi
+  else
+    echo "Vault is already unsealed"
   fi
   
   # 使用保存的 root token 或默认值
   if [ -f /vault/data/root_token.txt ]; then
     export VAULT_TOKEN=$(cat /vault/data/root_token.txt)
+    echo "Using root token from /vault/data/root_token.txt"
+  elif [ -f /vault/data/shared/root_token.txt ]; then
+    export VAULT_TOKEN=$(cat /vault/data/shared/root_token.txt)
+    echo "Using root token from /vault/data/shared/root_token.txt"
+  elif [ -n "$VAULT_TOKEN" ]; then
+    echo "Using root token from environment variable"
   else
-    export VAULT_TOKEN=dev-root-token
+    echo "WARNING: No root token found, some operations may fail"
+    echo "Please set VAULT_TOKEN environment variable or place token in /vault/data/root_token.txt"
   fi
 fi
 
@@ -114,9 +200,16 @@ sleep 3
 # 检查 Vault 是否已解锁
 VAULT_FINAL_STATUS=$(vault status 2>&1)
 if echo "$VAULT_FINAL_STATUS" | grep -q "Sealed.*true"; then
-  echo "Warning: Vault is still sealed after initialization"
+  echo "ERROR: Vault is still sealed!"
+  echo "Vault status:"
+  echo "$VAULT_FINAL_STATUS"
+  echo ""
+  echo "Cannot proceed with authentication setup while Vault is sealed."
+  echo "Please unseal Vault manually or provide the unseal key."
   exit 1
 fi
+
+echo "Vault is unsealed and ready"
 
 # 启用 userpass 认证
 echo "Setting up authentication..."

@@ -34,6 +34,10 @@ services:
       - "8200:8200"
     environment:
       - VAULT_ADDR=http://0.0.0.0:8200
+      # Optional: Set VAULT_UNSEAL_KEY if you have the unseal key
+      # - VAULT_UNSEAL_KEY=your-unseal-key-here
+      # Optional: Set VAULT_AUTO_RESET=true to auto-reset Vault if unseal key is missing (test only!)
+      # - VAULT_AUTO_RESET=true
     cap_add:
       - IPC_LOCK
     volumes:
