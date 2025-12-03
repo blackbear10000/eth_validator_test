@@ -16,7 +16,7 @@ command -v docker-compose >/dev/null 2>&1 || { echo "错误: 需要安装 Docker
 echo "创建必要目录..."
 mkdir -p ../configs
 mkdir -p ../data/logs
-mkdir -p infra/web3signer/keys
+mkdir -p ../infra/web3signer/keys
 
 # 复制迁移文件（如果还没有）
 if [ ! -d "infra/web3signer/migrations/postgresql" ]; then
@@ -28,7 +28,7 @@ fi
 # 设置权限
 echo "设置脚本执行权限..."
 chmod +x ../backend/scripts/*.sh 2>/dev/null || true
-chmod +x infra/web3signer/init-db-migrations.sh
+chmod +x ../infra/web3signer/init-db-migrations.sh
 
 # 初始化环境变量
 if [ ! -f "../backend/.env" ]; then
