@@ -14,6 +14,9 @@ try:
     from ethstaker_deposit.settings import get_chain_setting
     from ethstaker_deposit.key_handling.key_derivation.mnemonic import get_mnemonic
     from ethstaker_deposit.utils.constants import WORD_LISTS_PATH
+    import importlib.resources
+    import ethstaker_deposit
+    HAS_IMPORTLIB = True
 except ImportError as e:
     logging.error(f"无法导入 ethstaker-deposit-cli，密钥生成功能不可用: {e}")
     logging.error("请确保已安装 ethstaker-deposit-cli: pip install git+https://github.com/ethstaker/ethstaker-deposit-cli.git")
@@ -21,6 +24,7 @@ except ImportError as e:
     get_chain_setting = None
     get_mnemonic = None
     WORD_LISTS_PATH = None
+    HAS_IMPORTLIB = False
 
 from app.models.database import ValidatorKey
 from app.models.enums import ValidatorKeyStatus
@@ -58,16 +62,82 @@ class KeyManagementService:
         Returns:
             BIP39 助记词字符串
         """
-        if get_mnemonic is None or WORD_LISTS_PATH is None:
+        if get_mnemonic is None:
             raise KeyGenerationError("ethstaker-deposit-cli 未正确导入")
         
         try:
-            # 使用包中的 WORD_LISTS_PATH 常量
-            mnemonic = get_mnemonic(language='english', words_path=WORD_LISTS_PATH)
+            # 尝试获取正确的 word lists 路径
+            words_path = None
+            
+            # 方法1: 使用 WORD_LISTS_PATH 常量（如果可用）
+            if WORD_LISTS_PATH:
+                import os
+                if os.path.exists(WORD_LISTS_PATH):
+                    words_path = WORD_LISTS_PATH
+                    logger.debug(f"使用 WORD_LISTS_PATH: {words_path}")
+            
+            # 方法2: 使用 importlib.resources 获取包内资源路径
+            if not words_path and HAS_IMPORTLIB:
+                try:
+                    # Python 3.9+ 使用 files() API
+                    if hasattr(importlib.resources, 'files'):
+                        word_lists_ref = importlib.resources.files('ethstaker_deposit').joinpath(
+                            'key_handling', 'key_derivation', 'word_lists'
+                        )
+                        words_path = str(word_lists_ref)
+                        logger.debug(f"使用 importlib.resources.files: {words_path}")
+                    else:
+                        # Python < 3.9 使用 path() API
+                        word_lists_ref = importlib.resources.path(
+                            'ethstaker_deposit.key_handling.key_derivation.word_lists', 
+                            'english.txt'
+                        )
+                        with word_lists_ref as path:
+                            words_path = str(path.parent)
+                            logger.debug(f"使用 importlib.resources.path: {words_path}")
+                except Exception as e:
+                    logger.warning(f"无法通过 importlib.resources 获取路径: {e}")
+            
+            # 方法3: 尝试使用包的 __file__ 属性
+            if not words_path:
+                try:
+                    import os
+                    package_path = os.path.dirname(ethstaker_deposit.__file__)
+                    words_path = os.path.join(
+                        package_path, 
+                        'key_handling', 
+                        'key_derivation', 
+                        'word_lists'
+                    )
+                    if os.path.exists(words_path):
+                        logger.debug(f"使用包路径: {words_path}")
+                    else:
+                        words_path = None
+                except Exception as e:
+                    logger.warning(f"无法通过包路径获取: {e}")
+            
+            # 如果仍然找不到路径，尝试不传 words_path（让函数使用默认路径）
+            if words_path:
+                mnemonic = get_mnemonic(language='english', words_path=words_path)
+            else:
+                logger.warning("无法找到 word lists 路径，尝试使用默认路径")
+                # 尝试不传 words_path，让函数自己找
+                try:
+                    mnemonic = get_mnemonic(language='english')
+                except TypeError:
+                    # 如果函数必须传 words_path，抛出错误
+                    raise KeyGenerationError(
+                        "无法找到 word lists 文件路径。"
+                        "请确保 ethstaker-deposit-cli 包已正确安装，"
+                        "且包含 word_lists 目录。"
+                    )
+            
             logger.info("助记词生成成功")
             return mnemonic
+        except KeyGenerationError:
+            raise
         except Exception as e:
-            logger.error(f"助记词生成失败: {e}")
+            logger.error(f"助记词生成失败: {e}", exc_info=True)
             raise KeyGenerationError(f"助记词生成失败: {e}")
     
     def derive_keys_from_mnemonic(
