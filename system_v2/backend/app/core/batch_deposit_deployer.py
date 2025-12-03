@@ -126,12 +126,12 @@ class BatchDepositDeployer:
             logger.error(f"无法设置 Solidity 编译器: {e}")
             raise
     
-    def _get_contract_source(self) -> str:
+    def _get_contract_source(self) -> tuple[str, str]:
         """
-        从 GitHub 获取合约源代码
+        从 GitHub 获取合约源代码和临时目录路径
         
         Returns:
-            合约源代码字符串
+            (合约源代码字符串, 临时目录路径) 元组
         """
         temp_dir = None
         try:
@@ -147,6 +147,22 @@ class BatchDepositDeployer:
                 timeout=60
             )
             
+            # 安装 npm 依赖（包括 OpenZeppelin）
+            logger.info("安装 npm 依赖（包括 OpenZeppelin 合约）...")
+            npm_result = subprocess.run(
+                ['npm', 'install'],
+                cwd=temp_dir,
+                check=False,  # 不强制要求成功，因为可能没有 npm
+                capture_output=True,
+                timeout=120
+            )
+            if npm_result.returncode == 0:
+                logger.info("npm 依赖安装成功")
+            else:
+                logger.warning(f"npm install 失败（可能没有安装 npm）: {npm_result.stderr.decode() if npm_result.stderr else '未知错误'}")
+                # 尝试手动下载 OpenZeppelin 合约
+                self._install_openzeppelin_manually(temp_dir)
+            
             # 读取合约文件
             contract_file = Path(temp_dir) / BATCH_DEPOSIT_CONTRACT_PATH
             if not contract_file.exists():
@@ -155,28 +171,83 @@ class BatchDepositDeployer:
             source_code = contract_file.read_text(encoding='utf-8')
             logger.info(f"成功获取合约源代码（长度: {len(source_code)} 字符）")
             
-            return source_code
+            return source_code, temp_dir
             
         except subprocess.TimeoutExpired:
-            raise Exception("克隆 GitHub 仓库超时")
-        except subprocess.CalledProcessError as e:
-            raise Exception(f"克隆 GitHub 仓库失败: {e.stderr.decode() if e.stderr else str(e)}")
-        except Exception as e:
-            raise Exception(f"获取合约源代码失败: {e}")
-        finally:
-            # 清理临时目录
             if temp_dir and os.path.exists(temp_dir):
                 try:
                     shutil.rmtree(temp_dir)
-                except Exception as e:
-                    logger.warning(f"清理临时目录失败: {e}")
+                except:
+                    pass
+            raise Exception("克隆 GitHub 仓库超时")
+        except subprocess.CalledProcessError as e:
+            if temp_dir and os.path.exists(temp_dir):
+                try:
+                    shutil.rmtree(temp_dir)
+                except:
+                    pass
+            raise Exception(f"克隆 GitHub 仓库失败: {e.stderr.decode() if e.stderr else str(e)}")
+        except Exception as e:
+            if temp_dir and os.path.exists(temp_dir):
+                try:
+                    shutil.rmtree(temp_dir)
+                except:
+                    pass
+            raise Exception(f"获取合约源代码失败: {e}")
     
-    def _compile_contract(self, source_code: str) -> Dict[str, Any]:
+    def _install_openzeppelin_manually(self, temp_dir: str):
+        """
+        手动下载 OpenZeppelin 合约（如果 npm 不可用）
+        
+        Args:
+            temp_dir: 临时目录路径
+        """
+        try:
+            import urllib.request
+            import json
+            import zipfile
+            
+            logger.info("尝试手动下载 OpenZeppelin 合约...")
+            
+            # 创建 node_modules 目录
+            node_modules_dir = Path(temp_dir) / 'node_modules' / '@openzeppelin'
+            node_modules_dir.mkdir(parents=True, exist_ok=True)
+            
+            # 从 GitHub 下载 OpenZeppelin contracts 的 zip 文件
+            # 使用 releases 中的最新版本
+            openzeppelin_url = "https://github.com/OpenZeppelin/openzeppelin-contracts/archive/refs/tags/v5.0.1.zip"
+            zip_path = Path(temp_dir) / 'openzeppelin.zip'
+            
+            logger.info(f"从 GitHub 下载 OpenZeppelin 合约: {openzeppelin_url}")
+            urllib.request.urlretrieve(openzeppelin_url, zip_path)
+            
+            # 解压到 node_modules/@openzeppelin/contracts
+            with zipfile.ZipFile(zip_path, 'r') as zip_ref:
+                zip_ref.extractall(node_modules_dir)
+            
+            # 重命名解压后的目录
+            extracted_dir = node_modules_dir / 'openzeppelin-contracts-5.0.1'
+            contracts_dir = node_modules_dir / 'contracts'
+            if extracted_dir.exists():
+                if contracts_dir.exists():
+                    shutil.rmtree(contracts_dir)
+                extracted_dir.rename(contracts_dir)
+            
+            # 清理 zip 文件
+            zip_path.unlink()
+            
+            logger.info("OpenZeppelin 合约下载成功")
+            
+        except Exception as e:
+            logger.warning(f"手动下载 OpenZeppelin 合约失败: {e}，将尝试使用 compile_files")
+    
+    def _compile_contract(self, source_code: str, contract_dir: str) -> Dict[str, Any]:
         """
         编译合约
         
         Args:
             source_code: 合约源代码
+            contract_dir: 合约所在目录（用于解析导入路径）
             
         Returns:
             编译后的合约信息
@@ -191,20 +262,75 @@ class BatchDepositDeployer:
             # 安装并设置对应的编译器版本
             self._ensure_solc_installed(required_version)
             
-            # 编译合约
+            # 尝试使用 compile_files 或 compile_standard（支持导入路径）
+            contract_file_path = Path(contract_dir) / BATCH_DEPOSIT_CONTRACT_PATH
+            node_modules_path = Path(contract_dir) / 'node_modules'
+            
+            # 设置导入重映射
+            import_remappings = []
+            openzeppelin_contracts_path = Path(contract_dir) / 'node_modules' / '@openzeppelin' / 'contracts'
+            if openzeppelin_contracts_path.exists():
+                # 使用绝对路径
+                abs_path = openzeppelin_contracts_path.resolve()
+                import_remappings.append(f"@openzeppelin/={abs_path}/")
+                logger.info(f"设置导入重映射: @openzeppelin/ -> {abs_path}/")
+            else:
+                logger.warning(f"OpenZeppelin 合约路径不存在: {openzeppelin_contracts_path}")
+            
+            # 使用 compile_standard（支持导入路径和 remappings）
             try:
-                compiled_sol = compile_source(
-                    source_code,
-                    output_values=['abi', 'bin'],
-                    solc_version=required_version
+                from solcx import compile_standard
+                
+                # 构建 sources：主合约文件
+                # 使用相对路径，solc 会根据 remappings 和 allow_paths 解析导入
+                sources = {
+                    'contracts/BatchDeposits.sol': {
+                        'content': source_code
+                    }
+                }
+                
+                # 注意：不需要手动添加 OpenZeppelin 合约到 sources
+                # solc 会根据 remappings 自动解析 @openzeppelin/ 导入
+                logger.info("使用 remappings 让 solc 自动解析 OpenZeppelin 导入")
+                
+                # 构建标准输入格式
+                standard_input = {
+                    'language': 'Solidity',
+                    'sources': sources,
+                    'settings': {
+                        'outputSelection': {
+                            '*': {
+                                '*': ['abi', 'evm.bytecode']
+                            }
+                        },
+                        'remappings': import_remappings if import_remappings else []
+                    }
+                }
+                
+                logger.info(f"开始编译，使用 remappings: {import_remappings}")
+                logger.info(f"允许的路径: {Path(contract_dir).resolve()}")
+                
+                # 使用 allow_paths 让 solc 能够解析导入
+                compiled_output = compile_standard(
+                    standard_input,
+                    solc_version=required_version,
+                    allow_paths=str(Path(contract_dir).resolve())  # 允许从合约目录解析导入
                 )
+                
+                # 转换为统一的格式
+                compiled_sol = {}
+                for contract_path, contracts in compiled_output.get('contracts', {}).items():
+                    for contract_name, contract_data in contracts.items():
+                        key = f"{contract_path}:{contract_name}"
+                        compiled_sol[key] = {
+                            'abi': contract_data.get('abi', []),
+                            'bin': contract_data.get('evm', {}).get('bytecode', {}).get('object', '')
+                        }
+                
+                logger.info("使用 compile_standard 编译成功")
             except Exception as e:
-                # 如果失败，尝试不指定版本（使用当前设置的版本）
-                logger.warning(f"使用指定版本 {required_version} 编译失败: {e}，尝试使用当前设置的版本")
-                compiled_sol = compile_source(
-                    source_code,
-                    output_values=['abi', 'bin']
-                )
+                logger.error(f"compile_standard 编译失败: {e}", exc_info=True)
+                raise Exception(f"编译合约失败: {e}")
             
             # 获取合约接口（BatchDeposits）
             contract_interface = None
@@ -243,12 +369,13 @@ class BatchDepositDeployer:
         Returns:
             部署结果，包含合约地址和交易哈希
         """
+        temp_dir = None
         try:
-            # 获取合约源代码
-            source_code = self._get_contract_source()
+            # 获取合约源代码和临时目录
+            source_code, temp_dir = self._get_contract_source()
             
             # 编译合约（会自动检测并安装所需的 Solidity 版本）
-            contract_interface = self._compile_contract(source_code)
+            contract_interface = self._compile_contract(source_code, temp_dir)
             
             # 获取 bytecode（可能是 'bin' 或 'bytecode'）
             bytecode = contract_interface.get('bin') or contract_interface.get('bytecode')
@@ -306,4 +433,12 @@ class BatchDepositDeployer:
         except Exception as e:
             logger.error(f"部署 Batch Deposit 合约失败: {e}", exc_info=True)
             raise Exception(f"部署失败: {e}")
+        finally:
+            # 清理临时目录
+            if temp_dir and os.path.exists(temp_dir):
+                try:
+                    shutil.rmtree(temp_dir)
+                    logger.info("已清理临时目录")
+                except Exception as e:
+                    logger.warning(f"清理临时目录失败: {e}")
 

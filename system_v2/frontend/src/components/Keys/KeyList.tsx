@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react'
+import React, { useState, useEffect, useCallback } from 'react'
 import {
   Table,
   Card,
@@ -37,7 +37,7 @@ const KeyList: React.FC = () => {
   })
 
   // 加载密钥列表
-  const loadKeys = async () => {
+  const loadKeys = useCallback(async () => {
     setLoading(true)
     try {
       const params: any = {
@@ -54,31 +54,45 @@ const KeyList: React.FC = () => {
       
       const response = await keysApi.list(params) as any
 
-      setKeys(response.items || [])
-      setPagination({
-        ...pagination,
-        total: response.total || 0,
+      // 调试日志
+      console.log('密钥列表 API 响应:', {
+        itemsCount: response.items?.length || 0,
+        total: response.total,
+        currentPage: pagination.current,
+        pageSize: pagination.pageSize,
+        offset: params.offset,
+        limit: params.limit
       })
+
+      setKeys(response.items || [])
+      setPagination((prev) => ({
+        ...prev,
+        total: response.total || 0,
+      }))
     } catch (error: any) {
       message.error(`加载密钥列表失败: ${error.message}`)
     } finally {
       setLoading(false)
     }
-  }
-
-  useEffect(() => {
-    loadKeys()
   }, [pagination.current, pagination.pageSize, statusFilter, batchIdFilter, searchText])
 
   // 当筛选条件改变时，重置到第一页
   useEffect(() => {
-    if (pagination.current !== 1) {
-      setPagination({
-        ...pagination,
-        current: 1,
-      })
-    }
+    setPagination((prev) => {
+      if (prev.current !== 1) {
+        return {
+          ...prev,
+          current: 1,
+        }
+      }
+      return prev
+    })
   }, [statusFilter, batchIdFilter, searchText])
+
+  // 当分页参数改变时，加载数据
+  useEffect(() => {
+    loadKeys()
+  }, [loadKeys])
 
   // 获取状态标签
   const getStatusTag = (status: string) => {
@@ -214,18 +228,18 @@ const KeyList: React.FC = () => {
               onSearch={(value) => {
                 setSearchText(value)
                 // 搜索时重置到第一页
-                setPagination({
-                  ...pagination,
+                setPagination((prev) => ({
+                  ...prev,
                   current: 1,
-                })
+                }))
               }}
               onChange={(e) => {
                 if (!e.target.value) {
                   setSearchText('')
-                  setPagination({
-                    ...pagination,
+                  setPagination((prev) => ({
+                    ...prev,
                     current: 1,
-                  })
+                  }))
                 }
               }}
             />
@@ -290,18 +304,18 @@ const KeyList: React.FC = () => {
               showTotal: (total, range) => `第 ${range[0]}-${range[1]} 条，共 ${total} 条`,
               pageSizeOptions: ['10', '20', '50', '100'],
               onChange: (page, pageSize) => {
-                setPagination({
-                  ...pagination,
+                setPagination((prev) => ({
+                  ...prev,
                   current: page,
-                  pageSize: pageSize || pagination.pageSize,
-                })
+                  pageSize: pageSize || prev.pageSize,
+                }))
               },
               onShowSizeChange: (_current, size) => {
-                setPagination({
-                  ...pagination,
+                setPagination((prev) => ({
+                  ...prev,
                   current: 1, // 重置到第一页
                   pageSize: size,
-                })
+                }))
               },
             }}
           />
