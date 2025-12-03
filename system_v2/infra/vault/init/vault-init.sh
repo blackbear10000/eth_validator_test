@@ -71,6 +71,15 @@ if ! echo "$VAULT_STATUS_OUTPUT" | grep -q "Initialized.*true"; then
   echo "$ROOT_TOKEN" > /vault/data/shared/root_token.txt 2>/dev/null || true
   echo "$UNSEAL_KEY" > /vault/data/shared/unseal_key.txt 2>/dev/null || true
   
+  # 保存到 Consul（持久化存储，即使 volume 丢失也能恢复）
+  CONSUL_ADDR="${CONSUL_ADDR:-consul:8500}"
+  if command -v curl >/dev/null 2>&1; then
+    curl -s -X PUT "http://$CONSUL_ADDR/v1/kv/vault/unseal_key" -d "$UNSEAL_KEY" >/dev/null 2>&1 && \
+      echo "Unseal key saved to Consul" || echo "Warning: Failed to save unseal key to Consul"
+    curl -s -X PUT "http://$CONSUL_ADDR/v1/kv/vault/root_token" -d "$ROOT_TOKEN" >/dev/null 2>&1 && \
+      echo "Root token saved to Consul" || echo "Warning: Failed to save root token to Consul"
+  fi
+  
   # 使用 unseal key 解锁 Vault
   echo "Unsealing Vault..."
   export VAULT_TOKEN="$ROOT_TOKEN"
@@ -114,11 +123,24 @@ else
     fi
     
     # 4. 尝试从 Consul 获取（如果可能）
-    if [ -z "$UNSEAL_KEY" ] && command -v consul >/dev/null 2>&1; then
-      CONSUL_KEY=$(consul kv get vault/unseal_key 2>/dev/null || echo "")
-      if [ -n "$CONSUL_KEY" ]; then
-        UNSEAL_KEY="$CONSUL_KEY"
-        echo "Found unseal key in Consul"
+    if [ -z "$UNSEAL_KEY" ]; then
+      CONSUL_ADDR="${CONSUL_ADDR:-consul:8500}"
+      if command -v curl >/dev/null 2>&1; then
+        CONSUL_KEY=$(curl -s "http://$CONSUL_ADDR/v1/kv/vault/unseal_key?raw" 2>/dev/null || echo "")
+        if [ -n "$CONSUL_KEY" ]; then
+          UNSEAL_KEY="$CONSUL_KEY"
+          echo "Found unseal key in Consul"
+          # 同时保存到本地文件以便下次使用
+          echo "$UNSEAL_KEY" > /vault/data/unseal_key.txt 2>/dev/null || true
+        fi
+      elif command -v consul >/dev/null 2>&1; then
+        CONSUL_KEY=$(consul kv get vault/unseal_key 2>/dev/null || echo "")
+        if [ -n "$CONSUL_KEY" ]; then
+          UNSEAL_KEY="$CONSUL_KEY"
+          echo "Found unseal key in Consul"
+          # 同时保存到本地文件以便下次使用
+          echo "$UNSEAL_KEY" > /vault/data/unseal_key.txt 2>/dev/null || true
+        fi
       fi
     fi
     
@@ -157,9 +179,64 @@ else
         DELETE_RESULT=$(curl -s -X DELETE "http://$CONSUL_ADDR/v1/kv/vault/?recurse" 2>&1)
         
         if [ $? -eq 0 ]; then
-          echo "Vault data deleted. Vault will be re-initialized on next startup."
-          echo "Please restart the container to complete the reset."
-          exit 0
+          echo "Vault data deleted from Consul successfully."
+          echo "Waiting for Vault to detect the change and become uninitialized..."
+          
+          # 等待 Vault 检测到数据被删除（最多等待 30 秒）
+          for i in $(seq 1 30); do
+            sleep 1
+            VAULT_STATUS_AFTER_RESET=$(vault status 2>&1)
+            if ! echo "$VAULT_STATUS_AFTER_RESET" | grep -q "Initialized.*true"; then
+              echo "Vault is now uninitialized. Re-initializing..."
+              
+              # 执行初始化
+              INIT_OUTPUT=$(vault operator init -key-shares=1 -key-threshold=1 -format=json 2>&1)
+              
+              if [ $? -ne 0 ]; then
+                echo "Error re-initializing Vault: $INIT_OUTPUT"
+                exit 1
+              fi
+              
+              # 提取 root token 和 unseal key（重用之前的提取逻辑）
+              INIT_JSON=$(echo "$INIT_OUTPUT" | tr -d '\n' | tr -d ' ')
+              ROOT_TOKEN=$(echo "$INIT_JSON" | sed 's/.*"root_token":"\([^"]*\)".*/\1/')
+              UNSEAL_KEY=$(echo "$INIT_JSON" | sed 's/.*"unseal_keys_b64":\["\([^"]*\)".*/\1/')
+              
+              if [ -z "$ROOT_TOKEN" ] || [ "$ROOT_TOKEN" = "$INIT_JSON" ]; then
+                ROOT_TOKEN=$(echo "$INIT_OUTPUT" | grep '"root_token"' | sed 's/.*"root_token"[^"]*"\([^"]*\)".*/\1/')
+              fi
+              
+              if [ -z "$UNSEAL_KEY" ] || [ "$UNSEAL_KEY" = "$INIT_JSON" ]; then
+                UNSEAL_KEY=$(echo "$INIT_OUTPUT" | grep -A 2 '"unseal_keys_b64"' | grep -o '"[^"]*"' | head -1 | tr -d '"')
+              fi
+              
+              if [ -z "$ROOT_TOKEN" ] || [ -z "$UNSEAL_KEY" ] || [ "$ROOT_TOKEN" = "$INIT_JSON" ] || [ "$UNSEAL_KEY" = "$INIT_JSON" ]; then
+                echo "Error: Failed to extract root token or unseal key"
+                exit 1
+              fi
+              
+              # 保存到文件和 Consul
+              echo "$ROOT_TOKEN" > /vault/data/root_token.txt
+              echo "$UNSEAL_KEY" > /vault/data/unseal_key.txt
+              curl -s -X PUT "http://$CONSUL_ADDR/v1/kv/vault/unseal_key" -d "$UNSEAL_KEY" >/dev/null 2>&1
+              curl -s -X PUT "http://$CONSUL_ADDR/v1/kv/vault/root_token" -d "$ROOT_TOKEN" >/dev/null 2>&1
+              
+              # 解锁 Vault
+              export VAULT_TOKEN="$ROOT_TOKEN"
+              vault operator unseal "$UNSEAL_KEY"
+              
+              echo "Vault re-initialized and unsealed successfully"
+              break
+            fi
+          done
+          
+          # 如果 30 秒后仍然显示为已初始化，提示重启
+          VAULT_FINAL_CHECK=$(vault status 2>&1)
+          if echo "$VAULT_FINAL_CHECK" | grep -q "Initialized.*true"; then
+            echo "Warning: Vault still shows as initialized after reset."
+            echo "You may need to restart the container: docker restart vault-1"
+            exit 0
+          fi
         else
           echo "Failed to delete Vault data: $DELETE_RESULT"
           echo "You may need to delete it manually:"
