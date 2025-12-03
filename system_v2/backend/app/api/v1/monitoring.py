@@ -26,39 +26,28 @@ async def system_health():
         # Vault 健康检查（不需要认证）
         vault_health = False
         try:
-            # 直接使用不需要认证的健康检查方法
-            import hvac
-            from app.config import settings
-            vault_url = settings.vault_url
-            logger.debug(f"尝试连接 Vault: {vault_url}")
-            unauthenticated_client = hvac.Client(url=vault_url)
-            health_response = unauthenticated_client.sys.read_health_status()
-            
-            # hvac 库可能返回 Response 对象或字典，需要处理两种情况
-            if hasattr(health_response, 'json'):
-                # 如果是 Response 对象，调用 json() 方法
-                health = health_response.json()
-            elif isinstance(health_response, dict):
-                # 如果已经是字典，直接使用
-                health = health_response
-            else:
-                # 尝试转换为字典
-                health = dict(health_response) if hasattr(health_response, '__dict__') else {}
-            
-            initialized = health.get('initialized', False)
-            sealed = health.get('sealed', True)
-            vault_health = initialized and not sealed
-            logger.info(f"Vault 健康检查成功: url={vault_url}, initialized={initialized}, sealed={sealed}, healthy={vault_health}")
+            # 使用 VaultClient 的健康检查方法（内部使用 requests，更可靠）
+            vault_client = VaultClient()
+            vault_health = vault_client.health_check()
+            logger.info(f"Vault 健康检查成功: healthy={vault_health}")
         except Exception as health_error:
-            logger.error(f"Vault 健康检查失败 (url={settings.vault_url}): {health_error}", exc_info=True)
-            # 如果直接健康检查也失败，尝试使用 VaultClient（可能需要认证）
+            logger.error(f"Vault 健康检查失败: {health_error}", exc_info=True)
+            # 如果 VaultClient 初始化失败（可能是认证问题），尝试直接调用健康检查端点
             try:
-                logger.info("尝试使用 VaultClient 进行健康检查...")
-                vault_client = VaultClient()
-                vault_health = vault_client.health_check()
-                logger.info(f"VaultClient 健康检查成功: {vault_health}")
+                import requests
+                from app.config import settings
+                vault_url = settings.vault_url
+                logger.info(f"尝试直接调用健康检查端点: {vault_url}")
+                health_url = f"{vault_url.rstrip('/')}/v1/sys/health"
+                response = requests.get(health_url, timeout=5)
+                response.raise_for_status()
+                health = response.json()
+                initialized = health.get('initialized', False)
+                sealed = health.get('sealed', True)
+                vault_health = initialized and not sealed
+                logger.info(f"直接健康检查成功: initialized={initialized}, sealed={sealed}, healthy={vault_health}")
             except Exception as e:
-                logger.error(f"VaultClient 健康检查也失败: {e}", exc_info=True)
+                logger.error(f"直接健康检查也失败: {e}", exc_info=True)
         
         # Web3Signer 健康检查
         web3signer_primary = False
@@ -132,39 +121,28 @@ async def system_overview(db: Session = Depends(get_db)):
         # 系统健康（使用与 system_health 相同的逻辑）
         vault_health = False
         try:
-            # 直接使用不需要认证的健康检查方法
-            import hvac
-            from app.config import settings
-            vault_url = settings.vault_url
-            logger.debug(f"尝试连接 Vault: {vault_url}")
-            unauthenticated_client = hvac.Client(url=vault_url)
-            health_response = unauthenticated_client.sys.read_health_status()
-            
-            # hvac 库可能返回 Response 对象或字典，需要处理两种情况
-            if hasattr(health_response, 'json'):
-                # 如果是 Response 对象，调用 json() 方法
-                health = health_response.json()
-            elif isinstance(health_response, dict):
-                # 如果已经是字典，直接使用
-                health = health_response
-            else:
-                # 尝试转换为字典
-                health = dict(health_response) if hasattr(health_response, '__dict__') else {}
-            
-            initialized = health.get('initialized', False)
-            sealed = health.get('sealed', True)
-            vault_health = initialized and not sealed
-            logger.info(f"Vault 健康检查成功: url={vault_url}, initialized={initialized}, sealed={sealed}, healthy={vault_health}")
+            # 使用 VaultClient 的健康检查方法（内部使用 requests，更可靠）
+            vault_client = VaultClient()
+            vault_health = vault_client.health_check()
+            logger.info(f"Vault 健康检查成功: healthy={vault_health}")
         except Exception as health_error:
-            logger.error(f"Vault 健康检查失败 (url={settings.vault_url}): {health_error}", exc_info=True)
-            # 如果直接健康检查也失败，尝试使用 VaultClient（可能需要认证）
+            logger.error(f"Vault 健康检查失败: {health_error}", exc_info=True)
+            # 如果 VaultClient 初始化失败（可能是认证问题），尝试直接调用健康检查端点
             try:
-                logger.info("尝试使用 VaultClient 进行健康检查...")
-                vault_client = VaultClient()
-                vault_health = vault_client.health_check()
-                logger.info(f"VaultClient 健康检查成功: {vault_health}")
+                import requests
+                from app.config import settings
+                vault_url = settings.vault_url
+                logger.info(f"尝试直接调用健康检查端点: {vault_url}")
+                health_url = f"{vault_url.rstrip('/')}/v1/sys/health"
+                response = requests.get(health_url, timeout=5)
+                response.raise_for_status()
+                health = response.json()
+                initialized = health.get('initialized', False)
+                sealed = health.get('sealed', True)
+                vault_health = initialized and not sealed
+                logger.info(f"直接健康检查成功: initialized={initialized}, sealed={sealed}, healthy={vault_health}")
             except Exception as e:
-                logger.error(f"VaultClient 健康检查也失败: {e}", exc_info=True)
+                logger.error(f"直接健康检查也失败: {e}", exc_info=True)
         
         web3signer_primary = False
         web3signer_secondary = False
