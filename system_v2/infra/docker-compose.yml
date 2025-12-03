@@ -189,7 +189,7 @@ services:
       dockerfile: Dockerfile
     container_name: backend
     ports:
-      - "8000:8000"
+      - "8001:8000"
     environment:
       - DATABASE_URL=postgresql://postgres:password@postgres:5432/validator_db
       - VAULT_URL=http://vault-1:8200
