@@ -296,7 +296,7 @@ const KeyList: React.FC = () => {
                   pageSize: pageSize || pagination.pageSize,
                 })
               },
-              onShowSizeChange: (current, size) => {
+              onShowSizeChange: (_current, size) => {
                 setPagination({
                   ...pagination,
                   current: 1, // 重置到第一页
