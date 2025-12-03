@@ -267,15 +267,31 @@ class BatchDepositDeployer:
             node_modules_path = Path(contract_dir) / 'node_modules'
             
             # 设置导入重映射
+            # solc remappings 格式: prefix=path
+            # 合约中使用: import "@openzeppelin/contracts/utils/Pausable.sol"
+            # 需要映射 @openzeppelin/contracts/ 到 node_modules/@openzeppelin/contracts/
             import_remappings = []
             openzeppelin_contracts_path = Path(contract_dir) / 'node_modules' / '@openzeppelin' / 'contracts'
             if openzeppelin_contracts_path.exists():
                 # 使用绝对路径
+                # remapping 格式: @openzeppelin/contracts/=绝对路径/
                 abs_path = openzeppelin_contracts_path.resolve()
-                import_remappings.append(f"@openzeppelin/={abs_path}/")
-                logger.info(f"设置导入重映射: @openzeppelin/ -> {abs_path}/")
+                # 正确的 remapping：@openzeppelin/contracts/ 映射到实际路径
+                import_remappings.append(f"@openzeppelin/contracts/={abs_path}/")
+                logger.info(f"设置导入重映射: @openzeppelin/contracts/ -> {abs_path}/")
+                # 验证路径和文件
+                if abs_path.exists():
+                    utils_path = abs_path / 'utils' / 'Pausable.sol'
+                    logger.info(f"验证 Pausable.sol 存在: {utils_path.exists()}")
+                    if not utils_path.exists():
+                        logger.warning(f"Pausable.sol 不存在于预期路径: {utils_path}")
+                        logger.info(f"contracts 目录内容: {list(abs_path.iterdir())[:10]}")
             else:
                 logger.warning(f"OpenZeppelin 合约路径不存在: {openzeppelin_contracts_path}")
+                node_modules_path = Path(contract_dir) / 'node_modules'
+                logger.warning(f"检查 node_modules 目录: {node_modules_path}, 存在: {node_modules_path.exists()}")
+                if node_modules_path.exists():
+                    logger.info(f"node_modules 内容: {list(node_modules_path.iterdir())[:10]}")
             
             # 使用 compile_standard（支持导入路径和 remappings）
             try:
@@ -308,13 +324,19 @@ class BatchDepositDeployer:
                 }
                 
                 logger.info(f"开始编译，使用 remappings: {import_remappings}")
-                logger.info(f"允许的路径: {Path(contract_dir).resolve()}")
+                contract_dir_abs = str(Path(contract_dir).resolve())
+                node_modules_abs = str((Path(contract_dir) / 'node_modules').resolve())
+                logger.info(f"允许的路径: {contract_dir_abs}, {node_modules_abs}")
                 
                 # 使用 allow_paths 让 solc 能够解析导入
+                # allow_paths 应该包含 node_modules 目录
+                # solcx 的 allow_paths 参数接受字符串（逗号分隔）或列表
+                allow_paths_list = [contract_dir_abs, node_modules_abs]
+                
                 compiled_output = compile_standard(
                     standard_input,
                     solc_version=required_version,
-                    allow_paths=str(Path(contract_dir).resolve())  # 允许从合约目录解析导入
+                    allow_paths=allow_paths_list  # 传递列表
                 )
                 
                 # 转换为统一的格式

@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react'
+import React, { useState, useEffect, useCallback, useRef } from 'react'
 import {
   Table,
   Card,
@@ -35,16 +35,23 @@ const KeyList: React.FC = () => {
     pageSize: 20,
     total: 0,
   })
+  
+  // 使用 ref 保存最新的 pagination 状态，避免闭包问题
+  const paginationRef = useRef(pagination)
+  useEffect(() => {
+    paginationRef.current = pagination
+  }, [pagination])
 
   // 加载密钥列表
   const loadKeys = useCallback(async () => {
     setLoading(true)
     try {
+      const currentPagination = paginationRef.current
       const params: any = {
         status: statusFilter,
         batch_id: batchIdFilter,
-        limit: pagination.pageSize,
-        offset: (pagination.current - 1) * pagination.pageSize,
+        limit: currentPagination.pageSize,
+        offset: (currentPagination.current - 1) * currentPagination.pageSize,
       }
       
       // 如果后端支持搜索，添加搜索参数
@@ -58,8 +65,8 @@ const KeyList: React.FC = () => {
       console.log('密钥列表 API 响应:', {
         itemsCount: response.items?.length || 0,
         total: response.total,
-        currentPage: pagination.current,
-        pageSize: pagination.pageSize,
+        currentPage: currentPagination.current,
+        pageSize: currentPagination.pageSize,
         offset: params.offset,
         limit: params.limit
       })
@@ -74,7 +81,7 @@ const KeyList: React.FC = () => {
     } finally {
       setLoading(false)
     }
-  }, [pagination.current, pagination.pageSize, statusFilter, batchIdFilter, searchText])
+  }, [statusFilter, batchIdFilter, searchText])
 
   // 当筛选条件改变时，重置到第一页
   useEffect(() => {
@@ -301,9 +308,15 @@ const KeyList: React.FC = () => {
               total: pagination.total,
               showSizeChanger: true,
               showQuickJumper: true,
-              showTotal: (total, range) => `第 ${range[0]}-${range[1]} 条，共 ${total} 条`,
+              showTotal: (total, range) => {
+                if (total === 0) {
+                  return '暂无数据'
+                }
+                return `第 ${range[0]}-${range[1]} 条，共 ${total} 条`
+              },
               pageSizeOptions: ['10', '20', '50', '100'],
               onChange: (page, pageSize) => {
+                console.log('分页改变:', { page, pageSize, currentTotal: pagination.total })
                 setPagination((prev) => ({
                   ...prev,
                   current: page,
@@ -311,6 +324,7 @@ const KeyList: React.FC = () => {
                 }))
               },
               onShowSizeChange: (_current, size) => {
+                console.log('每页数量改变:', { size, currentTotal: pagination.total })
                 setPagination((prev) => ({
                   ...prev,
                   current: 1, // 重置到第一页
