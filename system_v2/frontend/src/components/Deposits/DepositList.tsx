@@ -21,8 +21,6 @@ import {
   PlusOutlined,
   ReloadOutlined,
   SyncOutlined,
-  DownOutlined,
-  UpOutlined,
 } from '@ant-design/icons'
 import { depositsApi, DepositTransaction, DepositData, BatchDepositContract } from '../../api/deposits'
 import { keysApi } from '../../api/keys'
