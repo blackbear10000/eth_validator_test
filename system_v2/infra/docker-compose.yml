@@ -80,18 +80,19 @@ services:
       - postgres_data:/var/lib/postgresql/data
       - ./web3signer/init-db-migrations.sh:/docker-entrypoint-initdb.d/init-db-migrations.sh:ro
       - ./web3signer/migrations:/docker-entrypoint-initdb.d/migrations:ro
+      - ./web3signer/ensure-db.sh:/usr/local/bin/ensure-db.sh:ro
     networks:
       - validator_network
     healthcheck:
       test: >
         sh -c "
           pg_isready -U postgres &&
-          psql -U postgres -lqt | cut -d \| -f 1 | grep -qw web3signer &&
-          psql -U postgres -d web3signer -c 'SELECT 1;' >/dev/null 2>&1
+          (chmod +x /usr/local/bin/ensure-db.sh 2>/dev/null || true) &&
+          /usr/local/bin/ensure-db.sh
         "
       interval: 10s
-      timeout: 5s
-      retries: 5
+      timeout: 10s
+      retries: 10
       start_period: 30s
 
   # Web3Signer 实例 1
