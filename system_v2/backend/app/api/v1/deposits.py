@@ -286,6 +286,9 @@ async def deploy_batch_contract(
                 if rpc_endpoints.get("rpc_url") and not rpc_endpoints.get("error"):
                     rpc_url = rpc_endpoints["rpc_url"]
                     logger.info(f"从 Kurtosis 网络获取 RPC URL: {rpc_url}")
+                else:
+                    error_msg = rpc_endpoints.get("error", "未知错误")
+                    logger.warning(f"无法从 Kurtosis 网络获取 RPC URL: {error_msg}")
             except Exception as e:
                 logger.warning(f"无法从 Kurtosis 网络获取 RPC URL: {e}")
         
@@ -295,7 +298,7 @@ async def deploy_batch_contract(
         if not rpc_url:
             raise HTTPException(
                 status_code=400,
-                detail="需要提供 rpc_url 或确保 Kurtosis 网络正在运行"
+                detail="无法获取 RPC URL。请确保：1) Kurtosis 网络正在运行，或 2) 提供 rpc_url 参数，或 3) 配置 EXECUTION_RPC_URL 环境变量"
             )
         
         # 初始化 Web3 连接
@@ -388,6 +391,9 @@ async def deploy_batch_contract(
                 if rpc_endpoints.get("rpc_url") and not rpc_endpoints.get("error"):
                     rpc_url = rpc_endpoints["rpc_url"]
                     logger.info(f"从 Kurtosis 网络获取 RPC URL: {rpc_url}")
+                else:
+                    error_msg = rpc_endpoints.get("error", "未知错误")
+                    logger.warning(f"无法从 Kurtosis 网络获取 RPC URL: {error_msg}")
             except Exception as e:
                 logger.warning(f"无法从 Kurtosis 网络获取 RPC URL: {e}")
         
@@ -397,7 +403,7 @@ async def deploy_batch_contract(
         if not rpc_url:
             raise HTTPException(
                 status_code=400,
-                detail="需要提供 rpc_url 或确保 Kurtosis 网络正在运行"
+                detail="无法获取 RPC URL。请确保：1) Kurtosis 网络正在运行，或 2) 提供 rpc_url 参数，或 3) 配置 EXECUTION_RPC_URL 环境变量"
             )
         
         # 初始化 Web3 连接

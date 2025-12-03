@@ -140,7 +140,21 @@ const DepositList: React.FC = () => {
       deployForm.resetFields()
       loadBatchContracts()
     } catch (error: any) {
-      message.error(`部署合约失败: ${error.message}`)
+      // 提取错误消息
+      let errorMessage = '部署合约失败'
+      if (error?.message) {
+        errorMessage = error.message
+      } else if (typeof error === 'string') {
+        errorMessage = error
+      } else if (error?.response?.data?.detail) {
+        errorMessage = error.response.data.detail
+      } else if (error?.response?.data?.message) {
+        errorMessage = error.response.data.message
+      } else if (error?.detail) {
+        errorMessage = error.detail
+      }
+      message.error(`部署合约失败: ${errorMessage}`)
+      console.error('部署合约错误详情:', error)
     }
   }
 
