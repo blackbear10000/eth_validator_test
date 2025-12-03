@@ -6,6 +6,14 @@ Vault 初始化脚本
 import sys
 import os
 
+# 检查依赖
+try:
+    import hvac
+except ImportError:
+    print("错误: 缺少 hvac 模块")
+    print("请运行: pip install -r requirements.txt")
+    sys.exit(1)
+
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'backend'))
 
 from app.core.vault_client import VaultClient

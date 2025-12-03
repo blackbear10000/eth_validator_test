@@ -1,0 +1,19 @@
+# 脚本依赖
+# 这些依赖与后端 requirements.txt 保持一致，包含所有脚本所需的依赖
+
+# Database
+sqlalchemy>=2.0.23
+alembic>=1.12.1
+psycopg2-binary>=2.9.9
+
+# Configuration
+pydantic>=2.5.0
+pydantic-settings>=2.1.0
+python-dotenv>=1.0.0
+
+# Vault
+hvac>=2.3.0
+
+# HTTP Client (for get_vault_token.py)
+requests>=2.31.0
+

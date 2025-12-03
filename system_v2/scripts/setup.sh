@@ -11,6 +11,7 @@ echo "=========================================="
 # 检查必要工具
 command -v docker >/dev/null 2>&1 || { echo "错误: 需要安装 Docker"; exit 1; }
 command -v docker-compose >/dev/null 2>&1 || { echo "错误: 需要安装 Docker Compose"; exit 1; }
+command -v python3 >/dev/null 2>&1 || { echo "错误: 需要安装 Python 3"; exit 1; }
 
 # 创建必要目录
 echo "创建必要目录..."
@@ -29,6 +30,27 @@ fi
 echo "设置脚本执行权限..."
 chmod +x ../backend/scripts/*.sh 2>/dev/null || true
 chmod +x ../infra/web3signer/init-db-migrations.sh
+
+# 安装 Python 依赖（用于迁移脚本）
+echo "检查 Python 依赖..."
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+if [ -f "$SCRIPT_DIR/requirements.txt" ]; then
+    echo "安装脚本依赖..."
+    # 检查是否有虚拟环境
+    if [ -d "$SCRIPT_DIR/venv" ]; then
+        echo "使用现有虚拟环境..."
+        source "$SCRIPT_DIR/venv/bin/activate"
+    else
+        echo "创建虚拟环境..."
+        python3 -m venv "$SCRIPT_DIR/venv"
+        source "$SCRIPT_DIR/venv/bin/activate"
+    fi
+    pip install -q --upgrade pip
+    pip install -q -r "$SCRIPT_DIR/requirements.txt"
+    echo "依赖安装完成"
+else
+    echo "警告: 未找到 requirements.txt，跳过依赖安装"
+fi
 
 # 初始化环境变量
 if [ ! -f "../backend/.env" ]; then

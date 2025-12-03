@@ -6,6 +6,14 @@
 import sys
 import os
 
+# 检查依赖
+try:
+    import psycopg2
+except ImportError:
+    print("错误: 缺少 psycopg2-binary 模块")
+    print("请运行: pip install -r requirements.txt")
+    sys.exit(1)
+
 # 添加项目路径
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'backend'))
 
