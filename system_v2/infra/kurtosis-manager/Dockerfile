@@ -5,18 +5,19 @@ FROM python:3.11-slim
 RUN apt-get update && apt-get install -y \
     curl \
     bash \
+    gnupg \
+    ca-certificates \
     && rm -rf /var/lib/apt/lists/*
 
-# 安装 Kurtosis CLI
-# 使用官方安装脚本
-RUN curl -fsSL https://get.kurtosis.com | bash || \
-    (echo "Kurtosis CLI 安装失败" && exit 1)
-
-# 确保 Kurtosis CLI 在 PATH 中
-ENV PATH="/root/.kurtosis/bin:${PATH}"
+# 安装 Kurtosis CLI（使用官方 apt 仓库方法）
+# 参考：https://docs.kurtosis.com/install
+RUN echo "deb [trusted=yes] https://apt.fury.io/kurtosis-tech/ /" | tee /etc/apt/sources.list.d/kurtosis.list && \
+    apt-get update && \
+    apt-get install -y kurtosis-cli && \
+    rm -rf /var/lib/apt/lists/*
 
 # 验证 Kurtosis CLI 安装（必须成功）
-RUN /root/.kurtosis/bin/kurtosis version || \
+RUN kurtosis version || \
     (echo "Kurtosis CLI 验证失败，请检查安装" && exit 1)
 
 # 设置工作目录

@@ -55,11 +55,11 @@ class KurtosisService:
                     return False
             else:
                 logger.error("Kurtosis CLI 未在 PATH 中找到")
-                # 尝试检查常见安装位置
+                # 尝试检查常见安装位置（apt 安装通常在 /usr/bin/kurtosis）
                 common_paths = [
-                    "/root/.kurtosis/bin/kurtosis",
+                    "/usr/bin/kurtosis",  # apt 安装位置
                     "/usr/local/bin/kurtosis",
-                    "/usr/bin/kurtosis"
+                    "/root/.kurtosis/bin/kurtosis",  # 脚本安装位置
                 ]
                 for path in common_paths:
                     if Path(path).exists():
@@ -82,11 +82,11 @@ class KurtosisService:
         if kurtosis_path:
             return kurtosis_path
         
-        # 尝试常见安装位置
+        # 尝试常见安装位置（apt 安装通常在 /usr/bin/kurtosis）
         common_paths = [
-            "/root/.kurtosis/bin/kurtosis",
+            "/usr/bin/kurtosis",  # apt 安装位置
             "/usr/local/bin/kurtosis",
-            "/usr/bin/kurtosis"
+            "/root/.kurtosis/bin/kurtosis",  # 脚本安装位置
         ]
         for path in common_paths:
             if Path(path).exists():
