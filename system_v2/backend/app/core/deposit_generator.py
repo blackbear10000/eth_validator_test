@@ -13,9 +13,10 @@ try:
     from ethstaker_deposit.utils.constants import EXECUTION_ADDRESS_WITHDRAWAL_PREFIX
     from ethstaker_deposit.utils.ssz import (
         compute_deposit_domain,
-        compute_signing_root
+        compute_signing_root,
+        DepositMessage,
+        DepositData
     )
-    from ethstaker_deposit.utils.typing import DepositMessage, DepositData
     from ethstaker_deposit.utils.crypto import bls
     from eth_utils import to_canonical_address
 except ImportError as e:
