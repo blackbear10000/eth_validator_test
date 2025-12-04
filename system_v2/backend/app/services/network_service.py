@@ -40,7 +40,8 @@ class NetworkService:
         url = f"{self.manager_url}{endpoint}"
         try:
             logger.debug(f"调用 Kurtosis 管理服务: {method} {url}")
-            response = requests.request(method, url, timeout=30, **kwargs)
+            # 减少超时时间，避免阻塞太久
+            response = requests.request(method, url, timeout=15, **kwargs)
             response.raise_for_status()
             result = response.json()
             

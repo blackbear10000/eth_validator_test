@@ -21,10 +21,18 @@ async def get_network_status():
     """获取网络状态"""
     try:
         service = get_network_service()
+        # 设置较短的超时时间，避免阻塞
         status = service.get_status()
         return NetworkStatusResponse(**status)
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        logger.error(f"获取网络状态失败: {e}", exc_info=True)
+        # 返回错误状态而不是抛出异常，避免前端完全无法加载
+        return NetworkStatusResponse(
+            enclave_name=service.enclave_name,
+            status="error",
+            is_running=False,
+            error=str(e)
+        )
 
 
 @router.post("/network/start")

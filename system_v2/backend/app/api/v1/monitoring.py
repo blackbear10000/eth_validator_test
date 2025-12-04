@@ -2,6 +2,7 @@
 监控 API
 """
 import logging
+import concurrent.futures
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from sqlalchemy import func
@@ -101,7 +102,7 @@ async def system_health():
 async def system_overview(db: Session = Depends(get_db)):
     """系统概览"""
     try:
-        # 密钥统计
+        # 密钥统计（快速查询）
         total_keys = db.query(ValidatorKey).count()
         
         keys_by_status = {}
@@ -111,7 +112,7 @@ async def system_overview(db: Session = Depends(get_db)):
             ).count()
             keys_by_status[status.value] = count
         
-        # 存款统计
+        # 存款统计（快速查询）
         total_deposits = db.query(DepositTransaction).count()
         
         # 活跃验证者
@@ -120,50 +121,60 @@ async def system_overview(db: Session = Depends(get_db)):
         # 总收益（简化，实际应该从链上查询）
         total_rewards_eth = 0.0
         
-        # 系统健康（使用与 system_health 相同的逻辑）
-        vault_health = False
-        try:
-            # 使用 VaultClient 的健康检查方法（内部使用 requests，更可靠）
-            vault_client = VaultClient()
-            vault_health = vault_client.health_check()
-            logger.info(f"Vault 健康检查成功: healthy={vault_health}")
-        except Exception as health_error:
-            logger.error(f"Vault 健康检查失败: {health_error}", exc_info=True)
-            # 如果 VaultClient 初始化失败（可能是认证问题），尝试直接调用健康检查端点
-            try:
-                import requests
-                from app.config import settings
-                vault_url = settings.vault_url
-                logger.info(f"尝试直接调用健康检查端点: {vault_url}")
-                health_url = f"{vault_url.rstrip('/')}/v1/sys/health"
-                response = requests.get(health_url, timeout=5)
-                response.raise_for_status()
-                health = response.json()
-                initialized = health.get('initialized', False)
-                sealed = health.get('sealed', True)
-                vault_health = initialized and not sealed
-                logger.info(f"直接健康检查成功: initialized={initialized}, sealed={sealed}, healthy={vault_health}")
-            except Exception as e:
-                logger.error(f"直接健康检查也失败: {e}", exc_info=True)
+        # 系统健康检查（使用较短的超时时间，避免阻塞）
+        # 使用并发检查以提高响应速度
         
+        def check_vault_health():
+            try:
+                vault_client = VaultClient()
+                return vault_client.health_check()
+            except Exception as e:
+                logger.debug(f"Vault 健康检查失败: {e}")
+                return False
+        
+        def check_web3signer_health():
+            try:
+                web3signer_client = Web3SignerClient()
+                primary = web3signer_client.health_check("primary")
+                secondary = web3signer_client.health_check("secondary")
+                haproxy = web3signer_client.health_check("haproxy")
+                return primary, secondary, haproxy
+            except Exception as e:
+                logger.debug(f"Web3Signer 健康检查失败: {e}")
+                return False, False, False
+        
+        def check_beacon_api_health():
+            try:
+                beacon_api = BeaconAPIClient()
+                return beacon_api.health_check()
+            except Exception as e:
+                logger.debug(f"Beacon API 健康检查失败: {e}")
+                return False
+        
+        # 并发执行健康检查（最多等待 10 秒）
+        vault_health = False
         web3signer_primary = False
         web3signer_secondary = False
         haproxy = False
-        try:
-            web3signer_client = Web3SignerClient()
-            web3signer_primary = web3signer_client.health_check("primary")
-            web3signer_secondary = web3signer_client.health_check("secondary")
-            haproxy = web3signer_client.health_check("haproxy")
-            logger.info(f"Web3Signer 健康检查: primary={web3signer_primary}, secondary={web3signer_secondary}, haproxy={haproxy}")
-        except Exception as e:
-            logger.error(f"Web3Signer 健康检查失败: {e}", exc_info=True)
-        
         beacon_api_health = False
+        
         try:
-            beacon_api = BeaconAPIClient()
-            beacon_api_health = beacon_api.health_check()
+            with concurrent.futures.ThreadPoolExecutor(max_workers=3) as executor:
+                vault_future = executor.submit(check_vault_health)
+                web3signer_future = executor.submit(check_web3signer_health)
+                beacon_future = executor.submit(check_beacon_api_health)
+                
+                # 等待所有检查完成，最多等待 10 秒
+                try:
+                    vault_health = vault_future.result(timeout=10)
+                    web3signer_result = web3signer_future.result(timeout=10)
+                    if isinstance(web3signer_result, tuple):
+                        web3signer_primary, web3signer_secondary, haproxy = web3signer_result
+                    beacon_api_health = beacon_future.result(timeout=10)
+                except concurrent.futures.TimeoutError:
+                    logger.warning("健康检查超时，使用默认值")
         except Exception as e:
-            logger.error(f"Beacon API 健康检查失败: {e}")
+            logger.error(f"健康检查执行失败: {e}", exc_info=True)
         
         postgresql_health = True
         
@@ -195,6 +206,7 @@ async def system_overview(db: Session = Depends(get_db)):
             system_health=health
         )
     except Exception as e:
+        logger.error(f"获取系统概览失败: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
 
 
