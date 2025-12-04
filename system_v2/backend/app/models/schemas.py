@@ -275,6 +275,9 @@ class NetworkInfoResponse(BaseModel):
     genesis: Optional[Dict[str, Any]] = None
     fork_schedule: Optional[Dict[str, Any]] = None
     beacon_api_url: Optional[str] = None
+    deposit_contract_address: Optional[str] = None
+    fork_version: Optional[str] = None
+    network_name: Optional[str] = None
     error: Optional[str] = None
     status: Optional[Dict[str, Any]] = None
 

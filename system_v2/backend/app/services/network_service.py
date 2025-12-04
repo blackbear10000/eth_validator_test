@@ -328,11 +328,21 @@ class NetworkService:
             except Exception:
                 fork_schedule = None
             
+            # 获取 fork_version
+            fork_version = None
+            try:
+                fork_version = beacon_api.get_fork_version()
+                logger.info(f"从 Beacon API 获取到 fork_version: {fork_version}")
+            except Exception as e:
+                logger.warning(f"无法从 Beacon API 获取 fork_version: {e}")
+            
             result = {
                 "enclave_name": self.enclave_name,
                 "genesis": genesis_info,
                 "fork_schedule": fork_schedule,
-                "beacon_api_url": settings.beacon_api_url
+                "beacon_api_url": settings.beacon_api_url,
+                "fork_version": fork_version,
+                "network_name": "mainnet"  # 对于 dev net，使用 mainnet 作为 network_name
             }
             
             # 添加 deposit_contract_address（如果从配置文件读取到）
@@ -345,7 +355,8 @@ class NetworkService:
             result = {
                 "enclave_name": self.enclave_name,
                 "error": str(e),
-                "status": status
+                "status": status,
+                "network_name": "mainnet"  # 对于 dev net，使用 mainnet 作为 network_name
             }
             # 即使 Beacon API 失败，也返回 deposit_contract_address（如果从配置文件读取到）
             if deposit_contract_address:
