@@ -624,6 +624,13 @@ const DepositList: React.FC = () => {
                         {data.withdrawal_credentials}
                       </Text>
                     </Descriptions.Item>
+                    {data.withdrawal_credentials && data.withdrawal_credentials.startsWith('01') && (
+                      <Descriptions.Item label="提款地址（从提款凭证提取）" span={1}>
+                        <Text copyable={{ text: '0x' + data.withdrawal_credentials.slice(-40) }} style={{ fontFamily: 'monospace', fontSize: '12px' }}>
+                          {'0x' + data.withdrawal_credentials.slice(-40)}
+                        </Text>
+                      </Descriptions.Item>
+                    )}
                     <Descriptions.Item label="金额">
                       <Space>
                         <Text>{data.amount / 1e9} ETH</Text>
@@ -653,16 +660,6 @@ const DepositList: React.FC = () => {
                     </Descriptions.Item>
                     <Descriptions.Item label="Deposit CLI Version">
                       <Text code>{data.deposit_cli_version}</Text>
-                    </Descriptions.Item>
-                    {data.network_name && (
-                      <Descriptions.Item label="网络名称">
-                        <Text>{data.network_name}</Text>
-                      </Descriptions.Item>
-                    )}
-                    <Descriptions.Item label="提款地址">
-                      <Text copyable={{ text: data.withdrawal_address }} style={{ fontFamily: 'monospace', fontSize: '12px' }}>
-                        {data.withdrawal_address}
-                      </Text>
                     </Descriptions.Item>
                   </Descriptions>
                 </Panel>
