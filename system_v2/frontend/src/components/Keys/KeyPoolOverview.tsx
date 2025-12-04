@@ -122,10 +122,12 @@ const KeyPoolOverview: React.FC = () => {
     const statusConfig: Record<string, { color: string; text: string }> = {
       unused: { color: 'default', text: '未使用' },
       active: { color: 'processing', text: '已激活' },
+      unknown: { color: 'warning', text: '未知' },
       pending: { color: 'warning', text: '待处理' },
       deposited: { color: 'blue', text: '已存款' },
       active_on_chain: { color: 'success', text: '链上激活' },
       pending_exit: { color: 'orange', text: '退出中' },
+      slashed: { color: 'error', text: '被惩罚' },
       exited: { color: 'error', text: '已退出' },
     }
     const config = statusConfig[status] || { color: 'default', text: status }

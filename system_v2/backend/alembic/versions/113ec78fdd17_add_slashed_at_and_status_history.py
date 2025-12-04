@@ -1,7 +1,7 @@
 """add slashed_at and status_history to validator_keys
 
 Revision ID: 113ec78fdd17
-Revises: c74d483d28d5
+Revises: fix_tx_hash_unique
 Create Date: 2025-01-XX XX:XX:XX.XXXXXX
 
 """
@@ -12,7 +12,7 @@ from sqlalchemy.dialects import postgresql
 
 # revision identifiers, used by Alembic.
 revision = '113ec78fdd17'
-down_revision = 'c74d483d28d5'
+down_revision = 'fix_tx_hash_unique'  # 依赖于 fix_deposit_transaction_tx_hash_unique 迁移
 branch_labels = None
 depends_on = None
 

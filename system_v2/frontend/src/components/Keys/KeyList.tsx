@@ -143,10 +143,12 @@ const KeyList: React.FC = () => {
     const statusConfig: Record<string, { color: string; text: string }> = {
       unused: { color: 'default', text: '未使用' },
       active: { color: 'processing', text: '已激活' },
+      unknown: { color: 'warning', text: '未知' },
       pending: { color: 'warning', text: '待处理' },
       deposited: { color: 'blue', text: '已存款' },
       active_on_chain: { color: 'success', text: '链上激活' },
       pending_exit: { color: 'orange', text: '退出中' },
+      slashed: { color: 'error', text: '被惩罚' },
       exited: { color: 'error', text: '已退出' },
     }
 
@@ -296,10 +298,12 @@ const KeyList: React.FC = () => {
             >
               <Option value="unused">未使用</Option>
               <Option value="active">已激活</Option>
+              <Option value="unknown">未知</Option>
               <Option value="pending">待处理</Option>
               <Option value="deposited">已存款</Option>
               <Option value="active_on_chain">链上激活</Option>
               <Option value="pending_exit">退出中</Option>
+              <Option value="slashed">被惩罚</Option>
               <Option value="exited">已退出</Option>
             </Select>
             <Select
@@ -437,6 +441,11 @@ const KeyList: React.FC = () => {
             {selectedKey.exited_at && (
               <Descriptions.Item label="退出时间">
                 {new Date(selectedKey.exited_at).toLocaleString()}
+              </Descriptions.Item>
+            )}
+            {selectedKey.slashed_at && (
+              <Descriptions.Item label="被惩罚时间">
+                {new Date(selectedKey.slashed_at).toLocaleString()}
               </Descriptions.Item>
             )}
             {selectedKey.deposit_tx_hash && (

@@ -11,9 +11,16 @@ export interface ValidatorKey {
   activated_at?: string
   deposited_at?: string
   exited_at?: string
+  slashed_at?: string
   withdrawal_address?: string
   client_type?: string
   deposit_tx_hash?: string
+  status_history?: Array<{
+    status: string
+    timestamp: string
+    reason?: string
+    metadata?: Record<string, any>
+  }>
 }
 
 export interface KeyPoolStatus {
