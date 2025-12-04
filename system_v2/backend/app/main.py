@@ -138,12 +138,28 @@ async def startup_event():
             inspector = inspect(db.bind)
             tables = inspector.get_table_names()
             logger.info(f"数据库中的表: {tables}")
-            if 'validator_keys' not in tables:
-                logger.warning("validator_keys 表不存在，迁移可能未成功")
+            
+            # 检查所有关键表
+            required_tables = [
+                'validator_keys',
+                'client_instances',
+                'validator_client_keys',
+                'deposit_transactions',
+                'withdrawal_events',
+                'batch_deposit_contracts',
+                'alembic_version'
+            ]
+            
+            missing_tables = [t for t in required_tables if t not in tables]
+            if missing_tables:
+                logger.error(f"缺少以下关键表: {', '.join(missing_tables)}")
+                logger.error("数据库迁移可能未完全执行，请手动运行: alembic upgrade head")
+                raise RuntimeError(f"数据库迁移不完整，缺少表: {', '.join(missing_tables)}")
             else:
-                logger.info("validator_keys 表已存在")
+                logger.info("所有关键表已存在，迁移验证通过")
         except Exception as e:
             logger.error(f"验证数据库表时出错: {e}")
+            raise
         finally:
             db.close()
             
