@@ -10,6 +10,7 @@ import ExitList from './components/Exits/ExitList'
 import WithdrawalList from './components/Withdrawals/WithdrawalList'
 import NetworkManager from './components/Network/NetworkManager'
 import BatchContractManager from './components/Contracts/BatchContractManager'
+import Web3SignerMonitor from './components/Web3Signer/Web3SignerMonitor'
 
 const { Content } = Layout
 
@@ -26,6 +27,7 @@ function App() {
             <Route path="/contracts" element={<BatchContractManager />} />
             <Route path="/clients" element={<ClientList />} />
             <Route path="/network" element={<NetworkManager />} />
+            <Route path="/web3signer" element={<Web3SignerMonitor />} />
             <Route path="/exits" element={<ExitList />} />
             <Route path="/withdrawals" element={<WithdrawalList />} />
           </Routes>

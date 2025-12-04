@@ -10,6 +10,7 @@ import {
   WalletOutlined,
   CloudServerOutlined,
   FileTextOutlined,
+  SafetyOutlined,
 } from '@ant-design/icons'
 
 const { Sider } = Layout
@@ -52,6 +53,11 @@ const MainLayout: React.FC<MainLayoutProps> = ({ children }) => {
       key: '/network',
       icon: <CloudServerOutlined />,
       label: '网络管理',
+    },
+    {
+      key: '/web3signer',
+      icon: <SafetyOutlined />,
+      label: 'Web3Signer 监控',
     },
     {
       key: '/exits',

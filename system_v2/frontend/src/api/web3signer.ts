@@ -1,0 +1,71 @@
+import apiClient from './client'
+
+export interface Web3SignerInstanceStatus {
+  healthy: boolean
+  url: string
+}
+
+export interface Web3SignerStatus {
+  primary: Web3SignerInstanceStatus
+  secondary: Web3SignerInstanceStatus
+  haproxy: Web3SignerInstanceStatus
+}
+
+export interface Web3SignerKeyInfo {
+  pubkey: string
+  in_database: boolean
+  status?: string | null
+  activated_at?: string | null
+}
+
+export interface Web3SignerKeysResponse {
+  primary?: {
+    keys: Web3SignerKeyInfo[]
+    count: number
+    error?: string
+  }
+  secondary?: {
+    keys: Web3SignerKeyInfo[]
+    count: number
+    error?: string
+  }
+}
+
+export interface Web3SignerSyncStats {
+  db_active_count: number
+  web3signer_count: number
+  missing_count: number
+  extra_count: number
+  synced_count: number
+}
+
+export interface Web3SignerSyncStatus {
+  primary?: {
+    missing_in_web3signer: string[]
+    extra_in_web3signer: string[]
+    synced: string[]
+    stats: Web3SignerSyncStats
+    error?: string
+  }
+  secondary?: {
+    missing_in_web3signer: string[]
+    extra_in_web3signer: string[]
+    synced: string[]
+    stats: Web3SignerSyncStats
+    error?: string
+  }
+}
+
+export const web3signerApi = {
+  // 获取 Web3Signer 状态
+  getStatus: () => apiClient.get('/web3signer/status') as Promise<Web3SignerStatus>,
+
+  // 获取 Web3Signer 密钥列表
+  getKeys: (instance: 'primary' | 'secondary' | 'both' = 'both') =>
+    apiClient.get('/web3signer/keys', { params: { instance } }) as Promise<Web3SignerKeysResponse>,
+
+  // 获取同步状态
+  getSyncStatus: (instance: 'primary' | 'secondary' | 'both' = 'both') =>
+    apiClient.get('/web3signer/sync-status', { params: { instance } }) as Promise<Web3SignerSyncStatus>,
+}
+

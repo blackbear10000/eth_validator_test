@@ -294,3 +294,47 @@ class NetworkInfoResponse(BaseModel):
     error: Optional[str] = None
     status: Optional[Dict[str, Any]] = None
 
+
+# ==================== Web3Signer 监控相关 Schemas ====================
+
+class Web3SignerInstanceStatus(BaseModel):
+    """Web3Signer 实例状态"""
+    healthy: bool
+    url: str
+
+
+class Web3SignerStatusResponse(BaseModel):
+    """Web3Signer 状态响应"""
+    primary: Web3SignerInstanceStatus
+    secondary: Web3SignerInstanceStatus
+    haproxy: Web3SignerInstanceStatus
+
+
+class Web3SignerKeyInfo(BaseModel):
+    """Web3Signer 密钥信息"""
+    pubkey: str
+    in_database: bool
+    status: Optional[str] = None
+    activated_at: Optional[str] = None
+
+
+class Web3SignerKeysResponse(BaseModel):
+    """Web3Signer 密钥列表响应"""
+    primary: Optional[Dict[str, Any]] = None
+    secondary: Optional[Dict[str, Any]] = None
+
+
+class Web3SignerSyncStats(BaseModel):
+    """Web3Signer 同步统计"""
+    db_active_count: int
+    web3signer_count: int
+    missing_count: int
+    extra_count: int
+    synced_count: int
+
+
+class Web3SignerSyncStatusResponse(BaseModel):
+    """Web3Signer 同步状态响应"""
+    primary: Optional[Dict[str, Any]] = None
+    secondary: Optional[Dict[str, Any]] = None
+

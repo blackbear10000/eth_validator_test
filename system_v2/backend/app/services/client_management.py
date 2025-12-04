@@ -539,6 +539,27 @@ url = "{client_instance.web3signer_url}"
                 pubkey_list = [ck.pubkey for ck in assigned_keys]
                 self.generate_config_files(client_instance, pubkey_list)
                 
+                # 检查是否有 ACTIVE 状态的密钥需要加载到 Web3Signer
+                active_pubkeys = [
+                    ck.pubkey for ck in assigned_keys
+                    if self.db.query(ValidatorKey).filter(
+                        ValidatorKey.pubkey == ck.pubkey,
+                        ValidatorKey.status == ValidatorKeyStatus.ACTIVE.value
+                    ).first()
+                ]
+                
+                # 如果有 ACTIVE 状态的密钥，确保 Web3Signer 已加载
+                if active_pubkeys:
+                    try:
+                        logger.info(f"触发 Web3Signer 重新加载密钥（分配了 {len(active_pubkeys)} 个 ACTIVE 密钥）...")
+                        reload_result = self.web3signer_client.zero_downtime_reload(wait_for_health=True)
+                        if reload_result.get('success'):
+                            logger.info(f"Web3Signer 密钥重新加载成功，已分配的 ACTIVE 密钥已自动加载")
+                        else:
+                            logger.warning(f"Web3Signer 密钥重新加载可能失败: {reload_result.get('error')}")
+                    except Exception as e:
+                        logger.warning(f"自动加载密钥到 Web3Signer 失败: {e}，密钥已分配但需要手动触发 Web3Signer 重新加载")
+                
                 # 如果使用 Remote Validator API，动态添加密钥到 Validator Client
                 if use_remote_keymanager:
                     try:
@@ -743,12 +764,12 @@ url = "{client_instance.web3signer_url}"
             logger.error(f"同步密钥到 Validator Client 失败: {e}")
             raise ClientManagementError(f"同步密钥失败: {e}")
     
-    def sync_all_active_keys_to_validator_client(
+    def sync_client_keys_to_validator_client(
         self,
         client_instance: ClientInstance
     ) -> Dict[str, Any]:
         """
-        将所有 ACTIVE 和 DEPOSIT_DATA_GENERATED 状态的密钥同步到 Validator Client
+        将分配给该客户端的密钥同步到 Validator Client（通过 Remote Validator API）
         
         Args:
             client_instance: 客户端实例
@@ -757,18 +778,34 @@ url = "{client_instance.web3signer_url}"
             同步结果
         """
         try:
-            # 获取所有应该加载的密钥（ACTIVE 和 DEPOSIT_DATA_GENERATED 状态）
-            active_keys = self.db.query(ValidatorKey).filter(
+            # 获取分配给该客户端的密钥（通过 ValidatorClientKey 表）
+            client_keys = self.db.query(ValidatorClientKey).filter(
+                ValidatorClientKey.client_id == client_instance.id,
+                ValidatorClientKey.status == "active"
+            ).all()
+            
+            if not client_keys:
+                logger.info(f"客户端 {client_instance.name} 没有分配的密钥")
+                return {
+                    'added': [],
+                    'removed': [],
+                    'errors': []
+                }
+            
+            # 获取这些密钥对应的 ValidatorKey，只包含 ACTIVE 和 DEPOSIT_DATA_GENERATED 状态
+            pubkeys = [ck.pubkey for ck in client_keys]
+            validator_keys = self.db.query(ValidatorKey).filter(
+                ValidatorKey.pubkey.in_(pubkeys),
                 ValidatorKey.status.in_([
                     ValidatorKeyStatus.ACTIVE.value,
                     ValidatorKeyStatus.DEPOSIT_DATA_GENERATED.value
                 ])
             ).all()
             
-            pubkeys = [key.pubkey for key in active_keys]
+            target_pubkeys = [key.pubkey for key in validator_keys]
             
-            if not pubkeys:
-                logger.info("没有需要同步的密钥")
+            if not target_pubkeys:
+                logger.info(f"客户端 {client_instance.name} 没有需要同步的密钥（ACTIVE 或 DEPOSIT_DATA_GENERATED 状态）")
                 return {
                     'added': [],
                     'removed': [],
@@ -793,9 +830,9 @@ url = "{client_instance.web3signer_url}"
                 current_pubkeys = set()
             
             # 计算需要添加和删除的密钥
-            target_pubkeys = set(pubkeys)
-            to_add = list(target_pubkeys - current_pubkeys)
-            to_remove = list(current_pubkeys - target_pubkeys)
+            target_pubkeys_set = set(target_pubkeys)
+            to_add = list(target_pubkeys_set - current_pubkeys)
+            to_remove = list(current_pubkeys - target_pubkeys_set)
             
             result = {
                 'added': [],

@@ -9,7 +9,7 @@ import time
 
 from app.config import settings
 from app.utils.logger import configure_logging
-from app.api.v1 import keys, deposits, clients, monitoring, exits, withdrawals, network
+from app.api.v1 import keys, deposits, clients, monitoring, exits, withdrawals, network, web3signer
 from app.core.background_tasks import start_background_tasks, stop_background_tasks
 
 # 配置日志
@@ -78,6 +78,7 @@ app.include_router(monitoring.router, prefix=settings.api_v1_prefix, tags=["moni
 app.include_router(exits.router, prefix=settings.api_v1_prefix, tags=["exits"])
 app.include_router(withdrawals.router, prefix=settings.api_v1_prefix, tags=["withdrawals"])
 app.include_router(network.router, prefix=settings.api_v1_prefix, tags=["network"])
+app.include_router(web3signer.router, prefix=settings.api_v1_prefix, tags=["web3signer"])
 
 
 # 根路径

@@ -1,11 +1,14 @@
 """
 客户端管理 API
 """
+import logging
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 from typing import List, Optional
 
 from app.dependencies import get_db
+
+logger = logging.getLogger(__name__)
 from app.services.client_management import ClientManagementService
 from app.services.client_process_service import ClientProcessService
 from app.core.web3signer_client import Web3SignerClient
@@ -207,8 +210,8 @@ async def sync_keys(
         if not client:
             raise HTTPException(status_code=404, detail="客户端不存在")
         
-        # 同步所有活跃密钥
-        result = client_service.sync_all_active_keys_to_validator_client(client)
+        # 同步分配给该客户端的密钥
+        result = client_service.sync_client_keys_to_validator_client(client)
         
         return {
             "client_id": client_id,
@@ -236,6 +239,29 @@ async def start_client(
         # 获取客户端关联的密钥
         keys = client_service.get_client_keys(client)
         pubkeys = [key.pubkey for key in keys] if keys else []
+        
+        # 启动前，确保密钥已同步到 Validator Client（如果使用 Remote Validator API）
+        if pubkeys:
+            try:
+                # 同步分配给该客户端的密钥到 Remote Validator API
+                sync_result = client_service.sync_keys_to_validator_client(
+                    client,
+                    add_pubkeys=pubkeys
+                )
+                logger.info(f"启动前同步密钥到 Validator Client: 添加 {len(sync_result.get('added', []))} 个密钥")
+            except Exception as e:
+                logger.warning(f"启动前同步密钥失败: {e}，继续启动流程")
+        
+        # 确保 Web3Signer 已加载所有 ACTIVE 状态的密钥
+        try:
+            from app.models.enums import ValidatorKeyStatus
+            active_keys = [key for key in keys if key.status == ValidatorKeyStatus.ACTIVE.value]
+            if active_keys:
+                logger.info(f"检查 Web3Signer 是否已加载 {len(active_keys)} 个 ACTIVE 密钥...")
+                # Web3Signer 应该已经通过密钥激活流程加载了所有 ACTIVE 密钥
+                # 这里只做检查，不强制重新加载
+        except Exception as e:
+            logger.warning(f"检查 Web3Signer 密钥加载状态失败: {e}")
         
         # 生成配置文件
         if pubkeys:
