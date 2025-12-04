@@ -21,7 +21,7 @@ from app.models.schemas import (
     BatchDepositContractResponse,
     BatchContractStatistics
 )
-from app.models.database import BatchDepositContract
+from app.models.database import BatchDepositContract, DepositTransaction
 from web3 import Web3
 from typing import Optional
 
@@ -174,10 +174,23 @@ async def submit_deposits(
             
             for result in results:
                 if result['status'] == 'submitted':
-                    # 查找对应的验证者密钥
+                    # 规范化 pubkey：移除 0x 前缀（如果有），转为小写
+                    pubkey_raw = result['pubkey']
+                    pubkey_normalized = pubkey_raw.lower().replace('0x', '')
+                    # 数据库中的 pubkey 格式是 0x + 96字符，所以需要添加 0x 前缀
+                    pubkey_db_format = f"0x{pubkey_normalized}" if not pubkey_normalized.startswith('0x') else pubkey_normalized
+                    
+                    # 查找对应的验证者密钥（尝试两种格式）
                     validator_key = db.query(ValidatorKey).filter(
-                        ValidatorKey.pubkey == result['pubkey'].lower()
+                        (ValidatorKey.pubkey == pubkey_db_format) | 
+                        (ValidatorKey.pubkey == pubkey_normalized)
                     ).first()
+                    
+                    if not validator_key:
+                        # 如果还是找不到，尝试直接匹配原始格式
+                        validator_key = db.query(ValidatorKey).filter(
+                            ValidatorKey.pubkey == pubkey_raw.lower()
+                        ).first()
                     
                     if validator_key:
                         # 创建存款交易记录

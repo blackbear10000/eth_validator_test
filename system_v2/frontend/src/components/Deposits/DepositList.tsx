@@ -99,6 +99,8 @@ const DepositList: React.FC = () => {
   }
 
 
+  const [submitting, setSubmitting] = useState(false)
+
   const handleSubmit = async (values: {
     from_address: string
     private_key: string
@@ -111,6 +113,7 @@ const DepositList: React.FC = () => {
       return
     }
 
+    setSubmitting(true)
     try {
       const response = await depositsApi.submit(
         generatedDepositData,
@@ -148,10 +151,21 @@ const DepositList: React.FC = () => {
       setSubmitModalVisible(false)
       submitForm.resetFields()
       setGeneratedDepositData([])
-      loadDeposits()
+      // 延迟加载，确保后端已保存记录
+      setTimeout(() => {
+        loadDeposits()
+      }, 1000)
     } catch (error: any) {
-      message.error(`提交存款失败: ${error.message}`)
+      let errorMessage = '提交存款失败'
+      if (error?.message) {
+        errorMessage = error.message
+      } else if (error?.response?.data?.detail) {
+        errorMessage = error.response.data.detail
+      }
+      message.error(`提交存款失败: ${errorMessage}`)
       console.error('提交存款错误详情:', error)
+    } finally {
+      setSubmitting(false)
     }
   }
 
@@ -403,6 +417,7 @@ const DepositList: React.FC = () => {
           setGeneratedDepositData([])
         }}
         onOk={() => submitForm.submit()}
+        confirmLoading={submitting}
         width={800}
       >
         <Form form={submitForm} layout="vertical" onFinish={handleSubmit}>

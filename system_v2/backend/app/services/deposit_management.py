@@ -180,12 +180,23 @@ class DepositManagementService:
                     # 为每个验证者创建存款交易记录
                     for i, pubkey in enumerate(pubkeys):
                         try:
-                            # 规范化 pubkey（移除 0x 前缀，转为小写）
-                            pubkey_normalized = pubkey.lower().replace('0x', '')
+                            # 规范化 pubkey：移除 0x 前缀（如果有），转为小写
+                            pubkey_raw = pubkey
+                            pubkey_normalized = pubkey_raw.lower().replace('0x', '')
+                            # 数据库中的 pubkey 格式是 0x + 96字符，所以需要添加 0x 前缀
+                            pubkey_db_format = f"0x{pubkey_normalized}" if not pubkey_normalized.startswith('0x') else pubkey_normalized
                             
+                            # 查找对应的验证者密钥（尝试两种格式）
                             validator_key = self.db.query(ValidatorKey).filter(
-                                ValidatorKey.pubkey == pubkey_normalized
+                                (ValidatorKey.pubkey == pubkey_db_format) | 
+                                (ValidatorKey.pubkey == pubkey_normalized)
                             ).first()
+                            
+                            if not validator_key:
+                                # 如果还是找不到，尝试直接匹配原始格式
+                                validator_key = self.db.query(ValidatorKey).filter(
+                                    ValidatorKey.pubkey == pubkey_raw.lower()
+                                ).first()
                             
                             if not validator_key:
                                 logger.warning(f"未找到验证者密钥: {pubkey[:20]}... (规范化后: {pubkey_normalized[:20]}...)")

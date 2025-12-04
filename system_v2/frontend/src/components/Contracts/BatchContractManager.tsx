@@ -32,6 +32,7 @@ const { Title } = Typography
 const BatchContractManager: React.FC = () => {
   const [contracts, setContracts] = useState<BatchDepositContract[]>([])
   const [loading, setLoading] = useState(false)
+  const [deploying, setDeploying] = useState(false)
   const [deployModalVisible, setDeployModalVisible] = useState(false)
   const [detailModalVisible, setDetailModalVisible] = useState(false)
   const [selectedContract, setSelectedContract] = useState<BatchDepositContract | null>(null)
@@ -116,6 +117,7 @@ const BatchContractManager: React.FC = () => {
 
   // 部署合约
   const handleDeployContract = async (values: any) => {
+    setDeploying(true)
     try {
       // 如果没有提供 deposit_contract_address，尝试从网络信息获取
       if (!values.deposit_contract_address) {
@@ -145,6 +147,8 @@ const BatchContractManager: React.FC = () => {
       }
       message.error(`部署合约失败: ${errorMessage}`)
       console.error('部署合约错误详情:', error)
+    } finally {
+      setDeploying(false)
     }
   }
 
@@ -287,6 +291,7 @@ const BatchContractManager: React.FC = () => {
           deployForm.resetFields()
         }}
         onOk={() => deployForm.submit()}
+        confirmLoading={deploying}
         width={600}
       >
         <Form form={deployForm} layout="vertical" onFinish={handleDeployContract}>
