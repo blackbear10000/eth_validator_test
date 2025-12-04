@@ -35,7 +35,6 @@ const DepositList: React.FC = () => {
   const [loading, setLoading] = useState(false)
   const [generateModalVisible, setGenerateModalVisible] = useState(false)
   const [submitModalVisible, setSubmitModalVisible] = useState(false)
-  const [deployModalVisible, setDeployModalVisible] = useState(false)
   const [detailModalVisible, setDetailModalVisible] = useState(false)
   const [selectedDeposit, setSelectedDeposit] = useState<DepositTransaction | null>(null)
   const [availableKeys, setAvailableKeys] = useState<any[]>([])
@@ -45,16 +44,23 @@ const DepositList: React.FC = () => {
   const [syncing, setSyncing] = useState(false)
   const [form] = Form.useForm()
   const [submitForm] = Form.useForm()
-  const [deployForm] = Form.useForm()
+
+  // 将 RPC URL 中的 localhost 替换为 host.docker.internal
+  const replaceLocalhostWithDockerHost = (url: string | undefined): string | undefined => {
+    if (!url) return url
+    return url.replace(/localhost/g, 'host.docker.internal')
+  }
 
   const loadRpcEndpoints = async () => {
     try {
       const endpoints = await networkApi.getRpcEndpoints()
-      setRpcEndpoints(endpoints)
-      // 如果获取到了 RPC URL，自动填充到表单
-      if (endpoints.host_rpc_url && !deployForm.getFieldValue('rpc_url')) {
-        deployForm.setFieldsValue({ rpc_url: endpoints.host_rpc_url })
+      // 替换 localhost 为 host.docker.internal
+      const processedEndpoints = {
+        ...endpoints,
+        host_rpc_url: replaceLocalhostWithDockerHost(endpoints.host_rpc_url),
+        rpc_url: replaceLocalhostWithDockerHost(endpoints.rpc_url),
       }
+      setRpcEndpoints(processedEndpoints)
     } catch (error: any) {
       console.warn('无法获取 RPC 端点:', error)
     }
@@ -110,7 +116,7 @@ const DepositList: React.FC = () => {
       const response = await depositsApi.listBatchContracts() as any
       setBatchContracts(response || [])
     } catch (error: any) {
-      message.error(`加载 Batch Deposit 合约列表失败: ${error.message}`)
+      console.warn(`加载 Batch Deposit 合约列表失败: ${error.message}`)
     }
   }
 
@@ -170,52 +176,6 @@ const DepositList: React.FC = () => {
     }
   }
 
-  const handleDeployContract = async (values: {
-    deployer_private_key: string
-    network_name: string
-    rpc_url?: string
-    deposit_contract_address?: string
-    initial_fee?: number
-    gas_price?: number
-    gas_limit?: number
-  }) => {
-    try {
-      // 如果没有提供 deposit_contract_address，尝试从网络信息获取
-      if (!values.deposit_contract_address) {
-        try {
-          const response = await networkApi.getInfo()
-          const networkInfo = response.data as NetworkInfo
-          if (networkInfo.deposit_contract_address) {
-            values.deposit_contract_address = networkInfo.deposit_contract_address
-          }
-        } catch (e) {
-          console.warn('无法从网络信息获取 deposit_contract_address:', e)
-        }
-      }
-      
-      const result = await depositsApi.deployBatchContract(values) as any
-      message.success(`Batch Deposit 合约部署成功: ${result.contract_address}`)
-      setDeployModalVisible(false)
-      deployForm.resetFields()
-      loadBatchContracts()
-    } catch (error: any) {
-      // 提取错误消息
-      let errorMessage = '部署合约失败'
-      if (error?.message) {
-        errorMessage = error.message
-      } else if (typeof error === 'string') {
-        errorMessage = error
-      } else if (error?.response?.data?.detail) {
-        errorMessage = error.response.data.detail
-      } else if (error?.response?.data?.message) {
-        errorMessage = error.response.data.message
-      } else if (error?.detail) {
-        errorMessage = error.detail
-      }
-      message.error(`部署合约失败: ${errorMessage}`)
-      console.error('部署合约错误详情:', error)
-    }
-  }
 
   const handleSync = async (txHash?: string) => {
     try {
@@ -620,116 +580,6 @@ const DepositList: React.FC = () => {
         </Form>
       </Modal>
 
-      {/* 部署 Batch Deposit 合约模态框 */}
-      <Modal
-        title="部署 Batch Deposit 合约"
-        open={deployModalVisible}
-        onCancel={() => {
-          setDeployModalVisible(false)
-          deployForm.resetFields()
-        }}
-        onOk={() => deployForm.submit()}
-        width={600}
-      >
-        <Form form={deployForm} layout="vertical" onFinish={handleDeployContract}>
-          <Form.Item
-            name="network_name"
-            label="网络名称"
-            rules={[{ required: true, message: '请输入网络名称' }]}
-            initialValue="kurtosis-devnet"
-          >
-            <Input placeholder="例如: kurtosis-devnet, mainnet" />
-          </Form.Item>
-          <Form.Item
-            name="rpc_url"
-            label="RPC URL（可选，留空则自动从 Kurtosis 网络获取）"
-            help={
-              <div>
-                {rpcEndpoints?.host_rpc_url ? (
-                  <div style={{ marginBottom: 8 }}>
-                    <Text type="success">✓ 已自动检测到 RPC URL: </Text>
-                    <Text copyable={{ text: rpcEndpoints.host_rpc_url }} code>
-                      {rpcEndpoints.host_rpc_url}
-                    </Text>
-                  </div>
-                ) : rpcEndpoints?.error ? (
-                  <div style={{ marginBottom: 8 }}>
-                    <Text type="warning">⚠ {rpcEndpoints.error}</Text>
-                  </div>
-                ) : null}
-                <div style={{ marginTop: 8 }}>
-                  <strong>如何手动获取 RPC URL：</strong>
-                  <ol style={{ marginTop: 4, paddingLeft: 20, fontSize: '12px' }}>
-                    <li>在服务器上运行：<code>docker ps | grep el-</code> 查找执行层容器（如 el-1-geth-prysm）</li>
-                    <li>运行：<code>docker port &lt;容器名&gt;</code> 查看端口映射</li>
-                    <li>找到 <code>8545/tcp</code> 端口映射，格式如：<code>0.0.0.0:33697 -&gt; 8545/tcp</code></li>
-                    <li>
-                      <strong>从主机访问：</strong>使用 <code>http://localhost:33697</code>（使用映射的主机端口）
-                    </li>
-                    <li>
-                      <strong>从 Docker 容器内访问：</strong>使用 <code>http://host.docker.internal:33697</code> 或 <code>http://172.18.0.1:33697</code>
-                    </li>
-                  </ol>
-                </div>
-              </div>
-            }
-          >
-            <Input 
-              placeholder={rpcEndpoints?.host_rpc_url || "http://localhost:8545（留空则自动获取）"} 
-            />
-          </Form.Item>
-          <Form.Item
-            name="deployer_private_key"
-            label="部署者私钥"
-            rules={[
-              { required: true, message: '请输入部署者私钥' },
-              { pattern: /^0x[a-fA-F0-9]{64}$/, message: '请输入有效的私钥（64 个十六进制字符，0x开头）' },
-            ]}
-          >
-            <Input.Password placeholder="0x..." />
-          </Form.Item>
-          <Form.Item
-            name="deposit_contract_address"
-            label="官方 Deposit 合约地址（可选，留空则自动从网络配置获取）"
-            help="如果不提供，系统会尝试从 Kurtosis 网络配置中自动获取"
-          >
-            <Input placeholder="0x4242424242424242424242424242424242424242（留空则自动获取）" />
-          </Form.Item>
-          <Form.Item
-            name="initial_fee"
-            label="初始费用（可选，默认 0，必须是 gwei 的倍数）"
-            help="1 gwei = 10^9 wei，例如：0 gwei = 0, 1 gwei = 1000000000"
-          >
-            <InputNumber
-              style={{ width: '100%' }}
-              placeholder="初始费用（wei）"
-              min={0}
-              step={1000000000}
-            />
-          </Form.Item>
-          <Form.Item
-            name="gas_price"
-            label="Gas 价格（可选，留空则使用网络建议价格）"
-          >
-            <InputNumber
-              style={{ width: '100%' }}
-              placeholder="Gas 价格（wei）"
-              min={0}
-            />
-          </Form.Item>
-          <Form.Item
-            name="gas_limit"
-            label="Gas 限制（可选，默认 5000000）"
-          >
-            <InputNumber
-              style={{ width: '100%' }}
-              placeholder="Gas 限制"
-              min={1000000}
-              max={10000000}
-            />
-          </Form.Item>
-        </Form>
-      </Modal>
       {/* 存款详情模态框 */}
       <Modal
         title="存款交易详情"

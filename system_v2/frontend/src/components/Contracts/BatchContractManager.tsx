@@ -42,14 +42,26 @@ const BatchContractManager: React.FC = () => {
   
   const [deployForm] = Form.useForm()
 
+  // 将 RPC URL 中的 localhost 替换为 host.docker.internal
+  const replaceLocalhostWithDockerHost = (url: string | undefined): string | undefined => {
+    if (!url) return url
+    return url.replace(/localhost/g, 'host.docker.internal')
+  }
+
   // 加载合约列表
   const loadContracts = async () => {
     setLoading(true)
     try {
-      const response = await depositsApi.listBatchContracts()
-      setContracts(response.data || [])
+      const response = await depositsApi.listBatchContracts() as any
+      // apiClient 的响应拦截器已经返回了 response.data，所以这里直接使用 response
+      // 如果 response 是数组，直接使用；否则尝试 response.data
+      const contractsList = Array.isArray(response) ? response : (response?.data || response || [])
+      setContracts(contractsList)
+      console.log('加载的合约列表:', contractsList, '总数:', contractsList.length)
     } catch (error: any) {
       message.error(`加载合约列表失败: ${error.message}`)
+      console.error('加载合约列表错误:', error)
+      setContracts([])
     } finally {
       setLoading(false)
     }
@@ -59,7 +71,13 @@ const BatchContractManager: React.FC = () => {
   const loadRpcEndpoints = async () => {
     try {
       const endpoints = await networkApi.getRpcEndpoints()
-      setRpcEndpoints(endpoints)
+      // 替换 localhost 为 host.docker.internal
+      const processedEndpoints = {
+        ...endpoints,
+        host_rpc_url: replaceLocalhostWithDockerHost(endpoints.host_rpc_url),
+        rpc_url: replaceLocalhostWithDockerHost(endpoints.rpc_url),
+      }
+      setRpcEndpoints(processedEndpoints)
     } catch (error) {
       console.warn('无法获取 RPC 端点:', error)
     }
@@ -68,8 +86,8 @@ const BatchContractManager: React.FC = () => {
   // 加载网络信息
   const loadNetworkInfo = async () => {
     try {
-      const response = await networkApi.getInfo()
-      setNetworkInfo(response.data)
+      const response = await networkApi.getInfo() as any
+      setNetworkInfo(response.data || response)
     } catch (error) {
       console.warn('无法获取网络信息:', error)
     }
@@ -79,8 +97,9 @@ const BatchContractManager: React.FC = () => {
   const loadStatistics = async (contractId: number) => {
     setStatisticsLoading(true)
     try {
-      const response = await depositsApi.getBatchContractStatistics(contractId)
-      setStatistics(response.data)
+      const response = await depositsApi.getBatchContractStatistics(contractId) as any
+      // apiClient 的响应拦截器已经返回了 response.data
+      setStatistics(response.data || response)
     } catch (error: any) {
       message.error(`加载统计数据失败: ${error.message}`)
       setStatistics(null)
@@ -105,8 +124,15 @@ const BatchContractManager: React.FC = () => {
         }
       }
 
+      // 替换 RPC URL 中的 localhost 为 host.docker.internal
+      if (values.rpc_url) {
+        values.rpc_url = replaceLocalhostWithDockerHost(values.rpc_url)
+      }
+
       const result = await depositsApi.deployBatchContract(values) as any
-      message.success(`Batch Deposit 合约部署成功: ${result.data?.contract_address || result.contract_address}`)
+      // apiClient 的响应拦截器已经返回了 response.data
+      const contractAddress = result?.contract_address || result?.data?.contract_address
+      message.success(`Batch Deposit 合约部署成功: ${contractAddress}`)
       setDeployModalVisible(false)
       deployForm.resetFields()
       loadContracts()
@@ -291,7 +317,7 @@ const BatchContractManager: React.FC = () => {
             }
           >
             <Input
-              placeholder={rpcEndpoints?.host_rpc_url || "http://localhost:8545（留空则自动获取）"}
+              placeholder={rpcEndpoints?.host_rpc_url || "http://host.docker.internal:8545（留空则自动获取）"}
             />
           </Form.Item>
           <Form.Item

@@ -34,14 +34,14 @@ const MainLayout: React.FC<MainLayoutProps> = ({ children }) => {
       label: '密钥管理',
     },
     {
-      key: '/deposits',
-      icon: <BankOutlined />,
-      label: '存款管理',
-    },
-    {
       key: '/contracts',
       icon: <FileTextOutlined />,
       label: '合约管理',
+    },
+    {
+      key: '/deposits',
+      icon: <BankOutlined />,
+      label: '存款管理',
     },
     {
       key: '/clients',
