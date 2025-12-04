@@ -105,6 +105,21 @@ class BatchDepositContractResponse(BaseModel):
     model_config = {"from_attributes": True}
 
 
+class BatchContractStatistics(BaseModel):
+    """Batch Deposit 合约统计数据"""
+    contract_id: int
+    contract_address: str
+    deposit_count: int = Field(0, description="存款交易数量")
+    total_amount_eth: float = Field(0.0, description="总存款金额（ETH）")
+    validator_count: int = Field(0, description="验证者数量（去重）")
+    contract_fee_wei: Optional[int] = Field(None, description="合约当前费用（wei）")
+    contract_fee_gwei: Optional[float] = Field(None, description="合约当前费用（gwei）")
+    contract_balance_wei: Optional[int] = Field(None, description="合约余额（wei）")
+    contract_balance_eth: Optional[float] = Field(None, description="合约余额（ETH）")
+    is_paused: Optional[bool] = Field(None, description="合约是否暂停")
+    owner_address: Optional[str] = Field(None, description="合约所有者地址")
+
+
 class BatchDepositSubmit(BaseModel):
     """批量存款提交请求"""
     deposit_data_list: List[DepositDataResponse]

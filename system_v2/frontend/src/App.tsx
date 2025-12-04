@@ -9,6 +9,7 @@ import Dashboard from './components/Monitoring/Dashboard'
 import ExitList from './components/Exits/ExitList'
 import WithdrawalList from './components/Withdrawals/WithdrawalList'
 import NetworkManager from './components/Network/NetworkManager'
+import BatchContractManager from './components/Contracts/BatchContractManager'
 
 const { Content } = Layout
 
@@ -22,6 +23,7 @@ function App() {
             <Route path="/keys" element={<KeyPoolOverview />} />
             <Route path="/keys/list" element={<KeyList />} />
             <Route path="/deposits" element={<DepositList />} />
+            <Route path="/contracts" element={<BatchContractManager />} />
             <Route path="/clients" element={<ClientList />} />
             <Route path="/network" element={<NetworkManager />} />
             <Route path="/exits" element={<ExitList />} />

@@ -90,5 +90,27 @@ export const depositsApi = {
     apiClient.get('/deposits/batch-contract/list', {
       params: networkName ? { network_name: networkName } : {},
     }),
+
+  // 获取单个 Batch Deposit 合约详情
+  getBatchContract: (contractId: number) =>
+    apiClient.get(`/deposits/batch-contract/${contractId}`),
+
+  // 获取 Batch Deposit 合约统计数据
+  getBatchContractStatistics: (contractId: number) =>
+    apiClient.get(`/deposits/batch-contract/${contractId}/statistics`),
+}
+
+export interface BatchContractStatistics {
+  contract_id: number
+  contract_address: string
+  deposit_count: number
+  total_amount_eth: number
+  validator_count: number
+  contract_fee_wei?: number
+  contract_fee_gwei?: number
+  contract_balance_wei?: number
+  contract_balance_eth?: number
+  is_paused?: boolean
+  owner_address?: string
 }
 

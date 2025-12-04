@@ -9,6 +9,7 @@ import {
   ExportOutlined,
   WalletOutlined,
   CloudServerOutlined,
+  FileTextOutlined,
 } from '@ant-design/icons'
 
 const { Sider } = Layout
@@ -36,6 +37,11 @@ const MainLayout: React.FC<MainLayoutProps> = ({ children }) => {
       key: '/deposits',
       icon: <BankOutlined />,
       label: '存款管理',
+    },
+    {
+      key: '/contracts',
+      icon: <FileTextOutlined />,
+      label: '合约管理',
     },
     {
       key: '/clients',

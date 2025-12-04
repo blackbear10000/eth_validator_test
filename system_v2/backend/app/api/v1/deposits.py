@@ -18,7 +18,8 @@ from app.models.schemas import (
     BatchDepositSubmit,
     DepositTransactionResponse,
     BatchDepositDeployRequest,
-    BatchDepositContractResponse
+    BatchDepositContractResponse,
+    BatchContractStatistics
 )
 from app.models.database import BatchDepositContract
 from web3 import Web3
@@ -467,5 +468,218 @@ async def list_batch_contracts(
         
     except Exception as e:
         logger.error(f"列出 Batch Deposit 合约失败: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/deposits/batch-contract/{contract_id}", response_model=BatchDepositContractResponse)
+async def get_batch_contract(
+    contract_id: int,
+    db: Session = Depends(get_db)
+):
+    """获取单个 Batch Deposit 合约详情"""
+    try:
+        contract = db.query(BatchDepositContract).filter(
+            BatchDepositContract.id == contract_id
+        ).first()
+        
+        if not contract:
+            raise HTTPException(status_code=404, detail=f"合约不存在: {contract_id}")
+        
+        return BatchDepositContractResponse.model_validate(contract)
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"获取 Batch Deposit 合约详情失败: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/deposits/batch-contract/{contract_id}/statistics", response_model=BatchContractStatistics)
+async def get_batch_contract_statistics(
+    contract_id: int,
+    db: Session = Depends(get_db)
+):
+    """获取 Batch Deposit 合约统计数据"""
+    try:
+        from sqlalchemy import func, distinct
+        from decimal import Decimal
+        
+        # 获取合约信息
+        contract = db.query(BatchDepositContract).filter(
+            BatchDepositContract.id == contract_id
+        ).first()
+        
+        if not contract:
+            raise HTTPException(status_code=404, detail=f"合约不存在: {contract_id}")
+        
+        contract_address = contract.contract_address.lower()
+        
+        # 统计存款交易：通过查询交易收据获取 to 地址匹配合约地址
+        # 由于 DepositTransaction 表中没有直接存储合约地址，我们需要通过 Web3 查询
+        # 但为了性能，我们先统计所有有 batch_id 的交易（这些通常是批量存款）
+        # 然后通过 Web3 验证哪些交易确实是发送到该合约的
+        
+        # 方法1：通过 Web3 查询所有相关交易（较慢但准确）
+        # 方法2：先统计所有 batch_id 不为空的交易，然后通过 Web3 过滤（折中方案）
+        # 方法3：假设所有 batch_id 不为空的交易都是通过 Batch Deposit 合约提交的（快速但不完全准确）
+        
+        # 为了性能，我们使用方法3，但添加一个可选的 Web3 验证
+        # 首先，统计所有有 batch_id 的交易（这些通常是批量存款）
+        deposit_query = db.query(DepositTransaction).filter(
+            DepositTransaction.batch_id.isnot(None)
+        )
+        
+        # 通过 Web3 验证哪些交易确实是发送到该合约的
+        try:
+            from app.services.network_service import NetworkService
+            from app.config import settings
+            from web3 import Web3
+            
+            # 获取 RPC URL
+            rpc_url = contract.rpc_url
+            if not rpc_url:
+                try:
+                    network_service = NetworkService()
+                    rpc_endpoints = network_service.get_rpc_endpoints()
+                    if rpc_endpoints.get("rpc_url") and not rpc_endpoints.get("error"):
+                        rpc_url = rpc_endpoints["rpc_url"]
+                except Exception:
+                    pass
+            
+            if not rpc_url:
+                rpc_url = settings.execution_rpc_url
+            
+            if rpc_url:
+                web3 = Web3(Web3.HTTPProvider(rpc_url))
+                if web3.is_connected():
+                    # 获取所有唯一的 tx_hash
+                    all_tx_hashes = db.query(DepositTransaction.tx_hash).filter(
+                        DepositTransaction.batch_id.isnot(None)
+                    ).distinct().all()
+                    
+                    # 验证哪些交易是发送到该合约的
+                    valid_tx_hashes = []
+                    for (tx_hash,) in all_tx_hashes:
+                        try:
+                            tx = web3.eth.get_transaction(tx_hash)
+                            if tx and tx.to and tx.to.lower() == contract_address:
+                                valid_tx_hashes.append(tx_hash)
+                        except Exception as e:
+                            logger.warning(f"无法获取交易 {tx_hash} 的信息: {e}")
+                    
+                    # 过滤出有效的交易
+                    if valid_tx_hashes:
+                        deposit_query = deposit_query.filter(
+                            DepositTransaction.tx_hash.in_(valid_tx_hashes)
+                        )
+                    else:
+                        # 如果没有找到有效交易，返回空统计
+                        deposit_query = deposit_query.filter(False)
+        except Exception as e:
+            logger.warning(f"无法通过 Web3 验证交易，使用简化统计: {e}")
+            # 如果 Web3 查询失败，我们仍然可以返回基于 batch_id 的统计
+            # 但这可能不够准确
+        
+        # 统计存款数量
+        deposit_count = deposit_query.count()
+        
+        # 统计总金额和验证者数量
+        if deposit_count > 0:
+            total_amount_result = deposit_query.with_entities(
+                func.sum(DepositTransaction.amount_eth)
+            ).scalar()
+            total_amount_eth = float(total_amount_result) if total_amount_result else 0.0
+            
+            validator_count_result = deposit_query.with_entities(
+                func.count(distinct(DepositTransaction.pubkey))
+            ).scalar()
+            validator_count = validator_count_result or 0
+        else:
+            total_amount_eth = 0.0
+            validator_count = 0
+        
+        # 获取合约链上信息（费用、余额等）
+        contract_fee_wei = None
+        contract_fee_gwei = None
+        contract_balance_wei = None
+        contract_balance_eth = None
+        is_paused = None
+        owner_address = None
+        
+        try:
+            from app.core.batch_deposit import BatchDepositClient
+            
+            # 获取 RPC URL
+            rpc_url = contract.rpc_url
+            if not rpc_url:
+                try:
+                    network_service = NetworkService()
+                    rpc_endpoints = network_service.get_rpc_endpoints()
+                    if rpc_endpoints.get("rpc_url") and not rpc_endpoints.get("error"):
+                        rpc_url = rpc_endpoints["rpc_url"]
+                except Exception:
+                    pass
+            
+            if not rpc_url:
+                rpc_url = settings.execution_rpc_url
+            
+            if rpc_url:
+                web3 = Web3(Web3.HTTPProvider(rpc_url))
+                if web3.is_connected():
+                    # 获取合约余额
+                    try:
+                        balance = web3.eth.get_balance(Web3.to_checksum_address(contract_address))
+                        contract_balance_wei = balance
+                        contract_balance_eth = float(Decimal(balance) / Decimal(10**18))
+                    except Exception as e:
+                        logger.warning(f"无法获取合约余额: {e}")
+                    
+                    # 获取合约费用和状态
+                    try:
+                        batch_client = BatchDepositClient(
+                            web3=web3,
+                            contract_address=contract_address,
+                            from_address=contract.deployer_address
+                        )
+                        fee = batch_client.get_contract_fee()
+                        contract_fee_wei = fee
+                        contract_fee_gwei = float(Decimal(fee) / Decimal(10**9))
+                        
+                        # 尝试获取合约所有者（如果合约支持）
+                        try:
+                            owner = batch_client.contract.functions.owner().call()
+                            owner_address = owner
+                        except Exception:
+                            pass
+                        
+                        # 尝试获取暂停状态（如果合约支持）
+                        try:
+                            paused = batch_client.contract.functions.paused().call()
+                            is_paused = paused
+                        except Exception:
+                            pass
+                    except Exception as e:
+                        logger.warning(f"无法获取合约费用和状态: {e}")
+        except Exception as e:
+            logger.warning(f"无法获取合约链上信息: {e}")
+        
+        return BatchContractStatistics(
+            contract_id=contract.id,
+            contract_address=contract.contract_address,
+            deposit_count=deposit_count,
+            total_amount_eth=total_amount_eth,
+            validator_count=validator_count,
+            contract_fee_wei=contract_fee_wei,
+            contract_fee_gwei=contract_fee_gwei,
+            contract_balance_wei=contract_balance_wei,
+            contract_balance_eth=contract_balance_eth,
+            is_paused=is_paused,
+            owner_address=owner_address
+        )
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"获取 Batch Deposit 合约统计数据失败: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
 
