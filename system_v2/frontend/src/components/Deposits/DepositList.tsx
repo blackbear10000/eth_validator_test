@@ -36,10 +36,13 @@ const DepositList: React.FC = () => {
   const [generateModalVisible, setGenerateModalVisible] = useState(false)
   const [submitModalVisible, setSubmitModalVisible] = useState(false)
   const [deployModalVisible, setDeployModalVisible] = useState(false)
+  const [detailModalVisible, setDetailModalVisible] = useState(false)
+  const [selectedDeposit, setSelectedDeposit] = useState<DepositTransaction | null>(null)
   const [availableKeys, setAvailableKeys] = useState<any[]>([])
   const [generatedDepositData, setGeneratedDepositData] = useState<DepositData[]>([])
   const [batchContracts, setBatchContracts] = useState<BatchDepositContract[]>([])
   const [rpcEndpoints, setRpcEndpoints] = useState<RpcEndpoints | null>(null)
+  const [syncing, setSyncing] = useState(false)
   const [form] = Form.useForm()
   const [submitForm] = Form.useForm()
   const [deployForm] = Form.useForm()
@@ -189,19 +192,30 @@ const DepositList: React.FC = () => {
     }
   }
 
-  const handleSync = async () => {
+  const handleSync = async (txHash?: string) => {
     try {
-      await depositsApi.sync()
-      message.success('状态同步成功')
+      setSyncing(true)
+      const result = await depositsApi.sync(txHash) as any
+      const resultData = result.data || result
+      message.success(
+        `状态同步完成: 同步 ${resultData.synced_count || 0} 个，确认 ${resultData.confirmed_count || 0} 个，失败 ${resultData.failed_count || 0} 个`
+      )
       loadDeposits()
     } catch (error: any) {
       message.error(`状态同步失败: ${error.message}`)
+    } finally {
+      setSyncing(false)
     }
+  }
+
+  const handleViewDetail = (deposit: DepositTransaction) => {
+    setSelectedDeposit(deposit)
+    setDetailModalVisible(true)
   }
 
   const getStatusTag = (status: string) => {
     const statusConfig: Record<string, { color: string; text: string }> = {
-      pending: { color: 'warning', text: '待提交' },
+      pending: { color: 'warning', text: '待确认' },
       submitted: { color: 'processing', text: '已提交' },
       confirmed: { color: 'success', text: '已确认' },
       failed: { color: 'error', text: '失败' },
@@ -209,6 +223,13 @@ const DepositList: React.FC = () => {
 
     const config = statusConfig[status] || { color: 'default', text: status }
     return <Tag color={config.color}>{config.text}</Tag>
+  }
+
+  const formatKeyDisplay = (key: string, length: number = 6) => {
+    if (!key || key.length <= length * 2) {
+      return key
+    }
+    return `${key.slice(0, length)}...${key.slice(-length)}`
   }
 
   const columns = [
@@ -248,14 +269,21 @@ const DepositList: React.FC = () => {
       dataIndex: 'tx_hash',
       key: 'tx_hash',
       width: 200,
-      render: (hash: string) =>
-        hash ? (
+      render: (hash: string, record: DepositTransaction) =>
+        hash && !hash.startsWith('failed-') ? (
           <Text copyable={{ text: hash }} style={{ fontFamily: 'monospace', fontSize: '12px' }}>
-            {hash.slice(0, 20)}...
+            {formatKeyDisplay(hash, 8)}
           </Text>
         ) : (
           '-'
         ),
+    },
+    {
+      title: '区块号',
+      dataIndex: 'block_number',
+      key: 'block_number',
+      width: 120,
+      render: (blockNumber: number) => (blockNumber ? blockNumber.toLocaleString() : '-'),
     },
     {
       title: '批次ID',
@@ -278,6 +306,28 @@ const DepositList: React.FC = () => {
       width: 180,
       render: (text: string) => (text ? new Date(text).toLocaleString() : '-'),
     },
+    {
+      title: '操作',
+      key: 'action',
+      width: 150,
+      render: (_: any, record: DepositTransaction) => (
+        <Space>
+          <Button type="link" size="small" onClick={() => handleViewDetail(record)}>
+            查看详情
+          </Button>
+          {record.status === 'pending' && (
+            <Button
+              type="link"
+              size="small"
+              onClick={() => handleSync(record.tx_hash)}
+              loading={syncing}
+            >
+              同步状态
+            </Button>
+          )}
+        </Space>
+      ),
+    },
   ]
 
   return (
@@ -288,7 +338,7 @@ const DepositList: React.FC = () => {
         title="存款交易列表"
         extra={
           <Space>
-            <Button icon={<SyncOutlined />} onClick={handleSync}>
+            <Button icon={<SyncOutlined />} onClick={() => handleSync()} loading={syncing}>
               同步状态
             </Button>
             <Button
@@ -654,6 +704,80 @@ const DepositList: React.FC = () => {
             />
           </Form.Item>
         </Form>
+      </Modal>
+      {/* 存款详情模态框 */}
+      <Modal
+        title="存款交易详情"
+        open={detailModalVisible}
+        onCancel={() => {
+          setDetailModalVisible(false)
+          setSelectedDeposit(null)
+        }}
+        footer={[
+          <Button key="close" onClick={() => {
+            setDetailModalVisible(false)
+            setSelectedDeposit(null)
+          }}>
+            关闭
+          </Button>,
+          selectedDeposit?.status === 'pending' && (
+            <Button
+              key="sync"
+              type="primary"
+              onClick={() => {
+                if (selectedDeposit) {
+                  handleSync(selectedDeposit.tx_hash)
+                }
+              }}
+              loading={syncing}
+            >
+              同步状态
+            </Button>
+          ),
+        ].filter(Boolean)}
+        width={800}
+      >
+        {selectedDeposit && (
+          <Descriptions column={1} bordered>
+            <Descriptions.Item label="ID">{selectedDeposit.id}</Descriptions.Item>
+            <Descriptions.Item label="公钥">
+              <Text copyable={{ text: selectedDeposit.pubkey }} style={{ fontFamily: 'monospace' }}>
+                {selectedDeposit.pubkey}
+              </Text>
+            </Descriptions.Item>
+            <Descriptions.Item label="状态">{getStatusTag(selectedDeposit.status)}</Descriptions.Item>
+            <Descriptions.Item label="交易哈希">
+              {selectedDeposit.tx_hash && !selectedDeposit.tx_hash.startsWith('failed-') ? (
+                <Text copyable={{ text: selectedDeposit.tx_hash }} style={{ fontFamily: 'monospace' }}>
+                  {selectedDeposit.tx_hash}
+                </Text>
+              ) : (
+                '-'
+              )}
+            </Descriptions.Item>
+            <Descriptions.Item label="批次ID">{selectedDeposit.batch_id || '-'}</Descriptions.Item>
+            <Descriptions.Item label="金额 (ETH)">{selectedDeposit.amount_eth.toFixed(8)}</Descriptions.Item>
+            {selectedDeposit.amount_wei && (
+              <Descriptions.Item label="金额 (Wei)">
+                {selectedDeposit.amount_wei.toLocaleString()}
+              </Descriptions.Item>
+            )}
+            <Descriptions.Item label="区块号">
+              {selectedDeposit.block_number ? selectedDeposit.block_number.toLocaleString() : '-'}
+            </Descriptions.Item>
+            <Descriptions.Item label="提交时间">
+              {selectedDeposit.submitted_at ? new Date(selectedDeposit.submitted_at).toLocaleString() : '-'}
+            </Descriptions.Item>
+            <Descriptions.Item label="确认时间">
+              {selectedDeposit.confirmed_at ? new Date(selectedDeposit.confirmed_at).toLocaleString() : '-'}
+            </Descriptions.Item>
+            {selectedDeposit.notes && (
+              <Descriptions.Item label="备注">
+                <Text type="warning">{selectedDeposit.notes}</Text>
+              </Descriptions.Item>
+            )}
+          </Descriptions>
+        )}
       </Modal>
     </div>
   )

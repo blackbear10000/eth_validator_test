@@ -2,7 +2,7 @@
 存款管理 API
 """
 import logging
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 from typing import List
 
@@ -166,6 +166,56 @@ async def submit_deposits(
             # 提交存款（官方合约不支持批量，需要循环调用）
             results = official_client.submit_multiple_deposits(deposit_data_list)
             
+            # 保存到数据库
+            from app.models.database import DepositTransaction, ValidatorKey
+            from app.models.enums import DepositStatus, ValidatorKeyStatus
+            from datetime import datetime
+            
+            for result in results:
+                if result['status'] == 'submitted':
+                    # 查找对应的验证者密钥
+                    validator_key = db.query(ValidatorKey).filter(
+                        ValidatorKey.pubkey == result['pubkey'].lower()
+                    ).first()
+                    
+                    if validator_key:
+                        # 创建存款交易记录
+                        deposit_tx = DepositTransaction(
+                            pubkey=validator_key.pubkey,
+                            tx_hash=result['tx_hash'],
+                            batch_id=None,  # 官方存款没有批次ID
+                            status=DepositStatus.PENDING.value,
+                            amount_wei=32 * 10**18,
+                            amount_eth=32.0,
+                            submitted_at=datetime.utcnow()
+                        )
+                        db.add(deposit_tx)
+                        
+                        # 更新密钥状态
+                        validator_key.status = ValidatorKeyStatus.PENDING.value
+                        validator_key.deposit_tx_hash = result['tx_hash']
+                elif result['status'] == 'failed':
+                    # 记录失败的交易
+                    validator_key = db.query(ValidatorKey).filter(
+                        ValidatorKey.pubkey == result.get('pubkey', '').lower()
+                    ).first()
+                    
+                    if validator_key:
+                        # 创建失败记录（使用临时 tx_hash）
+                        deposit_tx = DepositTransaction(
+                            pubkey=validator_key.pubkey,
+                            tx_hash=f"failed-{datetime.utcnow().timestamp()}",
+                            status=DepositStatus.FAILED.value,
+                            amount_wei=32 * 10**18,
+                            amount_eth=32.0,
+                            submitted_at=datetime.utcnow(),
+                            notes=f"提交失败: {result.get('error', 'Unknown error')}"
+                        )
+                        db.add(deposit_tx)
+            
+            # 提交数据库事务
+            db.commit()
+            
             # 转换为与 Batch Deposit 相同的格式
             formatted_results = []
             for result in results:
@@ -258,13 +308,31 @@ async def list_deposits(
 
 @router.post("/deposits/sync")
 async def sync_deposits(
+    tx_hash: Optional[str] = Query(None, description="特定交易哈希（可选，如果提供则只同步该交易）"),
     deposit_service: DepositManagementService = Depends(get_deposit_service)
 ):
     """手动触发状态同步"""
     try:
-        # 这里需要调用同步服务
-        return {"message": "同步功能需要集成 SyncService"}
+        # 获取 RPC URL（用于同步）
+        rpc_url = None
+        try:
+            from app.services.network_service import NetworkService
+            network_service = NetworkService()
+            rpc_endpoints = network_service.get_rpc_endpoints()
+            if rpc_endpoints.get("rpc_url") and not rpc_endpoints.get("error"):
+                rpc_url = rpc_endpoints["rpc_url"]
+        except Exception as e:
+            logger.warning(f"无法从网络服务获取 RPC URL: {e}")
+        
+        if not rpc_url:
+            from app.config import settings
+            rpc_url = settings.execution_rpc_url
+        
+        # 调用同步服务
+        result = deposit_service.sync_transaction_status(tx_hash=tx_hash, rpc_url=rpc_url)
+        return result
     except Exception as e:
+        logger.error(f"同步存款状态失败: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
 
 

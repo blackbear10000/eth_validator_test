@@ -31,8 +31,11 @@ export interface DepositTransaction {
   batch_id?: string
   status: string
   amount_eth: number
+  amount_wei?: number
   submitted_at: string
   confirmed_at?: string
+  block_number?: number
+  notes?: string
 }
 
 export const depositsApi = {
@@ -66,7 +69,10 @@ export const depositsApi = {
   list: () => apiClient.get('/deposits'),
 
   // 同步状态
-  sync: () => apiClient.post('/deposits/sync'),
+  sync: (txHash?: string) => {
+    const params = txHash ? { tx_hash: txHash } : {}
+    return apiClient.post('/deposits/sync', null, { params })
+  },
 
   // 部署 Batch Deposit 合约
   deployBatchContract: (params: {

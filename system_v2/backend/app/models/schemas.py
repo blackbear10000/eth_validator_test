@@ -123,8 +123,11 @@ class DepositTransactionResponse(BaseModel):
     batch_id: Optional[str] = None
     status: DepositStatus
     amount_eth: float
+    amount_wei: Optional[int] = None
     submitted_at: datetime
     confirmed_at: Optional[datetime] = None
+    block_number: Optional[int] = None
+    notes: Optional[str] = None
 
     model_config = {"from_attributes": True}
 
