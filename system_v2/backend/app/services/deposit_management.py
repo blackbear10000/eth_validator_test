@@ -51,7 +51,8 @@ class DepositManagementService:
         pubkeys: Optional[List[str]] = None,
         withdrawal_address: str = None,
         amount_eth: float = 32.0,
-        fork_version: Optional[str] = None
+        fork_version: Optional[str] = None,
+        network_name: Optional[str] = None
     ) -> List[Dict[str, Any]]:
         """
         为激活的密钥生成 Deposit Data
@@ -95,8 +96,27 @@ class DepositManagementService:
                 # 更新 deposit_generator 的 fork_version 和 network
                 self.deposit_generator.fork_version = fork_version_clean
                 self.deposit_generator.network = 'kurtosis'  # 对于自定义 fork_version，使用 kurtosis 网络
+                # 重新生成 chain_setting，确保使用正确的 fork_version
                 self.deposit_generator.chain_setting = self.deposit_generator._get_chain_setting()
-                logger.info(f"使用自定义 fork_version: {fork_version_clean}")
+                # 记录 chain_setting 中的 fork_version，确认更新成功
+                chain_fork_version = self.deposit_generator.chain_setting.GENESIS_FORK_VERSION
+                if isinstance(chain_fork_version, bytes):
+                    chain_fork_version_hex = chain_fork_version.hex()
+                else:
+                    chain_fork_version_hex = chain_fork_version.replace('0x', '') if isinstance(chain_fork_version, str) else str(chain_fork_version)
+                logger.info(
+                    f"使用自定义 fork_version: {fork_version_clean}, "
+                    f"chain_setting.GENESIS_FORK_VERSION: {chain_fork_version_hex}"
+                )
+        else:
+            # 如果没有提供 fork_version，确保 chain_setting 已正确初始化
+            # 记录当前的 chain_setting fork_version（用于调试）
+            chain_fork_version = self.deposit_generator.chain_setting.GENESIS_FORK_VERSION
+            if isinstance(chain_fork_version, bytes):
+                chain_fork_version_hex = chain_fork_version.hex()
+            else:
+                chain_fork_version_hex = chain_fork_version.replace('0x', '') if isinstance(chain_fork_version, str) else str(chain_fork_version)
+            logger.debug(f"未提供 fork_version，使用 chain_setting.GENESIS_FORK_VERSION: {chain_fork_version_hex}")
         
         # 获取要生成 Deposit Data 的密钥
         if pubkeys:

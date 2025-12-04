@@ -59,7 +59,8 @@ async def generate_deposit_data(
             pubkeys=request.pubkeys if request.pubkeys and len(request.pubkeys) > 0 else None,
             withdrawal_address=request.withdrawal_address,
             amount_eth=request.amount_eth or 32.0,
-            fork_version=request.fork_version if request.fork_version else None
+            fork_version=request.fork_version if request.fork_version else None,
+            network_name=request.network_name if request.network_name else "testnet"
         )
         
         return [DepositDataResponse(**dd) for dd in deposit_data_list]

@@ -58,6 +58,7 @@ export const depositsApi = {
     withdrawal_address: string
     amount_eth?: number
     fork_version?: string
+    network_name?: string
   }) => apiClient.post('/deposits/generate', params),
 
   // 提交批量存款

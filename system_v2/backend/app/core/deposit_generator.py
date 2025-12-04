@@ -114,7 +114,8 @@ class DepositGenerator:
         self,
         validator_key: ValidatorKey,
         withdrawal_address: str,
-        amount_eth: float = 32.0
+        amount_eth: float = 32.0,
+        network_name: Optional[str] = None
     ) -> Dict[str, Any]:
         """
         为单个验证者生成 Deposit Data
@@ -168,9 +169,18 @@ class DepositGenerator:
             )
             
             # 计算签名
-            domain = compute_deposit_domain(fork_version=self.chain_setting.GENESIS_FORK_VERSION)
+            # 使用 chain_setting.GENESIS_FORK_VERSION 来计算签名（这是实际用于签名的 fork_version）
+            signing_fork_version = self.chain_setting.GENESIS_FORK_VERSION
+            domain = compute_deposit_domain(fork_version=signing_fork_version)
             signing_root = compute_signing_root(deposit_message, domain)
             signature = bls.Sign(signing_private_key_int, signing_root)
+            
+            # 记录签名时使用的 fork_version（用于调试）
+            if isinstance(signing_fork_version, bytes):
+                signing_fork_version_hex = signing_fork_version.hex()
+            else:
+                signing_fork_version_hex = signing_fork_version.replace('0x', '') if isinstance(signing_fork_version, str) else str(signing_fork_version)
+            logger.debug(f"签名使用的 fork_version: {signing_fork_version_hex} (bytes: {signing_fork_version.hex() if isinstance(signing_fork_version, bytes) else 'N/A'})")
             
             # 构建 Deposit Data
             signed_deposit = DepositData(
@@ -184,18 +194,23 @@ class DepositGenerator:
             deposit_dict['deposit_data_root'] = signed_deposit.hash_tree_root.hex()
             
             # 获取 fork_version（十六进制字符串，不带 0x 前缀）
-            # 优先使用传入的 fork_version，否则使用 chain_setting 中的值
-            if self.fork_version:
-                # 使用传入的 fork_version（已经是十六进制字符串，不带 0x 前缀）
-                fork_version_hex = self.fork_version.replace('0x', '') if isinstance(self.fork_version, str) else str(self.fork_version)
+            # 重要：始终使用 chain_setting.GENESIS_FORK_VERSION（与签名时使用的一致）
+            # 这样可以确保返回的 fork_version 和签名时使用的完全一致，验证工具才能正确验证签名
+            fork_version_bytes = self.chain_setting.GENESIS_FORK_VERSION
+            if isinstance(fork_version_bytes, bytes):
+                fork_version_hex = fork_version_bytes.hex()
             else:
-                # 从 chain_setting 获取
-                fork_version_bytes = self.chain_setting.GENESIS_FORK_VERSION
-                if isinstance(fork_version_bytes, bytes):
-                    fork_version_hex = fork_version_bytes.hex()
-                else:
-                    # 如果已经是字符串，移除 0x 前缀
-                    fork_version_hex = fork_version_bytes.replace('0x', '') if isinstance(fork_version_bytes, str) else str(fork_version_bytes)
+                # 如果已经是字符串，移除 0x 前缀
+                fork_version_hex = fork_version_bytes.replace('0x', '') if isinstance(fork_version_bytes, str) else str(fork_version_bytes)
+            
+            # 验证 fork_version 一致性（用于调试）
+            if fork_version_hex.lower() != signing_fork_version_hex.lower():
+                logger.warning(
+                    f"fork_version 不一致！签名使用: {signing_fork_version_hex}, "
+                    f"返回: {fork_version_hex}. 这可能导致验证失败。"
+                )
+            else:
+                logger.debug(f"返回的 fork_version: {fork_version_hex} (与签名时使用的一致)")
             
             # 获取 deposit_cli_version（确保是字符串）
             try:
@@ -216,8 +231,12 @@ class DepositGenerator:
             deposit_data_root_hex = deposit_dict['deposit_data_root'] if isinstance(deposit_dict['deposit_data_root'], str) else deposit_dict['deposit_data_root'].hex()
             deposit_data_root_hex = deposit_data_root_hex.replace('0x', '')
             
-            # 对于 dev net，network_name 应该是 "mainnet"（确保是字符串）
-            network_name = 'mainnet' if self.network in ['kurtosis', 'devnet'] else (str(self.network) if self.network else 'mainnet')
+            # network_name 参数优先，如果没有提供则使用默认值
+            if network_name:
+                network_name_str = str(network_name)
+            else:
+                # 默认使用 testnet
+                network_name_str = 'testnet'
             
             # 确保 fork_version_hex 是字符串
             fork_version_str = str(fork_version_hex) if fork_version_hex else '00000000'
@@ -245,7 +264,8 @@ class DepositGenerator:
         self,
         validator_keys: List[ValidatorKey],
         withdrawal_address: str,
-        amount_eth: float = 32.0
+        amount_eth: float = 32.0,
+        network_name: Optional[str] = None
     ) -> List[Dict[str, Any]]:
         """
         批量生成 Deposit Data
@@ -254,6 +274,7 @@ class DepositGenerator:
             validator_keys: ValidatorKey 对象列表
             withdrawal_address: 0x01 类型提款地址
             amount_eth: 存款金额（ETH）
+            network_name: 网络名称（可选，默认：testnet）
             
         Returns:
             Deposit Data 列表
@@ -265,7 +286,8 @@ class DepositGenerator:
                 deposit_data = self.generate_deposit_data(
                     validator_key=validator_key,
                     withdrawal_address=withdrawal_address,
-                    amount_eth=amount_eth
+                    amount_eth=amount_eth,
+                    network_name=network_name
                 )
                 deposit_data_list.append(deposit_data)
             except Exception as e:

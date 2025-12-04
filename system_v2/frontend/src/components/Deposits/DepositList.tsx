@@ -87,6 +87,7 @@ const DepositList: React.FC = () => {
     withdrawal_address: string
     amount_eth?: number
     fork_version?: string
+    network_name?: string
   }) => {
     try {
       // 清理数据：移除空数组、空字符串、null/undefined
@@ -108,6 +109,11 @@ const DepositList: React.FC = () => {
       if (values.fork_version && values.fork_version.trim() !== '') {
         cleanedValues.fork_version = values.fork_version.trim()
       }
+      
+      // network_name 默认使用 testnet
+      cleanedValues.network_name = values.network_name && values.network_name.trim() !== '' 
+        ? values.network_name.trim() 
+        : 'testnet'
       
       const response = await depositsApi.generate(cleanedValues) as any
       setGeneratedDepositData(response || [])
@@ -507,6 +513,14 @@ const DepositList: React.FC = () => {
           </Form.Item>
           <Form.Item name="fork_version" label="Fork Version（可选，留空则自动检测）">
             <Input placeholder="0x..." />
+          </Form.Item>
+          <Form.Item 
+            name="network_name" 
+            label="Network Name"
+            initialValue="testnet"
+            rules={[{ required: true, message: '请输入网络名称' }]}
+          >
+            <Input placeholder="testnet" />
           </Form.Item>
         </Form>
       </Modal>
