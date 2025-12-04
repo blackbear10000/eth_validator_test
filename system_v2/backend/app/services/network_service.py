@@ -317,10 +317,10 @@ class NetworkService:
         
         if rpc_url:
             # 生成主机可访问的 URL（用于前端显示）
-            # 将 host.docker.internal 替换回 localhost
-            host_rpc_url = rpc_url.replace('host.docker.internal', 'localhost')
-            host_ws_url = ws_url.replace('host.docker.internal', 'localhost') if ws_url else None
-            host_beacon_api_url = beacon_api_url.replace('host.docker.internal', 'localhost') if beacon_api_url else None
+            # 保持使用 host.docker.internal（用于容器间访问）
+            host_rpc_url = rpc_url
+            host_ws_url = ws_url if ws_url else None
+            host_beacon_api_url = beacon_api_url if beacon_api_url else None
             
             logger.info(
                 f"成功提取端点: RPC={rpc_url}, WS={ws_url}, "
