@@ -98,7 +98,59 @@ async def startup_event():
     """应用启动时执行"""
     logger.info("应用启动，执行数据库迁移...")
     try:
-        # 使用 Alembic API 执行迁移（而不是 subprocess）
+        # 1. 首先确保数据库连接可用，并等待数据库准备就绪
+        from sqlalchemy import create_engine, text
+        import time
+        
+        logger.info("等待数据库准备就绪...")
+        max_retries = 30
+        retry_count = 0
+        db_ready = False
+        
+        while retry_count < max_retries:
+            try:
+                engine = create_engine(settings.database_url, pool_pre_ping=True)
+                with engine.connect() as conn:
+                    # 测试连接并检查数据库是否存在
+                    result = conn.execute(text("SELECT 1"))
+                    result.fetchone()
+                    db_ready = True
+                    logger.info("数据库连接成功")
+                    break
+            except Exception as e:
+                retry_count += 1
+                if retry_count < max_retries:
+                    logger.warning(f"数据库连接失败 (尝试 {retry_count}/{max_retries}): {e}")
+                    time.sleep(2)
+                else:
+                    logger.error(f"数据库连接失败，已达到最大重试次数: {e}")
+                    raise
+        
+        if not db_ready:
+            raise RuntimeError("数据库未准备就绪")
+        
+        # 2. 确保数据库存在（如果不存在则创建）
+        try:
+            # 连接到 postgres 数据库来创建 validator_db（如果需要）
+            db_name = settings.database_url.split('/')[-1]
+            admin_url = settings.database_url.replace(f'/{db_name}', '/postgres')
+            admin_engine = create_engine(admin_url, isolation_level="AUTOCOMMIT")
+            
+            with admin_engine.connect() as conn:
+                result = conn.execute(
+                    text("SELECT 1 FROM pg_database WHERE datname = :db_name"),
+                    {"db_name": db_name}
+                )
+                if not result.fetchone():
+                    logger.info(f"数据库 {db_name} 不存在，正在创建...")
+                    conn.execute(text(f'CREATE DATABASE {db_name}'))
+                    logger.info(f"数据库 {db_name} 创建成功")
+                else:
+                    logger.info(f"数据库 {db_name} 已存在")
+        except Exception as e:
+            logger.warning(f"检查/创建数据库时出错（可能已存在）: {e}")
+        
+        # 3. 使用 Alembic API 执行迁移
         from alembic.config import Config
         from alembic import command
         import os
@@ -118,11 +170,31 @@ async def startup_event():
         
         # 确保使用环境变量中的数据库 URL（而不是 alembic.ini 中的硬编码值）
         alembic_cfg.set_main_option("sqlalchemy.url", settings.database_url)
-        logger.info(f"使用数据库 URL: {settings.database_url.split('@')[-1]}")  # 只显示主机部分，隐藏密码
+        db_url_display = settings.database_url.split('@')[-1] if '@' in settings.database_url else settings.database_url
+        logger.info(f"使用数据库 URL: postgresql://***@{db_url_display}")
         
         # 执行迁移
         logger.info("开始执行数据库迁移...")
         try:
+            # 在执行迁移前，再次确认数据库连接
+            test_engine = create_engine(settings.database_url, pool_pre_ping=True)
+            with test_engine.connect() as test_conn:
+                # 检查当前连接的数据库
+                db_result = test_conn.execute(text("SELECT current_database()"))
+                current_db = db_result.fetchone()[0]
+                logger.info(f"迁移将执行在数据库: {current_db}")
+                
+                # 检查 alembic_version 表是否存在
+                try:
+                    version_result = test_conn.execute(text("SELECT version_num FROM alembic_version"))
+                    current_version = version_result.fetchone()
+                    if current_version:
+                        logger.info(f"当前迁移版本: {current_version[0]}")
+                    else:
+                        logger.info("alembic_version 表存在但为空，将执行初始迁移")
+                except Exception:
+                    logger.info("alembic_version 表不存在，将执行初始迁移")
+            
             command.upgrade(alembic_cfg, "head")
             logger.info("数据库迁移完成")
         except Exception as migration_error:
@@ -130,14 +202,24 @@ async def startup_event():
             logger.error(traceback.format_exc())
             raise
         
-        # 验证表是否创建成功
-        from app.dependencies import SessionLocal
-        db = SessionLocal()
-        try:
-            from sqlalchemy import inspect
-            inspector = inspect(db.bind)
-            tables = inspector.get_table_names()
-            logger.info(f"数据库中的表: {tables}")
+        # 验证表是否创建成功（使用相同的数据库连接）
+        logger.info("验证迁移结果...")
+        verification_engine = create_engine(settings.database_url, pool_pre_ping=True)
+        with verification_engine.connect() as verify_conn:
+            # 确认当前数据库
+            db_result = verify_conn.execute(text("SELECT current_database()"))
+            current_db = db_result.fetchone()[0]
+            logger.info(f"验证数据库: {current_db}")
+            
+            # 获取所有表
+            tables_result = verify_conn.execute(text("""
+                SELECT tablename 
+                FROM pg_tables 
+                WHERE schemaname = 'public'
+                ORDER BY tablename
+            """))
+            tables = [row[0] for row in tables_result]
+            logger.info(f"数据库中的表 ({len(tables)} 个): {', '.join(tables)}")
             
             # 检查所有关键表
             required_tables = [
@@ -153,15 +235,21 @@ async def startup_event():
             missing_tables = [t for t in required_tables if t not in tables]
             if missing_tables:
                 logger.error(f"缺少以下关键表: {', '.join(missing_tables)}")
+                logger.error(f"当前数据库: {current_db}")
+                logger.error(f"数据库 URL: {settings.database_url.split('@')[-1]}")
                 logger.error("数据库迁移可能未完全执行，请手动运行: alembic upgrade head")
                 raise RuntimeError(f"数据库迁移不完整，缺少表: {', '.join(missing_tables)}")
             else:
-                logger.info("所有关键表已存在，迁移验证通过")
-        except Exception as e:
-            logger.error(f"验证数据库表时出错: {e}")
-            raise
-        finally:
-            db.close()
+                logger.info("✓ 所有关键表已存在，迁移验证通过")
+                
+            # 检查 alembic_version 表的内容
+            try:
+                version_result = verify_conn.execute(text("SELECT version_num FROM alembic_version"))
+                final_version = version_result.fetchone()
+                if final_version:
+                    logger.info(f"✓ 最终迁移版本: {final_version[0]}")
+            except Exception as e:
+                logger.warning(f"无法读取迁移版本: {e}")
             
     except Exception as e:
         logger.error(f"数据库迁移失败: {e}")
