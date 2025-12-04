@@ -177,10 +177,10 @@ class DepositGenerator:
                     # 如果已经是字符串，移除 0x 前缀
                     fork_version_hex = fork_version_bytes.replace('0x', '') if isinstance(fork_version_bytes, str) else str(fork_version_bytes)
             
-            # 获取 deposit_cli_version
+            # 获取 deposit_cli_version（确保是字符串）
             try:
                 from ethstaker_deposit.settings import DEPOSIT_CLI_VERSION
-                deposit_cli_version = DEPOSIT_CLI_VERSION
+                deposit_cli_version = str(DEPOSIT_CLI_VERSION) if DEPOSIT_CLI_VERSION else "2.7.0"
             except ImportError:
                 # 如果无法导入，使用默认值
                 deposit_cli_version = "2.7.0"  # 默认版本
@@ -196,19 +196,22 @@ class DepositGenerator:
             deposit_data_root_hex = deposit_dict['deposit_data_root'] if isinstance(deposit_dict['deposit_data_root'], str) else deposit_dict['deposit_data_root'].hex()
             deposit_data_root_hex = deposit_data_root_hex.replace('0x', '')
             
-            # 对于 dev net，network_name 应该是 "mainnet"
-            network_name = 'mainnet' if self.network in ['kurtosis', 'devnet'] else self.network
+            # 对于 dev net，network_name 应该是 "mainnet"（确保是字符串）
+            network_name = 'mainnet' if self.network in ['kurtosis', 'devnet'] else (str(self.network) if self.network else 'mainnet')
+            
+            # 确保 fork_version_hex 是字符串
+            fork_version_str = str(fork_version_hex) if fork_version_hex else '00000000'
             
             result = {
-                'pubkey': pubkey_hex,
-                'withdrawal_credentials': withdrawal_credentials_hex,
-                'amount': deposit_dict['amount'],
-                'signature': signature_hex,
-                'deposit_message_root': deposit_message_root_hex,
-                'deposit_data_root': deposit_data_root_hex,
-                'fork_version': fork_version_hex,
-                'network_name': network_name,
-                'deposit_cli_version': deposit_cli_version
+                'pubkey': str(pubkey_hex),
+                'withdrawal_credentials': str(withdrawal_credentials_hex),
+                'amount': int(deposit_dict['amount']),
+                'signature': str(signature_hex),
+                'deposit_message_root': str(deposit_message_root_hex),
+                'deposit_data_root': str(deposit_data_root_hex),
+                'fork_version': fork_version_str,
+                'network_name': str(network_name),
+                'deposit_cli_version': str(deposit_cli_version)
             }
             
             logger.info(f"Deposit Data 生成成功: {validator_key.pubkey[:10]}...")

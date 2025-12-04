@@ -55,11 +55,11 @@ async def generate_deposit_data(
     """生成 Deposit Data"""
     try:
         deposit_data_list = deposit_service.generate_deposit_data_for_active_keys(
-            count=len(request.pubkeys) if request.pubkeys else None,
-            pubkeys=request.pubkeys,
+            count=len(request.pubkeys) if request.pubkeys and len(request.pubkeys) > 0 else None,
+            pubkeys=request.pubkeys if request.pubkeys and len(request.pubkeys) > 0 else None,
             withdrawal_address=request.withdrawal_address,
-            amount_eth=request.amount_eth,
-            fork_version=request.fork_version
+            amount_eth=request.amount_eth or 32.0,
+            fork_version=request.fork_version if request.fork_version else None
         )
         
         return [DepositDataResponse(**dd) for dd in deposit_data_list]

@@ -62,10 +62,10 @@ class BatchActivateKeys(BaseModel):
 
 class DepositDataGenerate(BaseModel):
     """生成 Deposit Data 请求"""
-    pubkeys: List[str] = Field(..., description="验证者公钥列表")
+    pubkeys: Optional[List[str]] = Field(default=None, description="验证者公钥列表（可选，不提供则使用所有激活的密钥）")
     withdrawal_address: str = Field(..., description="0x01 类型提款地址")
     fork_version: Optional[str] = None  # 如果为空则自动检测
-    amount_eth: float = Field(default=32.0, ge=32.0, description="存款金额（ETH）")
+    amount_eth: Optional[float] = Field(default=32.0, ge=32.0, description="存款金额（ETH）")
 
 
 class DepositDataResponse(BaseModel):

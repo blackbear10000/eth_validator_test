@@ -89,7 +89,27 @@ const DepositList: React.FC = () => {
     fork_version?: string
   }) => {
     try {
-      const response = await depositsApi.generate(values) as any
+      // 清理数据：移除空数组、空字符串、null/undefined
+      const cleanedValues: any = {
+        withdrawal_address: values.withdrawal_address,
+      }
+      
+      // 只有当 pubkeys 不为空时才添加
+      if (values.pubkeys && values.pubkeys.length > 0) {
+        cleanedValues.pubkeys = values.pubkeys
+      }
+      
+      // amount_eth 必须存在且有效
+      if (values.amount_eth !== undefined && values.amount_eth !== null) {
+        cleanedValues.amount_eth = values.amount_eth
+      }
+      
+      // fork_version 只有当非空字符串时才添加
+      if (values.fork_version && values.fork_version.trim() !== '') {
+        cleanedValues.fork_version = values.fork_version.trim()
+      }
+      
+      const response = await depositsApi.generate(cleanedValues) as any
       setGeneratedDepositData(response || [])
       message.success(`成功生成 ${response?.length || 0} 个 Deposit Data`)
       setGenerateModalVisible(false)
