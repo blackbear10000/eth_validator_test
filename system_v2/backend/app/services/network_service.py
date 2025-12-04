@@ -164,10 +164,10 @@ class NetworkService:
     
     def get_rpc_endpoints(self) -> Dict[str, Any]:
         """
-        从 Kurtosis enclave 信息中提取 RPC 端点
+        从 Kurtosis enclave 信息中提取 RPC、WebSocket 和 Beacon API 端点
         
         Returns:
-            包含 rpc_url 和 ws_url 的字典，如果无法获取则返回错误信息
+            包含 rpc_url、ws_url 和 beacon_api_url 的字典，如果无法获取则返回错误信息
         """
         status = self.get_status()
         
@@ -175,7 +175,8 @@ class NetworkService:
             return {
                 "error": "网络未运行",
                 "rpc_url": None,
-                "ws_url": None
+                "ws_url": None,
+                "beacon_api_url": None
             }
         
         # 获取 enclave 详细信息
@@ -185,40 +186,57 @@ class NetworkService:
             return {
                 "error": "无法获取 enclave 详细信息",
                 "rpc_url": None,
-                "ws_url": None
+                "ws_url": None,
+                "beacon_api_url": None
             }
         
-        # 解析输出，查找执行层服务的 RPC 端口
+        # 解析输出，查找执行层服务的 RPC 端口和共识层服务的 Beacon API 端口
         # 格式示例（Kurtosis enclave inspect 输出）：
         # NAME                          STATUS    PORTS
         # el-1-geth-prysm               RUNNING   engine-rpc: 8551/tcp -> 127.0.0.1:33699
         #                                              rpc: 8545/tcp -> 127.0.0.1:33697
         #                                              ws: 8546/tcp -> 127.0.0.1:33698
+        # cl-1-prysm-geth               RUNNING   http: 3500/tcp -> http://127.0.0.1:33785
+        # cl-2-lighthouse-reth          RUNNING   http: 4000/tcp -> http://127.0.0.1:33790
         
         import re
         
         rpc_url = None
         ws_url = None
+        beacon_api_url = None
         current_service = None
+        beacon_service = None
         
         # 记录原始输出用于调试
         logger.debug(f"解析 enclave 输出，长度: {len(raw_output)} 字符")
         logger.debug(f"输出前 500 字符: {raw_output[:500]}")
         
-        # 查找执行层服务（el- 开头的服务）
+        # 查找执行层服务（el- 开头的服务）和共识层服务（cl- 开头的服务）
         lines = raw_output.split('\n')
         in_el_service = False
+        in_cl_service = False
         
         for i, line in enumerate(lines):
-            # 检查是否是执行层服务行（可能包含容器ID或服务名）
-            # 格式可能是：容器ID + 服务名，或者直接是服务名
+            # 检查是否是执行层服务行
             if re.search(r'el-\d+-\w+', line):
                 in_el_service = True
+                in_cl_service = False
                 # 提取服务名称
                 match = re.search(r'(el-\d+-\w+)', line)
                 if match:
                     current_service = match.group(1)
                     logger.debug(f"找到执行层服务: {current_service}, 行 {i+1}: {line[:100]}")
+                continue
+            
+            # 检查是否是共识层服务行
+            if re.search(r'cl-\d+-\w+', line):
+                in_cl_service = True
+                in_el_service = False
+                # 提取服务名称
+                match = re.search(r'(cl-\d+-\w+)', line)
+                if match:
+                    beacon_service = match.group(1)
+                    logger.debug(f"找到共识层服务: {beacon_service}, 行 {i+1}: {line[:100]}")
                 continue
             
             # 如果在执行层服务块中，查找端口映射
@@ -247,31 +265,71 @@ class NetworkService:
                     else:
                         ws_url = f"ws://{host_ip}:{host_port}"
                     logger.info(f"找到 WS 端口映射: {host_ip}:{host_port} -> {ws_url}")
-                
-                # 如果找到了 RPC URL，可以继续查找 WS，但通常一个服务块就包含了
-                if rpc_url:
-                    # 继续查找 WS，但不要跳出循环，因为可能有多个执行层服务
-                    pass
             
-            # 如果遇到新的服务块（非执行层），重置状态
+            # 如果在共识层服务块中，查找 Beacon API 端口
+            if in_cl_service:
+                # 查找 Beacon API 端口
+                # Prysm: http: 3500/tcp -> http://127.0.0.1:33785
+                # Lighthouse: http: 4000/tcp -> http://127.0.0.1:33790
+                # Teku: rest-api: 5051/tcp -> 127.0.0.1:XXXXX
+                # 匹配格式：http: 3500/tcp -> http://127.0.0.1:33785 或 http:4000/tcp->http://127.0.0.1:33790
+                beacon_match = re.search(
+                    r'http\s*:\s*(?:3500|4000)/tcp\s*->\s*(?:http://)?([\d.]+):(\d+)',
+                    line
+                )
+                if beacon_match:
+                    host_ip = beacon_match.group(1)
+                    host_port = beacon_match.group(2)
+                    if host_ip == '127.0.0.1' or host_ip == '0.0.0.0':
+                        beacon_api_url = f"http://host.docker.internal:{host_port}"
+                    else:
+                        beacon_api_url = f"http://{host_ip}:{host_port}"
+                    logger.info(f"找到 Beacon API 端口映射: {host_ip}:{host_port} -> {beacon_api_url}")
+                else:
+                    # 尝试匹配 Teku 的 rest-api 端口
+                    teku_match = re.search(
+                        r'rest-api\s*:\s*5051/tcp\s*->\s*([\d.]+):(\d+)',
+                        line
+                    )
+                    if teku_match:
+                        host_ip = teku_match.group(1)
+                        host_port = teku_match.group(2)
+                        if host_ip == '127.0.0.1' or host_ip == '0.0.0.0':
+                            beacon_api_url = f"http://host.docker.internal:{host_port}"
+                        else:
+                            beacon_api_url = f"http://{host_ip}:{host_port}"
+                        logger.info(f"找到 Beacon API 端口映射 (Teku): {host_ip}:{host_port} -> {beacon_api_url}")
+            
+            # 如果遇到新的服务块，重置状态
             # 检查是否是新的容器/服务行（通常以容器ID开头，或者包含其他服务名）
-            if in_el_service and re.match(r'^[a-f0-9]{12}\s+', line) and not re.search(r'el-\d+-', line):
-                in_el_service = False
-                current_service = None
+            if (in_el_service or in_cl_service) and re.match(r'^[a-f0-9]{12}\s+', line):
+                if in_el_service and not re.search(r'el-\d+-', line):
+                    in_el_service = False
+                    current_service = None
+                if in_cl_service and not re.search(r'cl-\d+-', line):
+                    in_cl_service = False
+                    beacon_service = None
         
         if rpc_url:
             # 生成主机可访问的 URL（用于前端显示）
             # 将 host.docker.internal 替换回 localhost
             host_rpc_url = rpc_url.replace('host.docker.internal', 'localhost')
             host_ws_url = ws_url.replace('host.docker.internal', 'localhost') if ws_url else None
+            host_beacon_api_url = beacon_api_url.replace('host.docker.internal', 'localhost') if beacon_api_url else None
             
-            logger.info(f"成功提取 RPC 端点: 容器内={rpc_url}, 主机={host_rpc_url}, 服务={current_service}")
+            logger.info(
+                f"成功提取端点: RPC={rpc_url}, WS={ws_url}, "
+                f"Beacon API={beacon_api_url}, 执行层服务={current_service}, 共识层服务={beacon_service}"
+            )
             return {
                 "rpc_url": rpc_url,  # 返回容器可访问的 URL（默认使用 host.docker.internal）
                 "host_rpc_url": host_rpc_url,  # 返回主机可访问的 URL（用于前端显示）
                 "ws_url": ws_url,
                 "host_ws_url": host_ws_url,
-                "service": current_service
+                "beacon_api_url": beacon_api_url,  # 新增：Beacon API URL（容器内访问）
+                "host_beacon_api_url": host_beacon_api_url,  # 新增：Beacon API URL（主机访问）
+                "service": current_service,
+                "beacon_service": beacon_service  # 新增：共识层服务名称
             }
         else:
             logger.warning(f"无法从 enclave 信息中提取 RPC 端点。原始输出前 1000 字符:\n{raw_output[:1000]}")
@@ -280,6 +338,8 @@ class NetworkService:
                 "rpc_url": None,
                 "host_rpc_url": None,
                 "ws_url": None,
+                "beacon_api_url": None,
+                "host_beacon_api_url": None,
                 "debug_info": raw_output[:500]  # 返回部分原始输出用于调试
             }
     

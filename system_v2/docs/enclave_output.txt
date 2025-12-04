@@ -1,0 +1,57 @@
+Name:            eth-devnet
+UUID:            87a1e66f607a
+Status:          RUNNING
+Creation Time:   Thu, 04 Dec 2025 13:30:18 UTC
+Flags:           
+
+========================================= Files Artifacts =========================================
+UUID           Name
+adc0318c34ac   1-prysm-geth-0-63
+a692cd167265   2-lighthouse-reth-64-127
+a17fa1e05386   dora-config
+3c4e27a020b1   el_cl_genesis_data
+7af7bf4ed2d9   final-genesis-timestamp
+7522b8207f63   forkmon-config
+54df702bdba8   genesis-el-cl-env-file
+d2a797184fda   genesis_validators_root
+5922f14df0b0   grafana-config
+2c3d8c67537f   grafana-dashboards
+4b824d5c4d96   jwt_file
+1f042b560690   keymanager_file
+08b89e430dd7   prometheus-config
+32302745d73d   prysm-password
+6d76267db620   validator-ranges
+
+========================================== User Services ==========================================
+UUID           Name                                             Ports                                         Status
+4692a1818c6f   cl-1-prysm-geth                                  http: 3500/tcp -> http://127.0.0.1:33785      RUNNING
+                                                                metrics: 8080/tcp -> http://127.0.0.1:33788   
+                                                                profiling: 6060/tcp -> 127.0.0.1:33787        
+                                                                quic-discovery: 13000/udp                     
+                                                                rpc: 4000/tcp -> 127.0.0.1:33786              
+                                                                tcp-discovery: 13000/tcp -> 127.0.0.1:33789   
+                                                                udp-discovery: 12000/udp                      
+bebb1b8f822f   cl-2-lighthouse-reth                             http: 4000/tcp -> http://127.0.0.1:33790      RUNNING
+                                                                metrics: 5054/tcp -> http://127.0.0.1:33791   
+                                                                quic-discovery: 9001/udp                      
+                                                                tcp-discovery: 9000/tcp -> 127.0.0.1:33792    
+                                                                udp-discovery: 9000/udp                       
+a4896829eb67   dora                                             http: 8080/tcp -> http://127.0.0.1:33796      RUNNING
+d88a47fbb20e   el-1-geth-prysm                                  engine-rpc: 8551/tcp -> 127.0.0.1:33777       RUNNING
+                                                                metrics: 9001/tcp -> http://127.0.0.1:33778   
+                                                                rpc: 8545/tcp -> 127.0.0.1:33775              
+                                                                tcp-discovery: 30303/tcp -> 127.0.0.1:33779   
+                                                                udp-discovery: 30303/udp                      
+                                                                ws: 8546/tcp -> 127.0.0.1:33776               
+d5866902638c   el-2-reth-lighthouse                             engine-rpc: 8551/tcp -> 127.0.0.1:33782       RUNNING
+                                                                metrics: 9001/tcp -> http://127.0.0.1:33783   
+                                                                rpc: 8545/tcp -> 127.0.0.1:33780              
+                                                                tcp-discovery: 30303/tcp -> 127.0.0.1:33784   
+                                                                udp-discovery: 30303/udp                      
+                                                                ws: 8546/tcp -> 127.0.0.1:33781               
+a1f68e882c3d   forkmon                                          http: 8080/tcp -> http://127.0.0.1:33795      RUNNING
+5237310449ff   grafana                                          http: 3000/tcp -> http://127.0.0.1:33798      RUNNING
+58aecdc094ca   prometheus                                       http: 9090/tcp -> http://127.0.0.1:33797      RUNNING
+45fcdb373e2c   validator-key-generation-cl-validator-keystore   <none>                                        RUNNING
+efe9fa90538c   vc-1-geth-prysm                                  metrics: 8080/tcp -> http://127.0.0.1:33794   RUNNING
+8dc369e7482d   vc-2-reth-lighthouse                             metrics: 8080/tcp -> http://127.0.0.1:33793   RUNNING

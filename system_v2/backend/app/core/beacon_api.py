@@ -119,17 +119,20 @@ class BeaconAPIClient:
         获取验证者信息
         
         Args:
-            pubkey: 验证者公钥
+            pubkey: 验证者公钥（带或不带 0x 前缀）
             state_id: 状态 ID (head, finalized, genesis, <slot>, <epoch>)
             
         Returns:
             验证者信息或 None
         """
         try:
-            # 移除 0x 前缀
-            pubkey_clean = pubkey.lower().replace('0x', '')
+            # 规范化 pubkey：确保有 0x 前缀，转为小写
+            pubkey_normalized = pubkey.lower().strip()
+            if not pubkey_normalized.startswith('0x'):
+                pubkey_normalized = f"0x{pubkey_normalized}"
             
-            response = self._get(f"/eth/v1/beacon/states/{state_id}/validators/{pubkey_clean}")
+            # Beacon API 要求 URL 路径中的 pubkey 需要 0x 前缀
+            response = self._get(f"/eth/v1/beacon/states/{state_id}/validators/{pubkey_normalized}")
             data = response.get('data')
             
             if data:
@@ -149,16 +152,20 @@ class BeaconAPIClient:
         批量获取验证者信息
         
         Args:
-            pubkeys: 验证者公钥列表
+            pubkeys: 验证者公钥列表（带或不带 0x 前缀）
             state_id: 状态 ID
             
         Returns:
-            验证者信息字典，key 为公钥
+            验证者信息字典，key 为公钥（小写，带 0x 前缀）
         """
         # 准备查询参数
+        # 注意：在查询参数中，某些 Beacon API 实现可能需要不带 0x 前缀
+        # 但根据标准，应该支持两种格式，这里先尝试不带 0x 前缀
         pubkey_params = []
         for pubkey in pubkeys:
-            pubkey_clean = pubkey.lower().replace('0x', '')
+            pubkey_normalized = pubkey.lower().strip()
+            # 移除 0x 前缀用于查询参数（某些实现要求）
+            pubkey_clean = pubkey_normalized.replace('0x', '')
             pubkey_params.append(pubkey_clean)
         
         # Beacon API 支持多个 pubkey 查询
@@ -168,12 +175,16 @@ class BeaconAPIClient:
             response = self._get(f"/eth/v1/beacon/states/{state_id}/validators", params=params)
             data_list = response.get('data', [])
             
-            # 转换为字典
+            # 转换为字典，key 使用规范化格式（小写，带 0x 前缀）
             validators = {}
             for validator_data in data_list:
                 pubkey = validator_data.get('validator', {}).get('pubkey', '')
                 if pubkey:
-                    validators[pubkey.lower()] = validator_data
+                    # 确保 pubkey 有 0x 前缀并转为小写
+                    pubkey_normalized = pubkey.lower().strip()
+                    if not pubkey_normalized.startswith('0x'):
+                        pubkey_normalized = f"0x{pubkey_normalized}"
+                    validators[pubkey_normalized] = validator_data
             
             return validators
             
