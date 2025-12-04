@@ -24,7 +24,6 @@ import {
 } from '@ant-design/icons'
 import { depositsApi, DepositTransaction, DepositData, BatchDepositContract } from '../../api/deposits'
 import { keysApi } from '../../api/keys'
-import { networkApi, RpcEndpoints, NetworkInfo } from '../../api/network'
 
 const { Title, Text } = Typography
 const { Option } = Select
@@ -40,36 +39,24 @@ const DepositList: React.FC = () => {
   const [availableKeys, setAvailableKeys] = useState<any[]>([])
   const [generatedDepositData, setGeneratedDepositData] = useState<DepositData[]>([])
   const [batchContracts, setBatchContracts] = useState<BatchDepositContract[]>([])
-  const [rpcEndpoints, setRpcEndpoints] = useState<RpcEndpoints | null>(null)
   const [syncing, setSyncing] = useState(false)
   const [form] = Form.useForm()
   const [submitForm] = Form.useForm()
 
-  // 将 RPC URL 中的 localhost 替换为 host.docker.internal
-  const replaceLocalhostWithDockerHost = (url: string | undefined): string | undefined => {
-    if (!url) return url
-    return url.replace(/localhost/g, 'host.docker.internal')
-  }
-
-  const loadRpcEndpoints = async () => {
+  const loadBatchContracts = async () => {
     try {
-      const endpoints = await networkApi.getRpcEndpoints()
-      // 替换 localhost 为 host.docker.internal
-      const processedEndpoints = {
-        ...endpoints,
-        host_rpc_url: replaceLocalhostWithDockerHost(endpoints.host_rpc_url),
-        rpc_url: replaceLocalhostWithDockerHost(endpoints.rpc_url),
-      }
-      setRpcEndpoints(processedEndpoints)
+      const response = await depositsApi.listBatchContracts() as any
+      // apiClient 的响应拦截器已经返回了 response.data
+      const contractsList = Array.isArray(response) ? response : (response?.data || response || [])
+      setBatchContracts(contractsList)
     } catch (error: any) {
-      console.warn('无法获取 RPC 端点:', error)
+      console.warn(`加载 Batch Deposit 合约列表失败: ${error.message}`)
     }
   }
 
   useEffect(() => {
     loadDeposits()
     loadBatchContracts()
-    loadRpcEndpoints()
   }, [])
 
   const loadDeposits = async () => {
@@ -111,14 +98,6 @@ const DepositList: React.FC = () => {
     }
   }
 
-  const loadBatchContracts = async () => {
-    try {
-      const response = await depositsApi.listBatchContracts() as any
-      setBatchContracts(response || [])
-    } catch (error: any) {
-      console.warn(`加载 Batch Deposit 合约列表失败: ${error.message}`)
-    }
-  }
 
   const handleSubmit = async (values: {
     from_address: string
@@ -325,15 +304,6 @@ const DepositList: React.FC = () => {
           <Space>
             <Button icon={<SyncOutlined />} onClick={() => handleSync()} loading={syncing}>
               同步状态
-            </Button>
-            <Button
-              type="default"
-              onClick={() => {
-                loadBatchContracts()
-                setDeployModalVisible(true)
-              }}
-            >
-              部署 Batch Deposit 合约
             </Button>
             <Button
               type="primary"
