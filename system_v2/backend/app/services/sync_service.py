@@ -12,6 +12,7 @@ from sqlalchemy import and_
 from app.models.database import ValidatorKey
 from app.models.enums import ValidatorKeyStatus
 from app.core.beacon_api import BeaconAPIClient
+from app.services.validator_state_machine import ValidatorStateMachine
 from app.utils.exceptions import BeaconAPIError, DatabaseError
 
 logger = logging.getLogger(__name__)
@@ -37,6 +38,7 @@ class SyncService:
         """
         self.db = db
         self.beacon_api = beacon_api_client or BeaconAPIClient()
+        self.state_machine = ValidatorStateMachine(db)
     
     def sync_validator_status(
         self,
@@ -78,46 +80,8 @@ class SyncService:
                     logger.warning(f"验证者在链上不存在: {pubkey[:10]}...")
                     return validator_key
             
-            # 解析验证者状态
-            validator_info = validator_data.get('validator', {})
-            status_info = validator_data.get('status', '')
-            
-            # 更新状态
-            old_status = validator_key.status
-            
-            if status_info == 'active_ongoing':
-                new_status = ValidatorKeyStatus.ACTIVE_ON_CHAIN.value
-            elif status_info == 'exited_unslashed' or status_info == 'exited_slashed':
-                new_status = ValidatorKeyStatus.EXITED.value
-            elif status_info == 'pending_initialized' or status_info == 'pending_queued':
-                new_status = ValidatorKeyStatus.PENDING.value
-            elif status_info == 'withdrawal_possible' or status_info == 'withdrawal_done':
-                new_status = ValidatorKeyStatus.EXITED.value
-            else:
-                # 保持原状态或设置为 deposited
-                if old_status == ValidatorKeyStatus.PENDING.value:
-                    new_status = ValidatorKeyStatus.DEPOSITED.value
-                else:
-                    new_status = old_status
-            
-            # 更新状态和时间戳
-            if new_status != old_status:
-                validator_key.status = new_status
-                
-                # 更新激活时间
-                if new_status == ValidatorKeyStatus.ACTIVE_ON_CHAIN.value and not validator_key.activated_at:
-                    activation_epoch = validator_info.get('activation_epoch')
-                    if activation_epoch:
-                        # 记录激活时间（简化处理，实际应该根据 epoch 计算时间）
-                        validator_key.activated_at = datetime.utcnow()
-                
-                # 更新退出时间
-                if new_status == ValidatorKeyStatus.EXITED.value and not validator_key.exited_at:
-                    exit_epoch = validator_info.get('exit_epoch')
-                    if exit_epoch and exit_epoch != '18446744073709551615':  # 最大值表示未退出
-                        validator_key.exited_at = datetime.utcnow()
-                
-                logger.info(f"验证者状态已更新: {pubkey[:10]}... {old_status} -> {new_status}")
+            # 使用状态机更新状态
+            self.state_machine.update_validator_from_beacon_data(validator_key, validator_data)
             
             return validator_key
             
@@ -201,31 +165,8 @@ class SyncService:
             validator_key: ValidatorKey 对象
             validator_data: Beacon API 返回的验证者数据
         """
-        validator_info = validator_data.get('validator', {})
-        status_info = validator_data.get('status', '')
-        
-        old_status = validator_key.status
-        
-        # 确定新状态
-        if status_info == 'active_ongoing':
-            new_status = ValidatorKeyStatus.ACTIVE_ON_CHAIN.value
-        elif status_info in ['exited_unslashed', 'exited_slashed', 'withdrawal_possible', 'withdrawal_done']:
-            new_status = ValidatorKeyStatus.EXITED.value
-        elif status_info in ['pending_initialized', 'pending_queued']:
-            new_status = ValidatorKeyStatus.PENDING.value
-        else:
-            # 保持原状态
-            new_status = old_status
-        
-        # 更新状态
-        if new_status != old_status:
-            validator_key.status = new_status
-            
-            if new_status == ValidatorKeyStatus.ACTIVE_ON_CHAIN.value and not validator_key.activated_at:
-                validator_key.activated_at = datetime.utcnow()
-            
-            if new_status == ValidatorKeyStatus.EXITED.value and not validator_key.exited_at:
-                validator_key.exited_at = datetime.utcnow()
+        # 使用状态机更新状态
+        self.state_machine.update_validator_from_beacon_data(validator_key, validator_data)
     
     def sync_all_pending_validators(self) -> Dict[str, Any]:
         """

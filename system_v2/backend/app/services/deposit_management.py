@@ -12,7 +12,9 @@ from app.models.enums import DepositStatus, ValidatorKeyStatus
 from app.core.deposit_generator import DepositGenerator
 from app.core.batch_deposit import BatchDepositClient
 from app.core.vault_client import VaultClient
+from app.core.eth1_client import ETH1Client
 from app.services.key_management import KeyManagementService
+from app.services.validator_state_machine import ValidatorStateMachine
 from app.utils.exceptions import DepositGenerationError, DatabaseError
 
 logger = logging.getLogger(__name__)
@@ -44,6 +46,7 @@ class DepositManagementService:
         self.deposit_generator = deposit_generator or DepositGenerator()
         self.batch_deposit_client = batch_deposit_client
         self.key_service = key_service
+        self.state_machine = ValidatorStateMachine(db)
     
     def generate_deposit_data_for_active_keys(
         self,
@@ -420,13 +423,18 @@ class DepositManagementService:
             if block_number:
                 transaction.block_number = block_number
             
-            # 更新密钥状态
+            # 更新密钥状态（使用状态机）
             validator_key = self.db.query(ValidatorKey).filter(
                 ValidatorKey.pubkey == transaction.pubkey
             ).first()
             
             if validator_key and validator_key.status == ValidatorKeyStatus.PENDING.value:
-                validator_key.status = ValidatorKeyStatus.DEPOSITED.value
+                self.state_machine.transition(
+                    validator_key,
+                    ValidatorKeyStatus.DEPOSITED,
+                    reason='deposit_confirmed',
+                    metadata={'tx_hash': tx_hash, 'block_number': block_number}
+                )
         
         self.db.commit()
         
@@ -471,17 +479,15 @@ class DepositManagementService:
         if not rpc_url:
             raise ValueError("无法获取 RPC URL")
         
-        # 连接 Web3
-        web3 = Web3(Web3.HTTPProvider(rpc_url))
-        if not web3.is_connected():
-            raise ValueError(f"无法连接到 RPC: {rpc_url}")
+        # 初始化 ETH1 客户端
+        eth1_client = ETH1Client(rpc_url)
         
         # 初始化验证服务
         beacon_api = BeaconAPIClient()
         validation_service = DepositValidationService(
             db=self.db,
             beacon_api=beacon_api,
-            web3=web3
+            web3=eth1_client.web3
         )
         
         # 查询待同步的交易（包括 SUBMITTED 和旧的 PENDING 状态）
@@ -520,45 +526,62 @@ class DepositManagementService:
                 if tx.status == DepositStatus.PENDING.value:
                     tx.status = DepositStatus.SUBMITTED.value
                 
-                # 检查交易是否已确认
-                try:
-                    receipt = web3.eth.get_transaction_receipt(tx.tx_hash)
+                # 获取交易状态
+                tx_status = eth1_client.get_transaction_status(tx.tx_hash)
+                
+                if tx_status['status'] == 'confirmed':
+                    # 交易已确认
+                    if tx.status != DepositStatus.CONFIRMED.value:
+                        tx.status = DepositStatus.CONFIRMED.value
+                        tx.confirmed_at = datetime.utcnow()
+                        tx.block_number = tx_status['block_number']
+                        confirmed_count += 1
                     
-                    if receipt.status == 1:  # 成功
-                        # 更新为 CONFIRMED 状态
-                        if tx.status != DepositStatus.CONFIRMED.value:
-                            tx.status = DepositStatus.CONFIRMED.value
-                            tx.confirmed_at = datetime.utcnow()
-                            tx.block_number = receipt.blockNumber
-                            confirmed_count += 1
+                    # 如果 validate_immediately=True，立即验证
+                    if validate_immediately:
+                        validation_result = validation_service.validate_deposit_transaction(tx, rpc_url)
                         
-                        # 如果 validate_immediately=True，立即验证
-                        if validate_immediately:
-                            validation_result = validation_service.validate_deposit_transaction(tx, rpc_url)
-                            
-                            if validation_result['is_valid']:
-                                validated_count += 1
-                                if validation_result['status'] == DepositStatus.INVALID.value:
-                                    invalid_count += 1
-                            else:
+                        if validation_result['is_valid']:
+                            validated_count += 1
+                            if validation_result['status'] == DepositStatus.INVALID.value:
                                 invalid_count += 1
-                    else:  # 失败
-                        tx.status = DepositStatus.FAILED.value
-                        failed_count += 1
+                        else:
+                            invalid_count += 1
                     
                     synced_count += 1
-                except Exception as e:
-                    # 交易不存在或查询失败
-                    logger.warning(f"无法获取交易 {tx.tx_hash} 的状态: {e}")
-                    # 如果交易提交时间超过 1 小时仍未确认，标记为失败
+                    
+                elif tx_status['status'] == 'failed':
+                    # 交易失败
+                    tx.status = DepositStatus.FAILED.value
+                    failed_count += 1
+                    synced_count += 1
+                    
+                elif tx_status['status'] == 'mempool':
+                    # 交易在内存池中，更新验证器状态为 UNKNOWN
+                    validator_key = self.db.query(ValidatorKey).filter(
+                        ValidatorKey.pubkey == tx.pubkey
+                    ).first()
+                    
+                    if validator_key and validator_key.status == ValidatorKeyStatus.PENDING.value:
+                        self.state_machine.transition(
+                            validator_key,
+                            ValidatorKeyStatus.UNKNOWN,
+                            reason='tx_in_mempool',
+                            metadata={'tx_hash': tx.tx_hash}
+                        )
+                    
+                    synced_count += 1
+                    
+                elif tx_status['status'] == 'not_found':
+                    # 交易未找到，检查是否超时
                     if (datetime.utcnow() - tx.submitted_at).total_seconds() > 3600:
                         tx.status = DepositStatus.FAILED.value
-                        tx.notes = f"交易超时未确认: {str(e)}"
+                        tx.notes = f"交易超时未确认: 交易未找到"
                         failed_count += 1
                         synced_count += 1
                     else:
-                        # 交易可能还在 mempool 中，保持 SUBMITTED 状态
-                        pass
+                        # 交易可能还在 mempool 中，但无法确认，保持 SUBMITTED 状态
+                        synced_count += 1
                         
             except Exception as e:
                 logger.error(f"同步交易 {tx.tx_hash} 时出错: {e}", exc_info=True)

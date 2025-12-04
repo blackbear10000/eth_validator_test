@@ -12,6 +12,7 @@ from eth_utils import to_bytes
 from app.models.database import DepositTransaction, ValidatorKey
 from app.models.enums import DepositStatus, ValidatorKeyStatus
 from app.core.beacon_api import BeaconAPIClient
+from app.services.validator_state_machine import ValidatorStateMachine
 from app.utils.exceptions import BeaconAPIError
 
 logger = logging.getLogger(__name__)
@@ -40,6 +41,7 @@ class DepositValidationService:
         self.db = db
         self.beacon_api = beacon_api or BeaconAPIClient()
         self.web3 = web3
+        self.state_machine = ValidatorStateMachine(db)
     
     def validate_deposit_transaction(
         self,
@@ -120,10 +122,18 @@ class DepositValidationService:
             if status_info == 'active_ongoing':
                 result['status'] = DepositStatus.ACTIVATED.value
                 result['is_valid'] = True
-            elif status_info in ['pending_initialized', 'pending_queued']:
+            elif status_info == 'pending_initialized':
+                # pending_initialized: 在 deposit queue 中
+                result['status'] = DepositStatus.VALIDATED.value
+                result['is_valid'] = True
+            elif status_info == 'pending_queued':
+                # pending_queued: 在激活队列中
                 result['status'] = DepositStatus.PENDING_ACTIVATION.value
                 result['is_valid'] = True
-            elif status_info in ['exited_unslashed', 'exited_slashed', 'withdrawal_possible', 'withdrawal_done']:
+            elif status_info == 'exited_slashed':
+                result['status'] = DepositStatus.EXITED.value
+                result['is_valid'] = True
+            elif status_info in ['exited_unslashed', 'withdrawal_possible', 'withdrawal_done']:
                 result['status'] = DepositStatus.EXITED.value
                 result['is_valid'] = True
             elif status_info == 'exiting':
@@ -215,24 +225,57 @@ class DepositValidationService:
             'reason': 'validation'
         })
         
-        # 更新关联的验证者密钥状态
+        # 更新关联的验证者密钥状态（使用状态机）
         validator_key = self.db.query(ValidatorKey).filter(
             ValidatorKey.pubkey == tx.pubkey
         ).first()
         
         if validator_key:
-            if result['status'] == DepositStatus.ACTIVATED.value:
-                validator_key.status = ValidatorKeyStatus.ACTIVE_ON_CHAIN.value
-                if not validator_key.activated_at:
-                    validator_key.activated_at = datetime.utcnow()
-            elif result['status'] == DepositStatus.PENDING_ACTIVATION.value:
-                validator_key.status = ValidatorKeyStatus.DEPOSITED.value
-            elif result['status'] == DepositStatus.EXITED.value:
-                validator_key.status = ValidatorKeyStatus.EXITED.value
-                if not validator_key.exited_at:
-                    validator_key.exited_at = datetime.utcnow()
-            elif result['status'] == DepositStatus.EXITING.value:
-                validator_key.status = ValidatorKeyStatus.PENDING_EXIT.value
+            # 根据 Beacon Chain 状态确定验证器状态
+            validator_data = self.check_validator_status(tx.pubkey)
+            if validator_data:
+                # 使用状态机更新状态
+                self.state_machine.update_validator_from_beacon_data(validator_key, validator_data)
+            else:
+                # 如果无法获取 Beacon Chain 状态，根据存款交易状态推断
+                if result['status'] == DepositStatus.ACTIVATED.value:
+                    self.state_machine.transition(
+                        validator_key,
+                        ValidatorKeyStatus.ACTIVE_ON_CHAIN,
+                        reason='deposit_activated'
+                    )
+                elif result['status'] == DepositStatus.PENDING_ACTIVATION.value:
+                    self.state_machine.transition(
+                        validator_key,
+                        ValidatorKeyStatus.PENDING,
+                        reason='deposit_pending_activation'
+                    )
+                elif result['status'] == DepositStatus.VALIDATED.value:
+                    self.state_machine.transition(
+                        validator_key,
+                        ValidatorKeyStatus.DEPOSITED,
+                        reason='deposit_validated'
+                    )
+                elif result['status'] == DepositStatus.EXITED.value:
+                    # 检查是否是被惩罚
+                    if result.get('beacon_status') == 'exited_slashed':
+                        self.state_machine.transition(
+                            validator_key,
+                            ValidatorKeyStatus.SLASHED,
+                            reason='deposit_exited_slashed'
+                        )
+                    else:
+                        self.state_machine.transition(
+                            validator_key,
+                            ValidatorKeyStatus.EXITED,
+                            reason='deposit_exited'
+                        )
+                elif result['status'] == DepositStatus.EXITING.value:
+                    self.state_machine.transition(
+                        validator_key,
+                        ValidatorKeyStatus.PENDING_EXIT,
+                        reason='deposit_exiting'
+                    )
         
         self.db.commit()
         logger.info(f"存款交易状态已更新: {tx.tx_hash[:10]}... {old_status} -> {result['status']}")

@@ -38,7 +38,7 @@ class ValidatorKey(Base):
         nullable=False,
         default=ValidatorKeyStatus.UNUSED.value,
         index=True,
-        comment="密钥状态: unused/active/pending/deposited/active_on_chain/exited"
+        comment="密钥状态: unused/active/unknown/pending/deposited/active_on_chain/exited/slashed/pending_exit"
     )
 
     # 时间戳
@@ -46,6 +46,7 @@ class ValidatorKey(Base):
     activated_at = Column(DateTime, nullable=True, comment="激活时间")
     deposited_at = Column(DateTime, nullable=True, comment="存款时间")
     exited_at = Column(DateTime, nullable=True, comment="退出时间")
+    slashed_at = Column(DateTime, nullable=True, comment="被惩罚时间")
 
     # 提款地址
     withdrawal_address = Column(String(42), nullable=True, comment="0x01 类型提款地址 (Execution Address)")
@@ -58,6 +59,9 @@ class ValidatorKey(Base):
 
     # 备注
     notes = Column(Text, nullable=True, comment="备注信息")
+
+    # 状态历史（用于审计）
+    status_history = Column(JSON, nullable=True, comment="状态变更历史")
 
     # 助记词（加密存储）
     mnemonic_encrypted = Column(Text, nullable=True, comment="加密后的助记词（同一批次共享）")
