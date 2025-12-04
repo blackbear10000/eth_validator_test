@@ -267,6 +267,17 @@ class DepositManagementService:
                                 failed_count += 1
                                 continue
                             
+                            # 检查是否已存在相同的记录（防止重复插入）
+                            existing_tx = self.db.query(DepositTransaction).filter(
+                                DepositTransaction.pubkey == validator_key.pubkey,
+                                DepositTransaction.tx_hash == batch_result['tx_hash']
+                            ).first()
+                            
+                            if existing_tx:
+                                logger.info(f"验证者 {pubkey[:20]}... 的存款记录已存在，跳过: {existing_tx.tx_hash[:10]}...")
+                                saved_count += 1
+                                continue
+                            
                             deposit_tx = DepositTransaction(
                                 pubkey=validator_key.pubkey,
                                 tx_hash=batch_result['tx_hash'],

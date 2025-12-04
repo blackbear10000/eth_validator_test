@@ -112,7 +112,7 @@ class DepositTransaction(Base):
     pubkey = Column(String(98), ForeignKey("validator_keys.pubkey"), nullable=False, index=True, comment="验证者公钥")
     
     # 交易信息
-    tx_hash = Column(String(66), nullable=False, unique=True, index=True, comment="交易哈希")
+    tx_hash = Column(String(66), nullable=False, index=True, comment="交易哈希（Batch Deposit 中多个验证者共享同一个 tx_hash）")
     batch_id = Column(String(64), nullable=True, index=True, comment="批次ID（如果使用 Batch Deposit）")
     status = Column(
         String(32),
@@ -149,6 +149,13 @@ class DepositTransaction(Base):
 
     # 关系
     validator_key = relationship("ValidatorKey", back_populates="deposits")
+
+    # 唯一约束：同一个验证者不应该有重复的交易记录
+    # 但不同的验证者可以共享同一个交易哈希（Batch Deposit 的情况）
+    __table_args__ = (
+        UniqueConstraint('pubkey', 'tx_hash', name='uq_deposit_pubkey_tx_hash'),
+        Index('idx_deposit_pubkey_tx_hash', 'pubkey', 'tx_hash'),
+    )
 
     def __repr__(self):
         return f"<DepositTransaction(tx_hash={self.tx_hash[:10]}..., status={self.status})>"
