@@ -140,7 +140,6 @@ const DepositList: React.FC = () => {
       const results = response.data || response || []
       const successCount = results.filter((r: any) => r.status === 'submitted' || r.status === 'success').length
       const failedCount = results.filter((r: any) => r.status === 'failed').length
-      const totalCount = results.length
       
       if (failedCount === 0) {
         message.success(`存款提交成功: ${successCount} 个批次已提交`)
