@@ -143,6 +143,7 @@ const KeyList: React.FC = () => {
     const statusConfig: Record<string, { color: string; text: string }> = {
       unused: { color: 'default', text: '未使用' },
       active: { color: 'processing', text: '已激活' },
+      deposit_data_generated: { color: 'cyan', text: '已生成存款数据' },
       unknown: { color: 'warning', text: '未知' },
       pending: { color: 'warning', text: '待处理' },
       deposited: { color: 'blue', text: '已存款' },
@@ -298,6 +299,7 @@ const KeyList: React.FC = () => {
             >
               <Option value="unused">未使用</Option>
               <Option value="active">已激活</Option>
+              <Option value="deposit_data_generated">已生成存款数据</Option>
               <Option value="unknown">未知</Option>
               <Option value="pending">待处理</Option>
               <Option value="deposited">已存款</Option>

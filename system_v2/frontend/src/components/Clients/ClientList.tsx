@@ -109,10 +109,15 @@ const ClientList: React.FC = () => {
   const handleAssignKeys = async (clientId: number) => {
     setSelectedClient(clients.find((c) => c.id === clientId) || null)
     
-    // 加载可用密钥
+    // 加载可用密钥（包括 ACTIVE 和 DEPOSIT_DATA_GENERATED 状态）
     try {
-      const response = await keysApi.list({ status: 'active' }) as any
-      setAvailableKeys(response.items || [])
+      const [activeResponse, depositDataResponse] = await Promise.all([
+        keysApi.list({ status: 'active' }) as any,
+        keysApi.list({ status: 'deposit_data_generated' }) as any,
+      ])
+      const activeKeys = activeResponse.items || []
+      const depositDataKeys = depositDataResponse.items || []
+      setAvailableKeys([...activeKeys, ...depositDataKeys])
       setAssignKeysModalVisible(true)
     } catch (error: any) {
       message.error(`加载可用密钥失败: ${error.message}`)

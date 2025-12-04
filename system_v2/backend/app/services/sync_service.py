@@ -54,16 +54,22 @@ class SyncService:
             更新后的 ValidatorKey 对象或 None
         """
         try:
-            # 查询本地密钥
+            # 规范化 pubkey（确保有 0x 前缀，小写）
+            pubkey_normalized = pubkey.lower().strip()
+            if not pubkey_normalized.startswith('0x'):
+                pubkey_normalized = f"0x{pubkey_normalized}"
+            
+            # 查询本地密钥（支持两种格式匹配）
             validator_key = self.db.query(ValidatorKey).filter(
-                ValidatorKey.pubkey == pubkey.lower()
+                (ValidatorKey.pubkey == pubkey_normalized) |
+                (ValidatorKey.pubkey == pubkey.lower())
             ).first()
             
             if not validator_key:
                 logger.warning(f"密钥不存在: {pubkey[:10]}...")
                 return None
             
-            # 查询链上状态
+            # 查询链上状态（get_validator 会自动处理 0x 前缀）
             validator_data = self.beacon_api.get_validator(pubkey)
             
             if not validator_data:
@@ -119,15 +125,22 @@ class SyncService:
                 
                 # 更新每个验证者状态
                 for pubkey in batch_pubkeys:
+                    # 规范化 pubkey（确保有 0x 前缀，小写）
+                    pubkey_normalized = pubkey.lower().strip()
+                    if not pubkey_normalized.startswith('0x'):
+                        pubkey_normalized = f"0x{pubkey_normalized}"
+                    
                     validator_key = self.db.query(ValidatorKey).filter(
-                        ValidatorKey.pubkey == pubkey.lower()
+                        (ValidatorKey.pubkey == pubkey_normalized) |
+                        (ValidatorKey.pubkey == pubkey.lower())
                     ).first()
                     
                     if not validator_key:
                         failed_count += 1
                         continue
                     
-                    validator_data = validators.get(pubkey.lower())
+                    # get_validators 返回的字典 key 是带 0x 前缀的规范化格式
+                    validator_data = validators.get(pubkey_normalized)
                     if validator_data:
                         # 使用已有逻辑更新状态
                         self._update_validator_from_beacon_data(validator_key, validator_data)

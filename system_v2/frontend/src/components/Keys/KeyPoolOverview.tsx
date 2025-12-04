@@ -122,6 +122,7 @@ const KeyPoolOverview: React.FC = () => {
     const statusConfig: Record<string, { color: string; text: string }> = {
       unused: { color: 'default', text: '未使用' },
       active: { color: 'processing', text: '已激活' },
+      deposit_data_generated: { color: 'cyan', text: '已生成存款数据' },
       unknown: { color: 'warning', text: '未知' },
       pending: { color: 'warning', text: '待处理' },
       deposited: { color: 'blue', text: '已存款' },

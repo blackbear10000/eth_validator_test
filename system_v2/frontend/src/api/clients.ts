@@ -51,5 +51,27 @@ export const clientsApi = {
   // 获取客户端日志
   getLogs: (clientId: number, lines?: number) =>
     apiClient.get(`/clients/${clientId}/logs`, { params: { lines } }),
+
+  // 获取客户端详情
+  get: (clientId: number) =>
+    apiClient.get(`/clients/${clientId}`),
+
+  // 更新客户端
+  update: (clientId: number, params: {
+    name?: string
+    beacon_api_url?: string
+    grpc_endpoint?: string
+    web3signer_url?: string
+    notes?: string
+    is_active?: boolean
+  }) => apiClient.put(`/clients/${clientId}`, params),
+
+  // 删除客户端
+  delete: (clientId: number, hardDelete?: boolean) =>
+    apiClient.delete(`/clients/${clientId}`, { params: { hard_delete: hardDelete } }),
+
+  // 同步密钥到 Validator Client
+  syncKeys: (clientId: number) =>
+    apiClient.post(`/clients/${clientId}/sync-keys`),
 }
 

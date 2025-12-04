@@ -304,8 +304,8 @@ class NetworkService:
             # 检查是否是新的容器/服务行（通常以容器ID开头，或者包含其他服务名）
             if (in_el_service or in_cl_service) and re.match(r'^[a-f0-9]{12}\s+', line):
                 if in_el_service and not re.search(r'el-\d+-', line):
-                in_el_service = False
-                current_service = None
+                    in_el_service = False
+                    current_service = None
                 if in_cl_service and not re.search(r'cl-\d+-', line):
                     in_cl_service = False
                     beacon_service = None

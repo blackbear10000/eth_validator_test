@@ -14,6 +14,27 @@ from app.utils.exceptions import BeaconAPIError
 logger = logging.getLogger(__name__)
 
 
+def get_beacon_api_url() -> str:
+    """
+    获取 Beacon API URL（优先从 NetworkService 获取，否则使用配置的默认值）
+    
+    Returns:
+        Beacon API URL
+    """
+    try:
+        from app.services.network_service import NetworkService
+        network_service = NetworkService()
+        endpoints = network_service.get_rpc_endpoints()
+        if endpoints.get("beacon_api_url"):
+            logger.debug(f"从网络服务获取 Beacon API URL: {endpoints['beacon_api_url']}")
+            return endpoints["beacon_api_url"]
+    except Exception as e:
+        logger.debug(f"无法从网络服务获取 Beacon API URL: {e}，使用默认配置")
+    
+    # 使用默认配置
+    return settings.beacon_api_url
+
+
 class BeaconAPIClient:
     """
     Beacon Chain API 客户端
@@ -25,9 +46,13 @@ class BeaconAPIClient:
         初始化 Beacon API 客户端
         
         Args:
-            base_url: Beacon API 基础 URL
+            base_url: Beacon API 基础 URL（如果不提供，则自动从 NetworkService 获取）
         """
-        self.base_url = base_url or settings.beacon_api_url.rstrip('/')
+        if base_url:
+            self.base_url = base_url.rstrip('/')
+        else:
+            # 自动获取 Beacon API URL（优先从 NetworkService）
+            self.base_url = get_beacon_api_url().rstrip('/')
         
         # 配置重试策略
         retry_strategy = Retry(
