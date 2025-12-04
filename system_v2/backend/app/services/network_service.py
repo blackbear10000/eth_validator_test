@@ -401,11 +401,16 @@ class NetworkService:
             except Exception as e:
                 logger.warning(f"无法从 Beacon API 获取 fork_version: {e}")
             
+            # 从 get_rpc_endpoints 获取端点信息（包含正确的 URL）
+            endpoints = self.get_rpc_endpoints()
+            
             result = {
                 "enclave_name": self.enclave_name,
                 "genesis": genesis_info,
                 "fork_schedule": fork_schedule,
-                "beacon_api_url": settings.beacon_api_url,
+                "beacon_api_url": endpoints.get("host_beacon_api_url") or endpoints.get("beacon_api_url") or settings.beacon_api_url,
+                "rpc_url": endpoints.get("host_rpc_url") or endpoints.get("rpc_url"),
+                "ws_url": endpoints.get("host_ws_url") or endpoints.get("ws_url"),
                 "fork_version": fork_version,
                 "network_name": "mainnet"  # 对于 dev net，使用 mainnet 作为 network_name
             }

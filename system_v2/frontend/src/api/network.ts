@@ -14,6 +14,8 @@ export interface NetworkInfo {
   genesis?: any
   fork_schedule?: any
   beacon_api_url?: string
+  rpc_url?: string
+  ws_url?: string
   deposit_contract_address?: string
   fork_version?: string
   network_name?: string

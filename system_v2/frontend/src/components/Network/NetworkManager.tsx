@@ -198,9 +198,19 @@ const NetworkManager: React.FC = () => {
                   </pre>
                 </Descriptions.Item>
               )}
+              {info.rpc_url && (
+                <Descriptions.Item label="执行层 RPC URL" span={1}>
+                  <Text code copyable>{info.rpc_url}</Text>
+                </Descriptions.Item>
+              )}
+              {info.ws_url && (
+                <Descriptions.Item label="执行层 WebSocket URL" span={1}>
+                  <Text code copyable>{info.ws_url}</Text>
+                </Descriptions.Item>
+              )}
               {info.beacon_api_url && (
                 <Descriptions.Item label="Beacon API URL" span={2}>
-                  <Text code>{info.beacon_api_url}</Text>
+                  <Text code copyable>{info.beacon_api_url}</Text>
                 </Descriptions.Item>
               )}
             </Descriptions>
