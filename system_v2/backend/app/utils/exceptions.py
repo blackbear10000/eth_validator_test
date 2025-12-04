@@ -42,3 +42,8 @@ class ClientManagementError(ValidatorManagementError):
     """客户端管理错误"""
     pass
 
+
+class RemoteValidatorAPIError(ValidatorManagementError):
+    """Remote Validator API 错误"""
+    pass
+

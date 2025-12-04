@@ -175,6 +175,17 @@ class DepositManagementService:
                 # 验证 Deposit Data
                 if self.deposit_generator.validate_deposit_data(deposit_data):
                     deposit_data_list.append(deposit_data)
+                    
+                    # 更新密钥状态为 DEPOSIT_DATA_GENERATED（如果当前是 ACTIVE）
+                    # 这样密钥仍然可以加载到客户端，但标记为已生成 Deposit Data
+                    if validator_key.status == ValidatorKeyStatus.ACTIVE.value:
+                        self.state_machine.transition(
+                            validator_key,
+                            ValidatorKeyStatus.DEPOSIT_DATA_GENERATED,
+                            reason='deposit_data_generated',
+                            metadata={'withdrawal_address': withdrawal_address, 'amount_eth': amount_eth}
+                        )
+                    
                     logger.debug(f"Deposit Data 生成成功: {validator_key.pubkey[:10]}...")
                 else:
                     logger.warning(f"Deposit Data 验证失败: {validator_key.pubkey[:10]}...")
@@ -182,6 +193,9 @@ class DepositManagementService:
             except Exception as e:
                 logger.error(f"生成 Deposit Data 失败 ({validator_key.pubkey[:10]}...): {e}")
                 continue
+        
+        # 提交状态更新
+        self.db.commit()
         
         logger.info(f"成功生成 {len(deposit_data_list)}/{len(validator_keys)} 个 Deposit Data")
         return deposit_data_list
@@ -292,8 +306,13 @@ class DepositManagementService:
                             )
                             self.db.add(deposit_tx)
                             
-                            # 更新密钥状态
-                            validator_key.status = ValidatorKeyStatus.PENDING.value
+                            # 使用状态机更新密钥状态（从 DEPOSIT_DATA_GENERATED 或 ACTIVE 转换到 PENDING）
+                            self.state_machine.transition(
+                                validator_key,
+                                ValidatorKeyStatus.PENDING,
+                                reason='deposit_submitted',
+                                metadata={'tx_hash': batch_result['tx_hash'], 'batch_id': batch_id}
+                            )
                             validator_key.deposit_tx_hash = batch_result['tx_hash']
                             saved_count += 1
                             

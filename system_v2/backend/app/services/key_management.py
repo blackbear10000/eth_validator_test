@@ -479,6 +479,23 @@ class KeyManagementService:
             
             self.db.commit()
             
+            # 自动加载到 Web3Signer（零停机更新）
+            try:
+                from app.core.web3signer_client import Web3SignerClient
+                web3signer_client = Web3SignerClient()
+                
+                # 触发零停机密钥更新（Web3Signer 会从 Vault 重新加载所有密钥）
+                logger.info(f"触发 Web3Signer 重新加载密钥（激活了 {len(keys)} 个新密钥）...")
+                reload_result = web3signer_client.zero_downtime_reload(wait_for_health=True)
+                
+                if reload_result.get('success'):
+                    logger.info(f"Web3Signer 密钥重新加载成功，已激活的密钥已自动加载")
+                else:
+                    logger.warning(f"Web3Signer 密钥重新加载可能失败: {reload_result.get('error')}")
+            except Exception as e:
+                # 如果 Web3Signer 重新加载失败，记录警告但不影响密钥激活
+                logger.warning(f"自动加载密钥到 Web3Signer 失败: {e}，密钥已激活但需要手动触发 Web3Signer 重新加载")
+            
             logger.info(f"成功激活 {len(keys)} 个密钥")
             return keys
             

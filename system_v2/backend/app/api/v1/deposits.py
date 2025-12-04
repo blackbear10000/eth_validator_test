@@ -206,8 +206,15 @@ async def submit_deposits(
                         )
                         db.add(deposit_tx)
                         
-                        # 更新密钥状态
-                        validator_key.status = ValidatorKeyStatus.PENDING.value
+                        # 使用状态机更新密钥状态（从 DEPOSIT_DATA_GENERATED 或 ACTIVE 转换到 PENDING）
+                        from app.services.validator_state_machine import ValidatorStateMachine
+                        state_machine = ValidatorStateMachine(db)
+                        state_machine.transition(
+                            validator_key,
+                            ValidatorKeyStatus.PENDING,
+                            reason='deposit_submitted',
+                            metadata={'tx_hash': result['tx_hash']}
+                        )
                         validator_key.deposit_tx_hash = result['tx_hash']
                 elif result['status'] == 'failed':
                     # 记录失败的交易

@@ -11,6 +11,7 @@ from app.services.client_process_service import ClientProcessService
 from app.core.web3signer_client import Web3SignerClient
 from app.models.schemas import (
     ClientInstanceCreate,
+    ClientInstanceUpdate,
     ClientInstanceResponse,
     ClientKeyAssignment
 )
@@ -67,6 +68,81 @@ async def list_clients(
         raise HTTPException(status_code=500, detail=str(e))
 
 
+@router.get("/clients/{client_id}", response_model=ClientInstanceResponse)
+async def get_client(
+    client_id: int,
+    client_service: ClientManagementService = Depends(get_client_service)
+):
+    """获取客户端实例详情"""
+    try:
+        from app.models.database import ClientInstance
+        db = client_service.db
+        client = db.query(ClientInstance).filter(ClientInstance.id == client_id).first()
+        
+        if not client:
+            raise HTTPException(status_code=404, detail="客户端不存在")
+        
+        client_dict = ClientInstanceResponse.model_validate(client).model_dump()
+        keys = client_service.get_client_keys(client)
+        client_dict['key_count'] = len(keys)
+        
+        return client_dict
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.put("/clients/{client_id}", response_model=ClientInstanceResponse)
+async def update_client(
+    client_id: int,
+    request: ClientInstanceUpdate,
+    client_service: ClientManagementService = Depends(get_client_service)
+):
+    """更新客户端实例"""
+    try:
+        client = client_service.update_client_instance(
+            client_id=client_id,
+            name=request.name,
+            beacon_api_url=request.beacon_api_url,
+            grpc_endpoint=request.grpc_endpoint,
+            web3signer_url=request.web3signer_url,
+            notes=request.notes,
+            is_active=request.is_active
+        )
+        
+        client_dict = ClientInstanceResponse.model_validate(client).model_dump()
+        keys = client_service.get_client_keys(client)
+        client_dict['key_count'] = len(keys)
+        
+        return client_dict
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.delete("/clients/{client_id}", response_model=dict)
+async def delete_client(
+    client_id: int,
+    hard_delete: bool = Query(default=False, description="是否硬删除（物理删除）"),
+    client_service: ClientManagementService = Depends(get_client_service)
+):
+    """删除客户端实例"""
+    try:
+        success = client_service.delete_client_instance(client_id, hard_delete=hard_delete)
+        
+        return {
+            "client_id": client_id,
+            "deleted": success,
+            "hard_delete": hard_delete
+        }
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 @router.put("/clients/{client_id}/keys", response_model=dict)
 async def assign_keys(
     client_id: int,
@@ -97,7 +173,7 @@ async def reload_keys(
     client_id: int,
     client_service: ClientManagementService = Depends(get_client_service)
 ):
-    """重新加载客户端密钥"""
+    """重新加载客户端密钥（通过 Web3Signer）"""
     try:
         from app.models.database import ClientInstance
         db = client_service.db
@@ -117,6 +193,31 @@ async def reload_keys(
         raise HTTPException(status_code=500, detail=str(e))
 
 
+@router.post("/clients/{client_id}/sync-keys", response_model=dict)
+async def sync_keys(
+    client_id: int,
+    client_service: ClientManagementService = Depends(get_client_service)
+):
+    """同步所有 ACTIVE 状态的密钥到 Validator Client（通过 Remote Validator API）"""
+    try:
+        from app.models.database import ClientInstance
+        db = client_service.db
+        client = db.query(ClientInstance).filter(ClientInstance.id == client_id).first()
+        
+        if not client:
+            raise HTTPException(status_code=404, detail="客户端不存在")
+        
+        # 同步所有活跃密钥
+        result = client_service.sync_all_active_keys_to_validator_client(client)
+        
+        return {
+            "client_id": client_id,
+            "sync_result": result
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 @router.post("/clients/{client_id}/start", response_model=dict)
 async def start_client(
     client_id: int,
@@ -130,9 +231,18 @@ async def start_client(
         if not client:
             raise HTTPException(status_code=404, detail="客户端不存在")
         
-        # 获取客户端配置
+        # 获取客户端配置（使用现有的密钥生成配置）
         client_service = ClientManagementService(db)
-        config = client_service.generate_client_config(client)
+        # 获取客户端关联的密钥
+        keys = client_service.get_client_keys(client)
+        pubkeys = [key.pubkey for key in keys] if keys else []
+        
+        # 生成配置文件
+        if pubkeys:
+            config = client_service.generate_config_files(client, pubkeys)
+        else:
+            # 如果没有密钥，创建一个空配置
+            config = client_service.generate_config_files(client, [])
         
         # 启动进程
         process_service = ClientProcessService()

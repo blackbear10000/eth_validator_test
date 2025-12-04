@@ -8,6 +8,7 @@ class ValidatorKeyStatus(str, Enum):
     """验证者密钥状态"""
     UNUSED = "unused"  # 已生成但未激活
     ACTIVE = "active"  # 已激活，准备用于存款
+    DEPOSIT_DATA_GENERATED = "deposit_data_generated"  # 已生成 Deposit Data，等待提交存款
     UNKNOWN = "unknown"  # 交易在内存池中，等待确认
     PENDING = "pending"  # 已提交存款，等待链上确认（或在激活队列中）
     DEPOSITED = "deposited"  # 存款已确认，在 deposit queue 中等待处理

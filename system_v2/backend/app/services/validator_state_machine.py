@@ -25,8 +25,9 @@ class ValidatorStateMachine:
     # 定义合法的状态转换规则
     VALID_TRANSITIONS: Dict[str, List[str]] = {
         ValidatorKeyStatus.UNUSED.value: [ValidatorKeyStatus.ACTIVE.value],
-        ValidatorKeyStatus.ACTIVE.value: [ValidatorKeyStatus.UNKNOWN.value, ValidatorKeyStatus.PENDING.value],
-        ValidatorKeyStatus.UNKNOWN.value: [ValidatorKeyStatus.PENDING.value, ValidatorKeyStatus.ACTIVE.value],
+        ValidatorKeyStatus.ACTIVE.value: [ValidatorKeyStatus.DEPOSIT_DATA_GENERATED.value, ValidatorKeyStatus.UNKNOWN.value, ValidatorKeyStatus.PENDING.value],
+        ValidatorKeyStatus.DEPOSIT_DATA_GENERATED.value: [ValidatorKeyStatus.ACTIVE.value, ValidatorKeyStatus.PENDING.value, ValidatorKeyStatus.UNKNOWN.value],
+        ValidatorKeyStatus.UNKNOWN.value: [ValidatorKeyStatus.PENDING.value, ValidatorKeyStatus.ACTIVE.value, ValidatorKeyStatus.DEPOSIT_DATA_GENERATED.value],
         ValidatorKeyStatus.PENDING.value: [ValidatorKeyStatus.DEPOSITED.value, ValidatorKeyStatus.ACTIVE.value],
         ValidatorKeyStatus.DEPOSITED.value: [ValidatorKeyStatus.PENDING.value, ValidatorKeyStatus.ACTIVE_ON_CHAIN.value],
         ValidatorKeyStatus.ACTIVE_ON_CHAIN.value: [ValidatorKeyStatus.PENDING_EXIT.value, ValidatorKeyStatus.SLASHED.value, ValidatorKeyStatus.EXITED.value],

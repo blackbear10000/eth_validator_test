@@ -170,6 +170,16 @@ class ClientInstanceCreate(BaseModel):
     notes: Optional[str] = None
 
 
+class ClientInstanceUpdate(BaseModel):
+    """更新客户端实例"""
+    name: Optional[str] = Field(None, min_length=1, max_length=128)
+    beacon_api_url: Optional[str] = None
+    grpc_endpoint: Optional[str] = None
+    web3signer_url: Optional[str] = None
+    notes: Optional[str] = None
+    is_active: Optional[bool] = None
+
+
 class ClientInstanceResponse(BaseModel):
     """客户端实例响应"""
     id: int
