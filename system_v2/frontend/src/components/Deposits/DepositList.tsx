@@ -269,7 +269,7 @@ const DepositList: React.FC = () => {
       dataIndex: 'tx_hash',
       key: 'tx_hash',
       width: 200,
-      render: (hash: string, record: DepositTransaction) =>
+      render: (hash: string) =>
         hash && !hash.startsWith('failed-') ? (
           <Text copyable={{ text: hash }} style={{ fontFamily: 'monospace', fontSize: '12px' }}>
             {formatKeyDisplay(hash, 8)}
