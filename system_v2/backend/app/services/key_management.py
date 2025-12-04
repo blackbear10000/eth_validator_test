@@ -30,6 +30,7 @@ from app.models.database import ValidatorKey
 from app.models.enums import ValidatorKeyStatus
 from app.core.vault_client import VaultClient
 from app.utils.exceptions import KeyGenerationError, VaultError, DatabaseError
+from app.utils.encryption import encrypt_mnemonic
 
 logger = logging.getLogger(__name__)
 
@@ -333,6 +334,9 @@ class KeyManagementService:
             if batch_id is None:
                 batch_id = f"batch-{datetime.utcnow().strftime('%Y%m%d-%H%M%S')}"
             
+            # 加密并存储助记词
+            encrypted_mnemonic, mnemonic_salt = encrypt_mnemonic(mnemonic)
+            
             # 存储密钥
             stored_keys = []
             for key_data in keys:
@@ -342,7 +346,9 @@ class KeyManagementService:
                     signing_private_key=key_data['signing_private_key'],
                     index=key_data['index'],
                     signing_key_path=key_data['signing_key_path'],
-                    batch_id=batch_id
+                    batch_id=batch_id,
+                    mnemonic_encrypted=encrypted_mnemonic,
+                    mnemonic_salt=mnemonic_salt
                 )
                 stored_keys.append(validator_key)
             
@@ -372,7 +378,9 @@ class KeyManagementService:
         signing_private_key: str,
         index: int,
         signing_key_path: str,
-        batch_id: Optional[str] = None
+        batch_id: Optional[str] = None,
+        mnemonic_encrypted: Optional[str] = None,
+        mnemonic_salt: Optional[str] = None
     ) -> ValidatorKey:
         """
         存储密钥（私有方法）
@@ -404,6 +412,8 @@ class KeyManagementService:
                 index=index,
                 signing_key_path=signing_key_path,
                 batch_id=batch_id,
+                mnemonic_encrypted=mnemonic_encrypted,
+                mnemonic_salt=mnemonic_salt,
                 created_at=datetime.utcnow()
             )
             

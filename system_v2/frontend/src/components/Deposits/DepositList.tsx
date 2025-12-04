@@ -110,10 +110,10 @@ const DepositList: React.FC = () => {
         cleanedValues.fork_version = values.fork_version.trim()
       }
       
-      // network_name 默认使用 testnet
+      // network_name 默认使用 kurtosis
       cleanedValues.network_name = values.network_name && values.network_name.trim() !== '' 
         ? values.network_name.trim() 
-        : 'testnet'
+        : 'kurtosis'
       
       const response = await depositsApi.generate(cleanedValues) as any
       setGeneratedDepositData(response || [])
@@ -517,10 +517,10 @@ const DepositList: React.FC = () => {
           <Form.Item 
             name="network_name" 
             label="Network Name"
-            initialValue="testnet"
+            initialValue="kurtosis"
             rules={[{ required: true, message: '请输入网络名称' }]}
           >
-            <Input placeholder="testnet" />
+            <Input placeholder="kurtosis" />
           </Form.Item>
         </Form>
       </Modal>

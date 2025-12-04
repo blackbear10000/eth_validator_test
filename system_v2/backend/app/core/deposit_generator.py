@@ -30,6 +30,7 @@ except ImportError as e:
 from app.core.vault_client import VaultClient
 from app.models.database import ValidatorKey
 from app.utils.exceptions import DepositGenerationError
+from app.utils.encryption import decrypt_mnemonic
 
 logger = logging.getLogger(__name__)
 
@@ -63,6 +64,32 @@ class DepositGenerator:
         
         # 获取链设置
         self.chain_setting = self._get_chain_setting()
+    
+    def _get_mnemonic_for_key(self, validator_key: ValidatorKey) -> str:
+        """
+        从数据库读取并解密助记词
+        
+        Args:
+            validator_key: ValidatorKey 对象
+            
+        Returns:
+            明文助记词
+            
+        Raises:
+            DepositGenerationError: 如果无法获取助记词
+        """
+        if not validator_key.mnemonic_encrypted:
+            raise DepositGenerationError(
+                f"密钥 {validator_key.pubkey[:10]}... 没有存储助记词。"
+                "请使用新生成的密钥（包含助记词）或回退到手动构建方式。"
+            )
+        
+        try:
+            mnemonic = decrypt_mnemonic(validator_key.mnemonic_encrypted, validator_key.mnemonic_salt)
+            return mnemonic
+        except Exception as e:
+            logger.error(f"解密助记词失败 ({validator_key.pubkey[:10]}...): {e}")
+            raise DepositGenerationError(f"解密助记词失败: {e}")
     
     def _get_chain_setting(self):
         """获取链设置"""
@@ -138,22 +165,102 @@ class DepositGenerator:
         """
         为单个验证者生成 Deposit Data
         
-        注意：由于我们只存储了私钥而没有助记词，我们需要使用私钥直接签名。
-        但为了使用 ethstaker-deposit-cli 的验证功能，我们需要通过 Credential 类。
-        
-        实际上，我们可以：
-        1. 如果保存了助记词，使用 Credential 类（推荐）
-        2. 如果没有助记词，使用私钥直接签名（需要手动构建 Deposit Message）
-        
-        这里假设我们需要从数据库或 Vault 中获取助记词信息。
-        但根据需求，我们可能没有保存助记词（只保存私钥）。
-        
-        因此，我们使用私钥直接签名的方法。
+        优先使用 Credential 类（如果存储了助记词），否则回退到手动构建方式。
         
         Args:
             validator_key: ValidatorKey 对象
             withdrawal_address: 0x01 类型提款地址
             amount_eth: 存款金额（ETH）
+            network_name: 网络名称（可选，Credential 类会自动从 chain_setting 获取）
+            
+        Returns:
+            Deposit Data 字典
+        """
+        # 优先尝试使用 Credential 类（如果存储了助记词）
+        if validator_key.mnemonic_encrypted:
+            try:
+                return self._generate_with_credential(validator_key, withdrawal_address, amount_eth, network_name)
+            except Exception as e:
+                logger.warning(f"使用 Credential 类生成失败，回退到手动构建方式: {e}")
+                # 回退到手动构建方式
+                return self._generate_with_manual_build(validator_key, withdrawal_address, amount_eth, network_name)
+        else:
+            # 没有助记词，使用手动构建方式
+            logger.info(f"密钥 {validator_key.pubkey[:10]}... 没有存储助记词，使用手动构建方式")
+            return self._generate_with_manual_build(validator_key, withdrawal_address, amount_eth, network_name)
+    
+    def _generate_with_credential(
+        self,
+        validator_key: ValidatorKey,
+        withdrawal_address: str,
+        amount_eth: float,
+        network_name: Optional[str]
+    ) -> Dict[str, Any]:
+        """
+        使用 Credential 类生成 Deposit Data（推荐方式）
+        
+        Args:
+            validator_key: ValidatorKey 对象
+            withdrawal_address: 0x01 类型提款地址
+            amount_eth: 存款金额（ETH）
+            network_name: 网络名称（可选）
+            
+        Returns:
+            Deposit Data 字典
+        """
+        if Credential is None:
+            raise DepositGenerationError("ethstaker-deposit-cli Credential 类未正确导入")
+        
+        # 1. 从数据库读取并解密助记词
+        mnemonic = self._get_mnemonic_for_key(validator_key)
+        
+        # 2. 获取 chain_setting（确保已更新）
+        chain_setting = self.chain_setting
+        
+        # 3. 创建 Credential 对象
+        credential = Credential(
+            mnemonic=mnemonic,
+            mnemonic_password='',
+            index=validator_key.index,
+            amount=int(amount_eth * 1e9),  # 转换为 Gwei
+            chain_setting=chain_setting,
+            hex_withdrawal_address=withdrawal_address
+        )
+        
+        # 4. 获取 deposit data
+        deposit_dict = credential.deposit_datum_dict
+        
+        # 5. 转换为字符串格式（移除 0x 前缀，符合官方格式）
+        result = {
+            'pubkey': deposit_dict['pubkey'].hex(),
+            'withdrawal_credentials': deposit_dict['withdrawal_credentials'].hex(),
+            'amount': int(deposit_dict['amount']),
+            'signature': deposit_dict['signature'].hex(),
+            'deposit_message_root': deposit_dict['deposit_message_root'].hex(),
+            'deposit_data_root': deposit_dict['deposit_data_root'].hex(),
+            'fork_version': deposit_dict['fork_version'].hex(),
+            'network_name': deposit_dict['network_name'],
+            'deposit_cli_version': deposit_dict['deposit_cli_version']
+        }
+        
+        logger.info(f"使用 Credential 类生成 Deposit Data 成功: {validator_key.pubkey[:10]}...")
+        return result
+    
+    def _generate_with_manual_build(
+        self,
+        validator_key: ValidatorKey,
+        withdrawal_address: str,
+        amount_eth: float,
+        network_name: Optional[str]
+    ) -> Dict[str, Any]:
+        """
+        使用手动构建方式生成 Deposit Data（向后兼容）
+        
+        Args:
+            validator_key: ValidatorKey 对象
+            withdrawal_address: 0x01 类型提款地址
+            amount_eth: 存款金额（ETH）
+            network_name: 网络名称（可选）
             
         Returns:
             Deposit Data 字典
@@ -187,18 +294,10 @@ class DepositGenerator:
             )
             
             # 计算签名
-            # 使用 chain_setting.GENESIS_FORK_VERSION 来计算签名（这是实际用于签名的 fork_version）
             signing_fork_version = self.chain_setting.GENESIS_FORK_VERSION
             domain = compute_deposit_domain(fork_version=signing_fork_version)
             signing_root = compute_signing_root(deposit_message, domain)
             signature = bls.Sign(signing_private_key_int, signing_root)
-            
-            # 记录签名时使用的 fork_version（用于调试）
-            if isinstance(signing_fork_version, bytes):
-                signing_fork_version_hex = signing_fork_version.hex()
-            else:
-                signing_fork_version_hex = signing_fork_version.replace('0x', '') if isinstance(signing_fork_version, str) else str(signing_fork_version)
-            logger.debug(f"签名使用的 fork_version: {signing_fork_version_hex} (bytes: {signing_fork_version.hex() if isinstance(signing_fork_version, bytes) else 'N/A'})")
             
             # 构建 Deposit Data
             signed_deposit = DepositData(
@@ -211,53 +310,36 @@ class DepositGenerator:
             deposit_dict['deposit_message_root'] = deposit_message.hash_tree_root.hex()
             deposit_dict['deposit_data_root'] = signed_deposit.hash_tree_root.hex()
             
-            # 获取 fork_version（十六进制字符串，不带 0x 前缀）
-            # 重要：始终使用 chain_setting.GENESIS_FORK_VERSION（与签名时使用的一致）
-            # 这样可以确保返回的 fork_version 和签名时使用的完全一致，验证工具才能正确验证签名
+            # 获取 fork_version
             fork_version_bytes = self.chain_setting.GENESIS_FORK_VERSION
             if isinstance(fork_version_bytes, bytes):
                 fork_version_hex = fork_version_bytes.hex()
             else:
-                # 如果已经是字符串，移除 0x 前缀
                 fork_version_hex = fork_version_bytes.replace('0x', '') if isinstance(fork_version_bytes, str) else str(fork_version_bytes)
             
-            # 验证 fork_version 一致性（用于调试）
-            if fork_version_hex.lower() != signing_fork_version_hex.lower():
-                logger.warning(
-                    f"fork_version 不一致！签名使用: {signing_fork_version_hex}, "
-                    f"返回: {fork_version_hex}. 这可能导致验证失败。"
-                )
-            else:
-                logger.debug(f"返回的 fork_version: {fork_version_hex} (与签名时使用的一致)")
-            
-            # 获取 deposit_cli_version（确保是字符串）
+            # 获取 deposit_cli_version
             try:
                 from ethstaker_deposit.settings import DEPOSIT_CLI_VERSION
                 deposit_cli_version = str(DEPOSIT_CLI_VERSION) if DEPOSIT_CLI_VERSION else "2.7.0"
             except ImportError:
-                # 如果无法导入，使用默认值
-                deposit_cli_version = "2.7.0"  # 默认版本
+                deposit_cli_version = "2.7.0"
                 logger.warning("无法导入 DEPOSIT_CLI_VERSION，使用默认值")
             
-            # 转换为十六进制字符串（用于 JSON）
-            # 根据官方格式：pubkey、withdrawal_credentials、signature 应该是十六进制字符串（不带 0x 前缀）
+            # 转换为十六进制字符串（移除 0x 前缀）
             pubkey_hex = deposit_dict['pubkey'].hex() if isinstance(deposit_dict['pubkey'], bytes) else deposit_dict['pubkey'].replace('0x', '')
             withdrawal_credentials_hex = deposit_dict['withdrawal_credentials'].hex() if isinstance(deposit_dict['withdrawal_credentials'], bytes) else deposit_dict['withdrawal_credentials'].replace('0x', '')
             signature_hex = deposit_dict['signature'].hex() if isinstance(deposit_dict['signature'], bytes) else deposit_dict['signature'].replace('0x', '')
-            deposit_message_root_hex = deposit_dict['deposit_message_root'] if isinstance(deposit_dict['deposit_message_root'], str) else deposit_dict['deposit_message_root'].hex()
-            deposit_message_root_hex = deposit_message_root_hex.replace('0x', '')
-            deposit_data_root_hex = deposit_dict['deposit_data_root'] if isinstance(deposit_dict['deposit_data_root'], str) else deposit_dict['deposit_data_root'].hex()
-            deposit_data_root_hex = deposit_data_root_hex.replace('0x', '')
+            deposit_message_root_hex = deposit_dict['deposit_message_root'].replace('0x', '') if isinstance(deposit_dict['deposit_message_root'], str) else deposit_dict['deposit_message_root'].hex()
+            deposit_data_root_hex = deposit_dict['deposit_data_root'].replace('0x', '') if isinstance(deposit_dict['deposit_data_root'], str) else deposit_dict['deposit_data_root'].hex()
             
-            # network_name 参数优先，如果没有提供则使用默认值
+            # network_name 处理
             if network_name:
                 network_name_str = str(network_name)
             else:
-                # 默认使用 testnet
-                network_name_str = 'testnet'
-            
-            # 确保 fork_version_hex 是字符串
-            fork_version_str = str(fork_version_hex) if fork_version_hex else '00000000'
+                if hasattr(self.chain_setting, 'NETWORK_NAME') and self.chain_setting.NETWORK_NAME:
+                    network_name_str = self.chain_setting.NETWORK_NAME
+                else:
+                    network_name_str = 'kurtosis'
             
             result = {
                 'pubkey': str(pubkey_hex),
@@ -266,12 +348,12 @@ class DepositGenerator:
                 'signature': str(signature_hex),
                 'deposit_message_root': str(deposit_message_root_hex),
                 'deposit_data_root': str(deposit_data_root_hex),
-                'fork_version': fork_version_str,
-                'network_name': str(network_name),
+                'fork_version': str(fork_version_hex),
+                'network_name': network_name_str,
                 'deposit_cli_version': str(deposit_cli_version)
             }
             
-            logger.info(f"Deposit Data 生成成功: {validator_key.pubkey[:10]}...")
+            logger.info(f"使用手动构建方式生成 Deposit Data 成功: {validator_key.pubkey[:10]}...")
             return result
             
         except Exception as e:
@@ -292,7 +374,7 @@ class DepositGenerator:
             validator_keys: ValidatorKey 对象列表
             withdrawal_address: 0x01 类型提款地址
             amount_eth: 存款金额（ETH）
-            network_name: 网络名称（可选，默认：testnet）
+            network_name: 网络名称（可选，默认：kurtosis）
             
         Returns:
             Deposit Data 列表

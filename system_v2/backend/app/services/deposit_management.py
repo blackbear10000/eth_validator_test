@@ -165,7 +165,8 @@ class DepositManagementService:
                 deposit_data = self.deposit_generator.generate_deposit_data(
                     validator_key=validator_key,
                     withdrawal_address=withdrawal_address,
-                    amount_eth=amount_eth
+                    amount_eth=amount_eth,
+                    network_name=network_name
                 )
                 
                 # 验证 Deposit Data

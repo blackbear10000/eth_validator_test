@@ -32,6 +32,9 @@ pyyaml>=6.0
 python-dotenv>=1.0.0
 psutil>=5.9.0
 
+# Encryption
+cryptography>=41.0.0
+
 # Solidity Compiler
 py-solc-x>=1.1.0
 

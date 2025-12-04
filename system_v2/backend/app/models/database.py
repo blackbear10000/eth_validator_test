@@ -59,6 +59,10 @@ class ValidatorKey(Base):
     # 备注
     notes = Column(Text, nullable=True, comment="备注信息")
 
+    # 助记词（加密存储）
+    mnemonic_encrypted = Column(Text, nullable=True, comment="加密后的助记词（同一批次共享）")
+    mnemonic_salt = Column(String(64), nullable=True, comment="加密盐值")
+
     # 关系
     client_keys = relationship("ValidatorClientKey", back_populates="validator_key", cascade="all, delete-orphan")
     deposits = relationship("DepositTransaction", back_populates="validator_key")
