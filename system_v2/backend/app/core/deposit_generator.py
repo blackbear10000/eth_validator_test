@@ -70,18 +70,38 @@ class DepositGenerator:
             # Kurtosis/devnet 使用自定义网络配置
             from ethstaker_deposit.settings import get_devnet_chain_setting
             
-            # fork_version 可能是带 0x 前缀的字符串，需要转换为 bytes
+            # fork_version 应该是十六进制字符串（带或不带 0x 前缀）
+            # get_devnet_chain_setting 期望字符串类型，内部会调用 decode_hex 处理
             if isinstance(self.fork_version, str):
-                fork_version_hex = self.fork_version.replace('0x', '')
-                # 转换为 bytes（小端序）
-                fork_version_bytes = bytes.fromhex(fork_version_hex)
+                fork_version_str = self.fork_version.strip()
+                # 移除 0x 前缀（如果有）
+                if fork_version_str.startswith('0x'):
+                    fork_version_str = fork_version_str[2:]
+                # 确保是有效的十六进制字符串
+                if not fork_version_str:
+                    raise DepositGenerationError(f"无效的 fork_version: {self.fork_version}")
+                # 补齐到 8 个字符（4 bytes），如果不足则前面补0
+                if len(fork_version_str) < 8:
+                    fork_version_str = fork_version_str.zfill(8)
+                elif len(fork_version_str) > 8:
+                    fork_version_str = fork_version_str[:8]
+                # 验证是否为有效的十六进制字符串
+                try:
+                    int(fork_version_str, 16)
+                except ValueError as e:
+                    raise DepositGenerationError(f"无效的 fork_version 格式（不是有效的十六进制）: {self.fork_version}, 错误: {e}")
+                # 添加 0x 前缀（get_devnet_chain_setting 内部会处理）
+                fork_version_hex = '0x' + fork_version_str
+            elif isinstance(self.fork_version, bytes):
+                # 如果是 bytes，转换为十六进制字符串
+                fork_version_hex = '0x' + self.fork_version.hex()
             else:
-                fork_version_bytes = self.fork_version
+                raise DepositGenerationError(f"fork_version 必须是字符串或 bytes，收到: {type(self.fork_version)}")
             
             return get_devnet_chain_setting(
                 network_name='kurtosis',
-                genesis_fork_version=fork_version_bytes,
-                exit_fork_version=fork_version_bytes,
+                genesis_fork_version=fork_version_hex,  # 传入字符串，不是 bytes
+                exit_fork_version=fork_version_hex,      # 传入字符串，不是 bytes
                 genesis_validator_root=None,
                 multiplier=1,
                 min_activation_amount=32,
