@@ -177,9 +177,20 @@ async def startup_event():
         alembic_cfg = Config(alembic_ini_path)
         
         # 确保使用环境变量中的数据库 URL（而不是 alembic.ini 中的硬编码值）
+        # 重要：必须在调用 command.upgrade 之前设置，否则 Alembic 会使用 alembic.ini 中的 URL
         alembic_cfg.set_main_option("sqlalchemy.url", settings.database_url)
-        db_url_display = settings.database_url.split('@')[-1] if '@' in settings.database_url else settings.database_url
+        
+        # 验证 URL 设置是否成功
+        configured_url = alembic_cfg.get_main_option("sqlalchemy.url")
+        db_url_display = configured_url.split('@')[-1] if '@' in configured_url else configured_url
         logger.info(f"使用数据库 URL: postgresql://***@{db_url_display}")
+        
+        # 双重验证：确保 URL 正确
+        if configured_url != settings.database_url:
+            logger.error(f"⚠️  URL 设置失败！")
+            logger.error(f"期望: {settings.database_url}")
+            logger.error(f"实际: {configured_url}")
+            raise RuntimeError(f"Alembic URL 配置失败，可能导致迁移执行在错误的数据库")
         
         # 执行迁移
         logger.info("开始执行数据库迁移...")
@@ -205,13 +216,52 @@ async def startup_event():
             
             command.upgrade(alembic_cfg, "head")
             logger.info("数据库迁移完成")
+            
+            # 立即验证迁移是否成功（在同一个连接中，确保事务已提交）
+            logger.info("立即验证迁移结果（迁移后）...")
+            with test_engine.connect() as immediate_verify:
+                # 确认当前数据库
+                db_result = immediate_verify.execute(text("SELECT current_database()"))
+                current_db_immediate = db_result.fetchone()[0]
+                logger.info(f"立即验证数据库: {current_db_immediate}")
+                
+                # 检查 alembic_version 表
+                try:
+                    version_result = immediate_verify.execute(text("SELECT version_num FROM alembic_version"))
+                    version = version_result.fetchone()
+                    if version:
+                        logger.info(f"迁移版本记录: {version[0]}")
+                    else:
+                        logger.warning("alembic_version 表存在但为空")
+                except Exception as e:
+                    logger.error(f"⚠️  无法读取 alembic_version 表: {e}")
+                
+                # 获取所有表
+                tables_result = immediate_verify.execute(text("""
+                    SELECT tablename 
+                    FROM pg_tables 
+                    WHERE schemaname = 'public'
+                    ORDER BY tablename
+                """))
+                tables_immediate = [row[0] for row in tables_result]
+                logger.info(f"立即验证 - 数据库中的表 ({len(tables_immediate)} 个): {', '.join(tables_immediate) if tables_immediate else '(无)'}")
+                
+                if not tables_immediate:
+                    logger.error("⚠️  严重警告: 迁移执行后没有找到任何表！")
+                    logger.error("这可能是因为:")
+                    logger.error("1. 迁移执行在了错误的数据库")
+                    logger.error("2. 迁移事务被回滚")
+                    logger.error("3. 数据库连接问题")
+                    logger.error("4. Alembic 配置问题")
+                    raise RuntimeError("迁移执行后表不存在，迁移可能失败")
+                    
         except Exception as migration_error:
             logger.error(f"迁移执行过程中出错: {migration_error}")
             logger.error(traceback.format_exc())
             raise
         
-        # 验证表是否创建成功（使用相同的数据库连接）
-        logger.info("验证迁移结果...")
+        # 再次验证表是否创建成功（使用新的连接，确保事务已提交）
+        logger.info("最终验证迁移结果（新连接）...")
         verification_engine = create_engine(settings.database_url, pool_pre_ping=True)
         with verification_engine.connect() as verify_conn:
             # 确认当前数据库
@@ -227,7 +277,16 @@ async def startup_event():
                 ORDER BY tablename
             """))
             tables = [row[0] for row in tables_result]
-            logger.info(f"数据库中的表 ({len(tables)} 个): {', '.join(tables)}")
+            logger.info(f"最终验证 - 数据库中的表 ({len(tables)} 个): {', '.join(tables) if tables else '(无)'}")
+            
+            if not tables:
+                logger.error("⚠️  严重错误: 最终验证时仍然没有找到任何表！")
+                logger.error("迁移可能执行在了错误的数据库，或者事务被回滚")
+                logger.error("请检查:")
+                logger.error("1. Alembic 配置的数据库 URL")
+                logger.error("2. 迁移是否执行在了 web3signer 数据库")
+                logger.error("3. 数据库事务是否已提交")
+                raise RuntimeError("迁移验证失败：表不存在")
             
             # 检查所有关键表
             required_tables = [

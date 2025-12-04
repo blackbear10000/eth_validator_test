@@ -19,7 +19,14 @@ from app.models.database import Base
 config = context.config
 
 # 从设置中获取数据库 URL
-config.set_main_option("sqlalchemy.url", settings.database_url)
+# 重要：确保使用环境变量中的 URL，而不是 alembic.ini 中的硬编码值
+# 如果已经在 main.py 中设置了，这里会覆盖（确保一致性）
+if not config.get_main_option("sqlalchemy.url") or "localhost" in config.get_main_option("sqlalchemy.url", ""):
+    # 只有在 URL 未设置或包含 localhost 时才设置（避免覆盖 main.py 中的设置）
+    config.set_main_option("sqlalchemy.url", settings.database_url)
+else:
+    # 如果已经设置了正确的 URL，使用它
+    pass
 
 # Interpret the config file for Python logging.
 # This line sets up loggers basically.
