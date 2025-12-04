@@ -58,8 +58,8 @@ const BatchContractManager: React.FC = () => {
   // 加载 RPC 端点信息
   const loadRpcEndpoints = async () => {
     try {
-      const response = await networkApi.getRpcEndpoints()
-      setRpcEndpoints(response.data)
+      const endpoints = await networkApi.getRpcEndpoints()
+      setRpcEndpoints(endpoints)
     } catch (error) {
       console.warn('无法获取 RPC 端点:', error)
     }
@@ -416,8 +416,10 @@ const BatchContractManager: React.FC = () => {
               )}
             </Descriptions>
 
-            <Descriptions title="统计数据" bordered column={2} loading={statisticsLoading}>
-              {statistics ? (
+            <Descriptions title="统计数据" bordered column={2}>
+              {statisticsLoading ? (
+                <Descriptions.Item span={2}>加载中...</Descriptions.Item>
+              ) : statistics ? (
                 <>
                   <Descriptions.Item label="存款交易数量">
                     {statistics.deposit_count}
