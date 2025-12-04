@@ -184,14 +184,14 @@ class BeaconAPIClient:
             验证者信息字典，key 为公钥（小写，带 0x 前缀）
         """
         # 准备查询参数
-        # 注意：在查询参数中，某些 Beacon API 实现可能需要不带 0x 前缀
-        # 但根据标准，应该支持两种格式，这里先尝试不带 0x 前缀
+        # 根据 Beacon API 标准，查询参数中的 pubkey 应该带 0x 前缀
         pubkey_params = []
         for pubkey in pubkeys:
             pubkey_normalized = pubkey.lower().strip()
-            # 移除 0x 前缀用于查询参数（某些实现要求）
-            pubkey_clean = pubkey_normalized.replace('0x', '')
-            pubkey_params.append(pubkey_clean)
+            # 确保有 0x 前缀（Beacon API 标准要求）
+            if not pubkey_normalized.startswith('0x'):
+                pubkey_normalized = f"0x{pubkey_normalized}"
+            pubkey_params.append(pubkey_normalized)
         
         # Beacon API 支持多个 pubkey 查询
         params = {'id': pubkey_params}
