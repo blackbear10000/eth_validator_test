@@ -141,7 +141,14 @@ class DepositTransactionResponse(BaseModel):
     amount_wei: Optional[int] = None
     submitted_at: datetime
     confirmed_at: Optional[datetime] = None
+    validated_at: Optional[datetime] = None
     block_number: Optional[int] = None
+    validator_index: Optional[int] = None
+    activation_epoch: Optional[int] = None
+    exit_epoch: Optional[int] = None
+    effective_balance_gwei: Optional[int] = None
+    validation_error: Optional[str] = None
+    status_history: Optional[List[dict]] = None
     notes: Optional[str] = None
 
     model_config = {"from_attributes": True}

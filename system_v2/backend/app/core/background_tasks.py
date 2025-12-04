@@ -14,6 +14,7 @@ from sqlalchemy.orm import sessionmaker
 from app.config import settings
 from app.services.sync_service import SyncService
 from app.services.withdrawal_listener import WithdrawalListener
+from app.services.deposit_sync_scheduler import start_scheduler as start_deposit_sync_scheduler, stop_scheduler as stop_deposit_sync_scheduler
 from app.dependencies import get_db
 
 logger = logging.getLogger(__name__)
@@ -170,10 +171,16 @@ async def start_background_tasks():
     """启动后台任务（在应用启动时调用）"""
     scheduler = get_scheduler()
     await scheduler.start()
+    
+    # 启动存款同步调度器（同步方法，在后台线程中运行）
+    start_deposit_sync_scheduler()
 
 
 async def stop_background_tasks():
     """停止后台任务（在应用关闭时调用）"""
     scheduler = get_scheduler()
     await scheduler.stop()
+    
+    # 停止存款同步调度器（同步方法）
+    stop_deposit_sync_scheduler()
 

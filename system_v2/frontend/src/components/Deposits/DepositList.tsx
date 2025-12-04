@@ -40,6 +40,7 @@ const DepositList: React.FC = () => {
   const [generatedDepositData, setGeneratedDepositData] = useState<DepositData[]>([])
   const [batchContracts, setBatchContracts] = useState<BatchDepositContract[]>([])
   const [syncing, setSyncing] = useState(false)
+  const [statusFilter, setStatusFilter] = useState<string | undefined>(undefined)
   const [form] = Form.useForm()
   const [submitForm] = Form.useForm()
 
@@ -193,10 +194,26 @@ const DepositList: React.FC = () => {
 
   const getStatusTag = (status: string) => {
     const statusConfig: Record<string, { color: string; text: string }> = {
-      pending: { color: 'warning', text: '待确认' },
-      submitted: { color: 'processing', text: '已提交' },
-      confirmed: { color: 'success', text: '已确认' },
-      failed: { color: 'error', text: '失败' },
+      // 交易阶段
+      submitted: { color: 'orange', text: '已提交' },
+      confirmed: { color: 'blue', text: '已确认' },
+      
+      // 验证阶段
+      validated: { color: 'cyan', text: '已验证' },
+      invalid: { color: 'red', text: '参数无效' },
+      
+      // 验证者生命周期
+      pending_activation: { color: 'purple', text: '等待激活' },
+      activated: { color: 'green', text: '已激活' },
+      exiting: { color: 'volcano', text: '退出中' },
+      exited: { color: 'default', text: '已退出' },
+      
+      // 失败状态
+      failed: { color: 'red', text: '交易失败' },
+      rejected: { color: 'red', text: '交易被拒绝' },
+      
+      // 向后兼容
+      pending: { color: 'orange', text: '等待确认' },
     }
 
     const config = statusConfig[status] || { color: 'default', text: status }
@@ -285,6 +302,13 @@ const DepositList: React.FC = () => {
       render: (text: string) => (text ? new Date(text).toLocaleString() : '-'),
     },
     {
+      title: '验证者索引',
+      dataIndex: 'validator_index',
+      key: 'validator_index',
+      width: 120,
+      render: (index: number | null) => (index !== null && index !== undefined ? index.toLocaleString() : '-'),
+    },
+    {
       title: '操作',
       key: 'action',
       width: 150,
@@ -293,7 +317,7 @@ const DepositList: React.FC = () => {
           <Button type="link" size="small" onClick={() => handleViewDetail(record)}>
             查看详情
           </Button>
-          {record.status === 'pending' && (
+          {(record.status === 'submitted' || record.status === 'pending' || record.status === 'confirmed') && (
             <Button
               type="link"
               size="small"
@@ -301,6 +325,23 @@ const DepositList: React.FC = () => {
               loading={syncing}
             >
               同步状态
+            </Button>
+          )}
+          {record.status === 'confirmed' && (
+            <Button
+              type="link"
+              size="small"
+              onClick={async () => {
+                try {
+                  await depositsApi.validate(record.tx_hash)
+                  message.success('验证请求已提交')
+                  setTimeout(() => loadDeposits(), 1000)
+                } catch (error: any) {
+                  message.error(`验证失败: ${error.message}`)
+                }
+              }}
+            >
+              验证交易
             </Button>
           )}
         </Space>
@@ -316,6 +357,24 @@ const DepositList: React.FC = () => {
         title="存款交易列表"
         extra={
           <Space>
+            <Select
+              placeholder="筛选状态"
+              allowClear
+              style={{ width: 150 }}
+              value={statusFilter}
+              onChange={(value) => setStatusFilter(value)}
+            >
+              <Option value="submitted">已提交</Option>
+              <Option value="confirmed">已确认</Option>
+              <Option value="validated">已验证</Option>
+              <Option value="invalid">参数无效</Option>
+              <Option value="pending_activation">等待激活</Option>
+              <Option value="activated">已激活</Option>
+              <Option value="exiting">退出中</Option>
+              <Option value="exited">已退出</Option>
+              <Option value="failed">交易失败</Option>
+              <Option value="rejected">交易被拒绝</Option>
+            </Select>
             <Button icon={<SyncOutlined />} onClick={() => handleSync()} loading={syncing}>
               同步状态
             </Button>
@@ -337,7 +396,7 @@ const DepositList: React.FC = () => {
       >
         <Table
           columns={columns}
-          dataSource={deposits}
+          dataSource={deposits.filter((d) => !statusFilter || d.status === statusFilter)}
           rowKey="id"
           loading={loading}
           pagination={{
@@ -580,7 +639,7 @@ const DepositList: React.FC = () => {
           }}>
             关闭
           </Button>,
-          selectedDeposit?.status === 'pending' && (
+          (selectedDeposit?.status === 'submitted' || selectedDeposit?.status === 'pending' || selectedDeposit?.status === 'confirmed') && (
             <Button
               key="sync"
               type="primary"
@@ -592,6 +651,29 @@ const DepositList: React.FC = () => {
               loading={syncing}
             >
               同步状态
+            </Button>
+          ),
+          selectedDeposit?.status === 'confirmed' && (
+            <Button
+              key="validate"
+              onClick={async () => {
+                if (selectedDeposit) {
+                  try {
+                    await depositsApi.validate(selectedDeposit.tx_hash)
+                    message.success('验证请求已提交')
+                    setTimeout(() => {
+                      loadDeposits()
+                      if (selectedDeposit) {
+                        handleViewDetail(selectedDeposit)
+                      }
+                    }, 1000)
+                  } catch (error: any) {
+                    message.error(`验证失败: ${error.message}`)
+                  }
+                }
+              }}
+            >
+              验证交易
             </Button>
           ),
         ].filter(Boolean)}
@@ -631,6 +713,50 @@ const DepositList: React.FC = () => {
             <Descriptions.Item label="确认时间">
               {selectedDeposit.confirmed_at ? new Date(selectedDeposit.confirmed_at).toLocaleString() : '-'}
             </Descriptions.Item>
+            {selectedDeposit.validated_at && (
+              <Descriptions.Item label="验证时间">
+                {new Date(selectedDeposit.validated_at).toLocaleString()}
+              </Descriptions.Item>
+            )}
+            {selectedDeposit.validator_index !== null && selectedDeposit.validator_index !== undefined && (
+              <Descriptions.Item label="验证者索引">
+                {selectedDeposit.validator_index.toLocaleString()}
+              </Descriptions.Item>
+            )}
+            {selectedDeposit.activation_epoch !== null && selectedDeposit.activation_epoch !== undefined && (
+              <Descriptions.Item label="激活 Epoch">
+                {selectedDeposit.activation_epoch.toLocaleString()}
+              </Descriptions.Item>
+            )}
+            {selectedDeposit.exit_epoch !== null && selectedDeposit.exit_epoch !== undefined && (
+              <Descriptions.Item label="退出 Epoch">
+                {selectedDeposit.exit_epoch.toLocaleString()}
+              </Descriptions.Item>
+            )}
+            {selectedDeposit.effective_balance_gwei !== null && selectedDeposit.effective_balance_gwei !== undefined && (
+              <Descriptions.Item label="有效余额">
+                {(selectedDeposit.effective_balance_gwei / 1e9).toFixed(4)} ETH ({selectedDeposit.effective_balance_gwei.toLocaleString()} Gwei)
+              </Descriptions.Item>
+            )}
+            {selectedDeposit.validation_error && (
+              <Descriptions.Item label="验证错误">
+                <Text type="danger">{selectedDeposit.validation_error}</Text>
+              </Descriptions.Item>
+            )}
+            {selectedDeposit.status_history && selectedDeposit.status_history.length > 0 && (
+              <Descriptions.Item label="状态历史">
+                <Collapse>
+                  {selectedDeposit.status_history.map((history, index) => (
+                    <Panel
+                      key={index}
+                      header={`${history.from_status} → ${history.to_status} (${new Date(history.timestamp).toLocaleString()})`}
+                    >
+                      <Text type="secondary">{history.reason || '状态变更'}</Text>
+                    </Panel>
+                  ))}
+                </Collapse>
+              </Descriptions.Item>
+            )}
             {selectedDeposit.notes && (
               <Descriptions.Item label="备注">
                 <Text type="warning">{selectedDeposit.notes}</Text>

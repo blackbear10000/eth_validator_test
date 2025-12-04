@@ -34,7 +34,19 @@ export interface DepositTransaction {
   amount_wei?: number
   submitted_at: string
   confirmed_at?: string
+  validated_at?: string
   block_number?: number
+  validator_index?: number
+  activation_epoch?: number
+  exit_epoch?: number
+  effective_balance_gwei?: number
+  validation_error?: string
+  status_history?: Array<{
+    from_status: string
+    to_status: string
+    timestamp: string
+    reason?: string
+  }>
   notes?: string
 }
 
@@ -69,10 +81,18 @@ export const depositsApi = {
   list: () => apiClient.get('/deposits'),
 
   // 同步状态
-  sync: (txHash?: string) => {
-    const params = txHash ? { tx_hash: txHash } : {}
+  sync: (txHash?: string, validateImmediately?: boolean) => {
+    const params: any = {}
+    if (txHash) params.tx_hash = txHash
+    if (validateImmediately !== undefined) params.validate_immediately = validateImmediately
     return apiClient.post('/deposits/sync', null, { params })
   },
+
+  // 验证存款交易
+  validate: (txHash: string) => apiClient.post(`/deposits/${txHash}/validate`),
+
+  // 获取存款交易详细状态
+  getStatus: (txHash: string) => apiClient.get(`/deposits/${txHash}/status`),
 
   // 部署 Batch Deposit 合约
   deployBatchContract: (params: {

@@ -24,10 +24,27 @@ class ValidatorClientType(str, Enum):
 
 
 class DepositStatus(str, Enum):
-    """存款状态"""
-    PENDING = "pending"  # 交易已提交，等待确认
-    CONFIRMED = "confirmed"  # 交易已确认
-    FAILED = "failed"  # 交易失败
+    """存款交易状态"""
+    # 交易阶段
+    SUBMITTED = "submitted"  # 交易已提交到 mempool，等待确认
+    CONFIRMED = "confirmed"  # 交易已在链上确认（但参数可能无效）
+    
+    # 验证阶段
+    VALIDATED = "validated"  # 存款参数已验证有效，等待处理
+    INVALID = "invalid"  # 存款参数无效（交易成功但参数错误）
+    
+    # 验证者生命周期
+    PENDING_ACTIVATION = "pending_activation"  # 验证者在 beacon chain 上 pending，等待激活
+    ACTIVATED = "activated"  # 验证者已激活，正在验证
+    EXITING = "exiting"  # 验证者正在退出
+    EXITED = "exited"  # 验证者已退出
+    
+    # 失败状态
+    FAILED = "failed"  # 交易失败（revert 或超时）
+    REJECTED = "rejected"  # 交易被拒绝（gas 不足等）
+    
+    # 向后兼容（已废弃，保留用于迁移）
+    PENDING = "pending"  # 已废弃，等同于 SUBMITTED
 
 
 class WithdrawalType(str, Enum):

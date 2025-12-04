@@ -198,7 +198,7 @@ async def submit_deposits(
                             pubkey=validator_key.pubkey,
                             tx_hash=result['tx_hash'],
                             batch_id=None,  # 官方存款没有批次ID
-                            status=DepositStatus.PENDING.value,
+                            status=DepositStatus.SUBMITTED.value,
                             amount_wei=32 * 10**18,
                             amount_eth=32.0,
                             submitted_at=datetime.utcnow()
@@ -323,6 +323,7 @@ async def list_deposits(
 @router.post("/deposits/sync")
 async def sync_deposits(
     tx_hash: Optional[str] = Query(None, description="特定交易哈希（可选，如果提供则只同步该交易）"),
+    validate_immediately: bool = Query(True, description="是否立即验证已确认的交易"),
     deposit_service: DepositManagementService = Depends(get_deposit_service)
 ):
     """手动触发状态同步"""
@@ -343,10 +344,113 @@ async def sync_deposits(
             rpc_url = settings.execution_rpc_url
         
         # 调用同步服务
-        result = deposit_service.sync_transaction_status(tx_hash=tx_hash, rpc_url=rpc_url)
+        result = deposit_service.sync_transaction_status(
+            tx_hash=tx_hash,
+            rpc_url=rpc_url,
+            validate_immediately=validate_immediately
+        )
         return result
     except Exception as e:
         logger.error(f"同步存款状态失败: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/deposits/{tx_hash}/validate")
+async def validate_deposit(
+    tx_hash: str,
+    deposit_service: DepositManagementService = Depends(get_deposit_service),
+    db: Session = Depends(get_db)
+):
+    """手动验证存款交易"""
+    try:
+        from app.services.deposit_validation import DepositValidationService
+        from app.core.beacon_api import BeaconAPIClient
+        from app.services.network_service import NetworkService
+        from web3 import Web3
+        
+        # 获取交易
+        transaction = db.query(DepositTransaction).filter(
+            DepositTransaction.tx_hash == tx_hash
+        ).first()
+        
+        if not transaction:
+            raise HTTPException(status_code=404, detail=f"交易不存在: {tx_hash}")
+        
+        # 获取 RPC URL
+        network_service = NetworkService()
+        rpc_endpoints = network_service.get_rpc_endpoints()
+        rpc_url = rpc_endpoints.get("rpc_url")
+        
+        if not rpc_url:
+            from app.config import settings
+            rpc_url = settings.execution_rpc_url
+        
+        if not rpc_url:
+            raise HTTPException(status_code=500, detail="无法获取 RPC URL")
+        
+        # 连接 Web3
+        web3 = Web3(Web3.HTTPProvider(rpc_url))
+        if not web3.is_connected():
+            raise HTTPException(status_code=500, detail=f"无法连接到 RPC: {rpc_url}")
+        
+        # 初始化验证服务
+        beacon_api = BeaconAPIClient()
+        validation_service = DepositValidationService(
+            db=db,
+            beacon_api=beacon_api,
+            web3=web3
+        )
+        
+        # 验证交易
+        result = validation_service.validate_deposit_transaction(transaction, rpc_url)
+        
+        return result
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"验证存款交易失败: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/deposits/{tx_hash}/status")
+async def get_deposit_status(
+    tx_hash: str,
+    db: Session = Depends(get_db)
+):
+    """获取存款交易详细状态"""
+    try:
+        transaction = db.query(DepositTransaction).filter(
+            DepositTransaction.tx_hash == tx_hash
+        ).first()
+        
+        if not transaction:
+            raise HTTPException(status_code=404, detail=f"交易不存在: {tx_hash}")
+        
+        # 返回详细信息
+        return {
+            "tx_hash": transaction.tx_hash,
+            "pubkey": transaction.pubkey,
+            "status": transaction.status,
+            "amount_eth": float(transaction.amount_eth),
+            "amount_wei": int(transaction.amount_wei),
+            "submitted_at": transaction.submitted_at.isoformat() if transaction.submitted_at else None,
+            "confirmed_at": transaction.confirmed_at.isoformat() if transaction.confirmed_at else None,
+            "validated_at": transaction.validated_at.isoformat() if transaction.validated_at else None,
+            "block_number": transaction.block_number,
+            "validator_index": transaction.validator_index,
+            "activation_epoch": transaction.activation_epoch,
+            "exit_epoch": transaction.exit_epoch,
+            "effective_balance_gwei": int(transaction.effective_balance_gwei) if transaction.effective_balance_gwei else None,
+            "validation_error": transaction.validation_error,
+            "status_history": transaction.status_history,
+            "notes": transaction.notes
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"获取存款交易状态失败: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
 
 

@@ -6,7 +6,7 @@ from datetime import datetime
 from typing import Optional
 from sqlalchemy import (
     Column, Integer, String, Text, DateTime, ForeignKey, 
-    Numeric, Boolean, Index, UniqueConstraint
+    Numeric, Boolean, Index, UniqueConstraint, JSON
 )
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import relationship
@@ -113,9 +113,9 @@ class DepositTransaction(Base):
     status = Column(
         String(32),
         nullable=False,
-        default=DepositStatus.PENDING.value,
+        default=DepositStatus.SUBMITTED.value,
         index=True,
-        comment="存款状态: pending/confirmed/failed"
+        comment="存款状态: submitted/confirmed/validated/invalid/pending_activation/activated/exiting/exited/failed/rejected"
     )
     
     # 存款金额
@@ -125,7 +125,20 @@ class DepositTransaction(Base):
     # 时间戳
     submitted_at = Column(DateTime, nullable=False, default=datetime.utcnow, index=True, comment="提交时间")
     confirmed_at = Column(DateTime, nullable=True, comment="确认时间")
+    validated_at = Column(DateTime, nullable=True, comment="验证时间")
     block_number = Column(Integer, nullable=True, comment="确认区块号")
+
+    # Beacon Chain 信息
+    validator_index = Column(Integer, nullable=True, index=True, comment="验证者索引（beacon chain）")
+    activation_epoch = Column(Integer, nullable=True, comment="激活 epoch")
+    exit_epoch = Column(Integer, nullable=True, comment="退出 epoch")
+    effective_balance_gwei = Column(Numeric(20, 0), nullable=True, comment="有效余额（gwei）")
+    
+    # 验证错误信息
+    validation_error = Column(Text, nullable=True, comment="验证错误信息（如果无效）")
+    
+    # 状态历史（用于审计）
+    status_history = Column(JSON, nullable=True, comment="状态变更历史")
 
     # 备注
     notes = Column(Text, nullable=True, comment="备注信息")
