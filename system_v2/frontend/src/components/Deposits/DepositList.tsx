@@ -21,6 +21,7 @@ import {
   PlusOutlined,
   ReloadOutlined,
   SyncOutlined,
+  DownloadOutlined,
 } from '@ant-design/icons'
 import { depositsApi, DepositTransaction, DepositData, BatchDepositContract } from '../../api/deposits'
 import { keysApi } from '../../api/keys'
@@ -96,6 +97,30 @@ const DepositList: React.FC = () => {
       setSubmitModalVisible(true)
     } catch (error: any) {
       message.error(`生成 Deposit Data 失败: ${error.message}`)
+    }
+  }
+
+  const handleExportDepositData = () => {
+    if (generatedDepositData.length === 0) {
+      message.warning('请先生成 Deposit Data')
+      return
+    }
+
+    try {
+      // 创建 JSON 文件
+      const jsonContent = JSON.stringify(generatedDepositData, null, 2)
+      const blob = new Blob([jsonContent], { type: 'application/json' })
+      const url = URL.createObjectURL(blob)
+      const link = document.createElement('a')
+      link.href = url
+      link.download = `deposit_data_${new Date().toISOString().split('T')[0]}.json`
+      document.body.appendChild(link)
+      link.click()
+      document.body.removeChild(link)
+      URL.revokeObjectURL(url)
+      message.success('Deposit Data 导出成功')
+    } catch (error: any) {
+      message.error(`导出失败: ${error.message}`)
     }
   }
 
@@ -468,7 +493,19 @@ const DepositList: React.FC = () => {
 
       {/* 提交存款模态框 */}
       <Modal
-        title="提交存款"
+        title={
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <span>提交存款</span>
+            <Button
+              type="default"
+              icon={<DownloadOutlined />}
+              onClick={handleExportDepositData}
+              disabled={generatedDepositData.length === 0}
+            >
+              导出 Deposit Data
+            </Button>
+          </div>
+        }
         open={submitModalVisible}
         onCancel={() => {
           setSubmitModalVisible(false)

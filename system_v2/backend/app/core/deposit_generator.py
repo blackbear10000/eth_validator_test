@@ -66,14 +66,22 @@ class DepositGenerator:
         if get_chain_setting is None:
             raise DepositGenerationError("ethstaker-deposit-cli 未正确导入")
         
-        if self.network == 'kurtosis' and self.fork_version:
-            # Kurtosis 使用自定义网络配置
+        if self.network in ['kurtosis', 'devnet'] and self.fork_version:
+            # Kurtosis/devnet 使用自定义网络配置
             from ethstaker_deposit.settings import get_devnet_chain_setting
+            
+            # fork_version 可能是带 0x 前缀的字符串，需要转换为 bytes
+            if isinstance(self.fork_version, str):
+                fork_version_hex = self.fork_version.replace('0x', '')
+                # 转换为 bytes（小端序）
+                fork_version_bytes = bytes.fromhex(fork_version_hex)
+            else:
+                fork_version_bytes = self.fork_version
             
             return get_devnet_chain_setting(
                 network_name='kurtosis',
-                genesis_fork_version=self.fork_version,
-                exit_fork_version=self.fork_version,
+                genesis_fork_version=fork_version_bytes,
+                exit_fork_version=fork_version_bytes,
                 genesis_validator_root=None,
                 multiplier=1,
                 min_activation_amount=32,
@@ -155,17 +163,46 @@ class DepositGenerator:
             deposit_dict['deposit_message_root'] = deposit_message.hash_tree_root.hex()
             deposit_dict['deposit_data_root'] = signed_deposit.hash_tree_root.hex()
             
+            # 获取 fork_version（十六进制字符串，不带 0x 前缀）
+            fork_version_bytes = self.chain_setting.GENESIS_FORK_VERSION
+            if isinstance(fork_version_bytes, bytes):
+                fork_version_hex = fork_version_bytes.hex()
+            else:
+                # 如果已经是字符串，移除 0x 前缀
+                fork_version_hex = fork_version_bytes.replace('0x', '') if isinstance(fork_version_bytes, str) else str(fork_version_bytes)
+            
+            # 获取 deposit_cli_version
+            try:
+                from ethstaker_deposit.settings import DEPOSIT_CLI_VERSION
+                deposit_cli_version = DEPOSIT_CLI_VERSION
+            except ImportError:
+                # 如果无法导入，使用默认值
+                deposit_cli_version = "2.7.0"  # 默认版本
+                logger.warning("无法导入 DEPOSIT_CLI_VERSION，使用默认值")
+            
             # 转换为十六进制字符串（用于 JSON）
+            # 根据官方格式：pubkey、withdrawal_credentials、signature 应该是十六进制字符串（不带 0x 前缀）
+            pubkey_hex = deposit_dict['pubkey'].hex() if isinstance(deposit_dict['pubkey'], bytes) else deposit_dict['pubkey'].replace('0x', '')
+            withdrawal_credentials_hex = deposit_dict['withdrawal_credentials'].hex() if isinstance(deposit_dict['withdrawal_credentials'], bytes) else deposit_dict['withdrawal_credentials'].replace('0x', '')
+            signature_hex = deposit_dict['signature'].hex() if isinstance(deposit_dict['signature'], bytes) else deposit_dict['signature'].replace('0x', '')
+            deposit_message_root_hex = deposit_dict['deposit_message_root'] if isinstance(deposit_dict['deposit_message_root'], str) else deposit_dict['deposit_message_root'].hex()
+            deposit_message_root_hex = deposit_message_root_hex.replace('0x', '')
+            deposit_data_root_hex = deposit_dict['deposit_data_root'] if isinstance(deposit_dict['deposit_data_root'], str) else deposit_dict['deposit_data_root'].hex()
+            deposit_data_root_hex = deposit_data_root_hex.replace('0x', '')
+            
+            # 对于 dev net，network_name 应该是 "mainnet"
+            network_name = 'mainnet' if self.network in ['kurtosis', 'devnet'] else self.network
+            
             result = {
-                'pubkey': '0x' + deposit_dict['pubkey'].hex() if isinstance(deposit_dict['pubkey'], bytes) else deposit_dict['pubkey'],
-                'withdrawal_credentials': '0x' + deposit_dict['withdrawal_credentials'].hex() if isinstance(deposit_dict['withdrawal_credentials'], bytes) else deposit_dict['withdrawal_credentials'],
+                'pubkey': pubkey_hex,
+                'withdrawal_credentials': withdrawal_credentials_hex,
                 'amount': deposit_dict['amount'],
-                'signature': '0x' + deposit_dict['signature'].hex() if isinstance(deposit_dict['signature'], bytes) else deposit_dict['signature'],
-                'deposit_message_root': '0x' + deposit_dict['deposit_message_root'] if isinstance(deposit_dict['deposit_message_root'], str) else deposit_dict['deposit_message_root'].hex(),
-                'deposit_data_root': deposit_dict['deposit_data_root'],
-                'fork_version': '0x' + self.chain_setting.GENESIS_FORK_VERSION.hex() if isinstance(self.chain_setting.GENESIS_FORK_VERSION, bytes) else self.chain_setting.GENESIS_FORK_VERSION,
-                'network_name': self.network,
-                'withdrawal_address': withdrawal_address
+                'signature': signature_hex,
+                'deposit_message_root': deposit_message_root_hex,
+                'deposit_data_root': deposit_data_root_hex,
+                'fork_version': fork_version_hex,
+                'network_name': network_name,
+                'deposit_cli_version': deposit_cli_version
             }
             
             logger.info(f"Deposit Data 生成成功: {validator_key.pubkey[:10]}...")

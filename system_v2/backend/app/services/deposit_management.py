@@ -61,7 +61,7 @@ class DepositManagementService:
             pubkeys: 要生成的公钥列表（如果提供则忽略 count）
             withdrawal_address: 0x01 类型提款地址（必需）
             amount_eth: 存款金额（ETH）
-            fork_version: Fork version（可选，用于自定义网络）
+            fork_version: Fork version（可选，如果为空则从 Beacon API 获取）
             
         Returns:
             Deposit Data 列表
@@ -69,9 +69,23 @@ class DepositManagementService:
         if not withdrawal_address:
             raise ValueError("必须提供 withdrawal_address")
         
+        # 如果没有提供 fork_version，尝试从 Beacon API 获取
+        if not fork_version:
+            try:
+                from app.core.beacon_api import BeaconAPIClient
+                beacon_api = BeaconAPIClient()
+                fork_version = beacon_api.get_fork_version()
+                logger.info(f"从 Beacon API 获取 fork_version: {fork_version}")
+            except Exception as e:
+                logger.warning(f"无法从 Beacon API 获取 fork_version: {e}，使用默认值")
+                # 如果获取失败，使用默认值（mainnet）
+                fork_version = None
+        
         # 更新 fork version（如果有）
         if fork_version:
-            self.deposit_generator.fork_version = fork_version
+            # 移除 0x 前缀（如果存在）
+            fork_version_clean = fork_version.replace('0x', '') if isinstance(fork_version, str) else fork_version
+            self.deposit_generator.fork_version = fork_version_clean
             self.deposit_generator.chain_setting = self.deposit_generator._get_chain_setting()
         
         # 获取要生成 Deposit Data 的密钥
