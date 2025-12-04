@@ -71,9 +71,26 @@ class BeaconAPIClient:
         获取创世信息
         
         Returns:
-            创世信息，包含 fork_version
+            创世信息，包含 fork_version 和 genesis_validators_root
         """
         return self._get("/eth/v1/beacon/genesis")
+    
+    def get_genesis_validators_root(self) -> Optional[str]:
+        """
+        获取创世验证者根
+        
+        Returns:
+            Genesis validators root (hex string) 或 None
+        """
+        try:
+            genesis = self.get_genesis()
+            genesis_validators_root = genesis.get('data', {}).get('genesis_validators_root')
+            if genesis_validators_root:
+                return genesis_validators_root
+            return None
+        except Exception as e:
+            logger.warning(f"无法获取 genesis_validators_root: {e}")
+            return None
     
     def get_fork_version(self) -> str:
         """

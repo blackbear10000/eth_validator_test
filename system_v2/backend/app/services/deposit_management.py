@@ -71,16 +71,32 @@ class DepositManagementService:
             raise ValueError("必须提供 withdrawal_address")
         
         # 如果没有提供 fork_version，尝试从 Beacon API 获取
+        genesis_validators_root = None
         if not fork_version:
             try:
                 from app.core.beacon_api import BeaconAPIClient
                 beacon_api = BeaconAPIClient()
                 fork_version = beacon_api.get_fork_version()
                 logger.info(f"从 Beacon API 获取 fork_version: {fork_version}")
+                # 同时获取 genesis_validators_root
+                genesis_validators_root = beacon_api.get_genesis_validators_root()
+                if genesis_validators_root:
+                    logger.info(f"从 Beacon API 获取 genesis_validators_root: {genesis_validators_root[:20]}...")
             except Exception as e:
                 logger.warning(f"无法从 Beacon API 获取 fork_version: {e}，使用默认值")
                 # 如果获取失败，使用默认值（mainnet）
                 fork_version = None
+        
+        # 如果 fork_version 存在但 genesis_validators_root 未获取，尝试单独获取
+        if fork_version and not genesis_validators_root:
+            try:
+                from app.core.beacon_api import BeaconAPIClient
+                beacon_api = BeaconAPIClient()
+                genesis_validators_root = beacon_api.get_genesis_validators_root()
+                if genesis_validators_root:
+                    logger.info(f"单独获取 genesis_validators_root: {genesis_validators_root[:20]}...")
+            except Exception as e:
+                logger.warning(f"无法获取 genesis_validators_root: {e}")
         
         # 更新 fork version（如果有）
         if fork_version:
@@ -93,10 +109,13 @@ class DepositManagementService:
                 logger.warning("fork_version 为空，将自动检测")
                 fork_version_clean = None
             else:
-                # 更新 deposit_generator 的 fork_version 和 network
+                # 更新 deposit_generator 的 fork_version、network 和 genesis_validators_root
                 self.deposit_generator.fork_version = fork_version_clean
                 self.deposit_generator.network = 'kurtosis'  # 对于自定义 fork_version，使用 kurtosis 网络
-                # 重新生成 chain_setting，确保使用正确的 fork_version
+                # 设置 genesis_validators_root（如果获取到）
+                if genesis_validators_root:
+                    self.deposit_generator.genesis_validators_root = genesis_validators_root
+                # 重新生成 chain_setting，确保使用正确的 fork_version 和 genesis_validators_root
                 self.deposit_generator.chain_setting = self.deposit_generator._get_chain_setting()
                 # 记录 chain_setting 中的 fork_version，确认更新成功
                 chain_fork_version = self.deposit_generator.chain_setting.GENESIS_FORK_VERSION

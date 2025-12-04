@@ -44,7 +44,8 @@ class DepositGenerator:
         self,
         vault_client: Optional[VaultClient] = None,
         network: str = 'mainnet',
-        fork_version: Optional[str] = None
+        fork_version: Optional[str] = None,
+        genesis_validators_root: Optional[str] = None
     ):
         """
         初始化 Deposit Data 生成器
@@ -53,10 +54,12 @@ class DepositGenerator:
             vault_client: Vault 客户端
             network: 网络名称（mainnet/kurtosis 等）
             fork_version: Fork version（可选，用于自定义网络）
+            genesis_validators_root: Genesis validators root（可选，用于 devnet）
         """
         self.vault_client = vault_client or VaultClient()
         self.network = network
         self.fork_version = fork_version
+        self.genesis_validators_root = genesis_validators_root
         
         # 获取链设置
         self.chain_setting = self._get_chain_setting()
@@ -98,11 +101,26 @@ class DepositGenerator:
             else:
                 raise DepositGenerationError(f"fork_version 必须是字符串或 bytes，收到: {type(self.fork_version)}")
             
+            # 获取 genesis_validators_root（如果未提供，尝试从 Beacon API 获取）
+            genesis_validators_root = self.genesis_validators_root
+            if not genesis_validators_root:
+                try:
+                    from app.core.beacon_api import BeaconAPIClient
+                    beacon_api = BeaconAPIClient()
+                    genesis_validators_root = beacon_api.get_genesis_validators_root()
+                    if genesis_validators_root:
+                        logger.info(f"从 Beacon API 获取 genesis_validators_root: {genesis_validators_root[:20]}...")
+                    else:
+                        logger.warning("无法从 Beacon API 获取 genesis_validators_root，使用 None")
+                except Exception as e:
+                    logger.warning(f"获取 genesis_validators_root 失败: {e}，使用 None")
+                    genesis_validators_root = None
+            
             return get_devnet_chain_setting(
                 network_name='kurtosis',
                 genesis_fork_version=fork_version_hex,  # 传入字符串，不是 bytes
                 exit_fork_version=fork_version_hex,      # 传入字符串，不是 bytes
-                genesis_validator_root=None,
+                genesis_validator_root=genesis_validators_root,  # 使用获取到的值
                 multiplier=1,
                 min_activation_amount=32,
                 min_deposit_amount=1
