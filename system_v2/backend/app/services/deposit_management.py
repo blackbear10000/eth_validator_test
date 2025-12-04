@@ -85,8 +85,11 @@ class DepositManagementService:
         if fork_version:
             # 移除 0x 前缀（如果存在）
             fork_version_clean = fork_version.replace('0x', '') if isinstance(fork_version, str) else fork_version
+            # 更新 deposit_generator 的 fork_version 和 network
             self.deposit_generator.fork_version = fork_version_clean
+            self.deposit_generator.network = 'kurtosis'  # 对于自定义 fork_version，使用 kurtosis 网络
             self.deposit_generator.chain_setting = self.deposit_generator._get_chain_setting()
+            logger.info(f"使用自定义 fork_version: {fork_version_clean}")
         
         # 获取要生成 Deposit Data 的密钥
         if pubkeys:

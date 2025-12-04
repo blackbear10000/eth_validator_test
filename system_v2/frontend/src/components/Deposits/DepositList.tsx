@@ -635,6 +635,11 @@ const DepositList: React.FC = () => {
                         {data.signature.slice(0, 40)}...
                       </Text>
                     </Descriptions.Item>
+                    <Descriptions.Item label="Deposit Message Root" span={1}>
+                      <Text copyable={{ text: data.deposit_message_root }} style={{ fontFamily: 'monospace', fontSize: '12px' }}>
+                        {data.deposit_message_root}
+                      </Text>
+                    </Descriptions.Item>
                     <Descriptions.Item label="Deposit Data Root" span={1}>
                       <Text copyable={{ text: data.deposit_data_root }} style={{ fontFamily: 'monospace', fontSize: '12px' }}>
                         {data.deposit_data_root}
@@ -642,6 +647,12 @@ const DepositList: React.FC = () => {
                     </Descriptions.Item>
                     <Descriptions.Item label="Fork Version">
                       <Text code>{data.fork_version}</Text>
+                    </Descriptions.Item>
+                    <Descriptions.Item label="Network Name">
+                      <Text code>{data.network_name}</Text>
+                    </Descriptions.Item>
+                    <Descriptions.Item label="Deposit CLI Version">
+                      <Text code>{data.deposit_cli_version}</Text>
                     </Descriptions.Item>
                     {data.network_name && (
                       <Descriptions.Item label="网络名称">

@@ -74,8 +74,11 @@ class DepositDataResponse(BaseModel):
     withdrawal_credentials: str
     amount: int
     signature: str
+    deposit_message_root: str
     deposit_data_root: str
     fork_version: str
+    network_name: str
+    deposit_cli_version: str
 
 
 class BatchDepositDeployRequest(BaseModel):

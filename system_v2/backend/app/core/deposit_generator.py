@@ -164,12 +164,18 @@ class DepositGenerator:
             deposit_dict['deposit_data_root'] = signed_deposit.hash_tree_root.hex()
             
             # 获取 fork_version（十六进制字符串，不带 0x 前缀）
-            fork_version_bytes = self.chain_setting.GENESIS_FORK_VERSION
-            if isinstance(fork_version_bytes, bytes):
-                fork_version_hex = fork_version_bytes.hex()
+            # 优先使用传入的 fork_version，否则使用 chain_setting 中的值
+            if self.fork_version:
+                # 使用传入的 fork_version（已经是十六进制字符串，不带 0x 前缀）
+                fork_version_hex = self.fork_version.replace('0x', '') if isinstance(self.fork_version, str) else str(self.fork_version)
             else:
-                # 如果已经是字符串，移除 0x 前缀
-                fork_version_hex = fork_version_bytes.replace('0x', '') if isinstance(fork_version_bytes, str) else str(fork_version_bytes)
+                # 从 chain_setting 获取
+                fork_version_bytes = self.chain_setting.GENESIS_FORK_VERSION
+                if isinstance(fork_version_bytes, bytes):
+                    fork_version_hex = fork_version_bytes.hex()
+                else:
+                    # 如果已经是字符串，移除 0x 前缀
+                    fork_version_hex = fork_version_bytes.replace('0x', '') if isinstance(fork_version_bytes, str) else str(fork_version_bytes)
             
             # 获取 deposit_cli_version
             try:

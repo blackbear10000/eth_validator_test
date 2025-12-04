@@ -5,10 +5,11 @@ export interface DepositData {
   withdrawal_credentials: string
   amount: number
   signature: string
+  deposit_message_root: string
   deposit_data_root: string
   fork_version: string
-  network_name?: string
-  withdrawal_address: string
+  network_name: string
+  deposit_cli_version: string
 }
 
 export interface BatchDepositContract {
