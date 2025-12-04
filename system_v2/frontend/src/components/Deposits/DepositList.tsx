@@ -127,21 +127,47 @@ const DepositList: React.FC = () => {
     }
 
     try {
-      await depositsApi.submit(
+      const response = await depositsApi.submit(
         generatedDepositData,
         values.from_address,
         values.private_key,
         values.deposit_type,
         values.batch_contract_address,
         values.official_deposit_contract_address
-      )
-      message.success('存款提交成功')
+      ) as any
+      
+      // 检查返回结果
+      const results = response.data || response || []
+      const successCount = results.filter((r: any) => r.status === 'submitted' || r.status === 'success').length
+      const failedCount = results.filter((r: any) => r.status === 'failed').length
+      const totalCount = results.length
+      
+      if (failedCount === 0) {
+        message.success(`存款提交成功: ${successCount} 个批次已提交`)
+      } else if (successCount > 0) {
+        message.warning(`部分提交成功: ${successCount} 个批次成功，${failedCount} 个批次失败`)
+      } else {
+        message.error(`存款提交失败: ${failedCount} 个批次全部失败`)
+      }
+      
+      // 显示详细错误信息（如果有）
+      if (failedCount > 0) {
+        const errors = results
+          .filter((r: any) => r.status === 'failed')
+          .map((r: any) => r.error || '未知错误')
+          .filter((e: string, i: number, arr: string[]) => arr.indexOf(e) === i) // 去重
+        if (errors.length > 0) {
+          console.error('提交失败详情:', errors)
+        }
+      }
+      
       setSubmitModalVisible(false)
       submitForm.resetFields()
       setGeneratedDepositData([])
       loadDeposits()
     } catch (error: any) {
       message.error(`提交存款失败: ${error.message}`)
+      console.error('提交存款错误详情:', error)
     }
   }
 

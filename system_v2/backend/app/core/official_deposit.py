@@ -116,8 +116,13 @@ class OfficialDepositClient:
         # 签名交易
         signed_txn = self.web3.eth.account.sign_transaction(transaction, self.private_key)
         
-        # 发送交易
-        tx_hash = self.web3.eth.send_raw_transaction(signed_txn.rawTransaction)
+        # 发送交易（兼容 web3.py 6.0+）
+        # web3.py 6.0+ 使用 raw_transaction（下划线），旧版本使用 rawTransaction（驼峰）
+        raw_transaction = getattr(signed_txn, 'raw_transaction', None) or getattr(signed_txn, 'rawTransaction', None)
+        if raw_transaction is None:
+            raise ValueError("无法获取原始交易数据，签名交易对象缺少 raw_transaction 或 rawTransaction 属性")
+        
+        tx_hash = self.web3.eth.send_raw_transaction(raw_transaction)
         tx_hash_hex = tx_hash.hex()
         
         logger.info(f"官方 Deposit 交易已提交: {tx_hash_hex}")

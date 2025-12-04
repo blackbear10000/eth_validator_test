@@ -156,63 +156,97 @@ class DepositManagementService:
         
         # 记录交易到数据库
         submission_results = []
+        saved_count = 0
+        failed_count = 0
+        
         for batch_result in batch_results:
+            logger.info(f"处理批次结果: 批次 {batch_result.get('batch_number')}, 状态: {batch_result.get('status')}")
+            
             if batch_result['status'] == 'submitted':
-                # 为每个验证者创建存款交易记录
-                for i, pubkey in enumerate(batch_result['pubkeys']):
-                    validator_key = self.db.query(ValidatorKey).filter(
-                        ValidatorKey.pubkey == pubkey.lower()
-                    ).first()
-                    
-                    if validator_key:
-                        deposit_tx = DepositTransaction(
-                            pubkey=validator_key.pubkey,
-                            tx_hash=batch_result['tx_hash'],
-                            batch_id=batch_id,
-                            status=DepositStatus.PENDING.value,
-                            amount_wei=32 * 10**18,  # 32 ETH
-                            amount_eth=32.0,
-                            submitted_at=datetime.utcnow()
-                        )
-                        self.db.add(deposit_tx)
-                        
-                        # 更新密钥状态
-                        validator_key.status = ValidatorKeyStatus.PENDING.value
-                        validator_key.deposit_tx_hash = batch_result['tx_hash']
+                pubkeys = batch_result.get('pubkeys', [])
+                logger.info(f"批次包含 {len(pubkeys)} 个验证者")
                 
-                submission_results.append({
-                    'batch_number': batch_result['batch_number'],
-                    'validator_count': batch_result['validator_count'],
-                    'tx_hash': batch_result['tx_hash'],
-                    'status': 'submitted',
-                    'batch_id': batch_id
-                })
-                
-                # 等待确认（如果需要）
-                if wait_for_confirmation:
-                    try:
-                        confirmation = self.batch_deposit_client.wait_for_confirmation(
-                            batch_result['tx_hash']
-                        )
-                        if confirmation['status'] == 'confirmed':
-                            # 更新交易状态
-                            self.db.query(DepositTransaction).filter(
-                                DepositTransaction.tx_hash == batch_result['tx_hash']
-                            ).update({
-                                'status': DepositStatus.CONFIRMED.value,
-                                'confirmed_at': datetime.utcnow(),
-                                'block_number': confirmation['block_number']
-                            })
+                if not pubkeys:
+                    logger.warning(f"批次 {batch_result.get('batch_number')} 没有 pubkeys 数据")
+                    submission_results.append({
+                        'batch_number': batch_result['batch_number'],
+                        'validator_count': batch_result['validator_count'],
+                        'tx_hash': batch_result['tx_hash'],
+                        'status': 'submitted',
+                        'batch_id': batch_id,
+                        'warning': '批次没有 pubkeys 数据，无法创建存款记录'
+                    })
+                else:
+                    # 为每个验证者创建存款交易记录
+                    for i, pubkey in enumerate(pubkeys):
+                        try:
+                            # 规范化 pubkey（移除 0x 前缀，转为小写）
+                            pubkey_normalized = pubkey.lower().replace('0x', '')
+                            
+                            validator_key = self.db.query(ValidatorKey).filter(
+                                ValidatorKey.pubkey == pubkey_normalized
+                            ).first()
+                            
+                            if not validator_key:
+                                logger.warning(f"未找到验证者密钥: {pubkey[:20]}... (规范化后: {pubkey_normalized[:20]}...)")
+                                failed_count += 1
+                                continue
+                            
+                            deposit_tx = DepositTransaction(
+                                pubkey=validator_key.pubkey,
+                                tx_hash=batch_result['tx_hash'],
+                                batch_id=batch_id,
+                                status=DepositStatus.PENDING.value,
+                                amount_wei=32 * 10**18,  # 32 ETH
+                                amount_eth=32.0,
+                                submitted_at=datetime.utcnow()
+                            )
+                            self.db.add(deposit_tx)
                             
                             # 更新密钥状态
-                            self.db.query(ValidatorKey).filter(
-                                ValidatorKey.deposit_tx_hash == batch_result['tx_hash']
-                            ).update({
-                                'status': ValidatorKeyStatus.DEPOSITED.value
-                            })
-                    except Exception as e:
-                        logger.error(f"等待交易确认失败: {e}")
+                            validator_key.status = ValidatorKeyStatus.PENDING.value
+                            validator_key.deposit_tx_hash = batch_result['tx_hash']
+                            saved_count += 1
+                            
+                        except Exception as e:
+                            logger.error(f"保存验证者 {pubkey[:20] if pubkey else 'unknown'}... 的存款记录失败: {e}", exc_info=True)
+                            failed_count += 1
+                    
+                    submission_results.append({
+                        'batch_number': batch_result['batch_number'],
+                        'validator_count': batch_result['validator_count'],
+                        'tx_hash': batch_result['tx_hash'],
+                        'status': 'submitted',
+                        'batch_id': batch_id,
+                        'saved_count': saved_count
+                    })
+                    
+                    # 等待确认（如果需要）
+                    if wait_for_confirmation:
+                        try:
+                            confirmation = self.batch_deposit_client.wait_for_confirmation(
+                                batch_result['tx_hash']
+                            )
+                            if confirmation['status'] == 'confirmed':
+                                # 更新交易状态
+                                self.db.query(DepositTransaction).filter(
+                                    DepositTransaction.tx_hash == batch_result['tx_hash']
+                                ).update({
+                                    'status': DepositStatus.CONFIRMED.value,
+                                    'confirmed_at': datetime.utcnow(),
+                                    'block_number': confirmation['block_number']
+                                })
+                                
+                                # 更新密钥状态
+                                self.db.query(ValidatorKey).filter(
+                                    ValidatorKey.deposit_tx_hash == batch_result['tx_hash']
+                                ).update({
+                                    'status': ValidatorKeyStatus.DEPOSITED.value
+                                })
+                        except Exception as e:
+                            logger.error(f"等待交易确认失败: {e}")
             else:
+                logger.warning(f"批次提交失败: {batch_result.get('error')}")
                 submission_results.append({
                     'batch_number': batch_result['batch_number'],
                     'validator_count': batch_result['validator_count'],
@@ -220,9 +254,10 @@ class DepositManagementService:
                     'error': batch_result.get('error'),
                     'batch_id': batch_id
                 })
+                failed_count += batch_result.get('validator_count', 0)
         
         self.db.commit()
-        logger.info(f"批量存款提交完成: {len(submission_results)} 个批次")
+        logger.info(f"批量存款提交完成: {len(submission_results)} 个批次，成功保存 {saved_count} 条存款记录，失败 {failed_count} 条")
         
         return submission_results
     
