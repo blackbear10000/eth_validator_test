@@ -28,7 +28,7 @@ class ValidatorStateMachine:
         ValidatorKeyStatus.ACTIVE.value: [ValidatorKeyStatus.DEPOSIT_DATA_GENERATED.value, ValidatorKeyStatus.UNKNOWN.value, ValidatorKeyStatus.PENDING.value],
         ValidatorKeyStatus.DEPOSIT_DATA_GENERATED.value: [ValidatorKeyStatus.ACTIVE.value, ValidatorKeyStatus.PENDING.value, ValidatorKeyStatus.UNKNOWN.value],
         ValidatorKeyStatus.UNKNOWN.value: [ValidatorKeyStatus.PENDING.value, ValidatorKeyStatus.ACTIVE.value, ValidatorKeyStatus.DEPOSIT_DATA_GENERATED.value],
-        ValidatorKeyStatus.PENDING.value: [ValidatorKeyStatus.DEPOSITED.value, ValidatorKeyStatus.ACTIVE.value],
+        ValidatorKeyStatus.PENDING.value: [ValidatorKeyStatus.DEPOSITED.value, ValidatorKeyStatus.ACTIVE.value, ValidatorKeyStatus.ACTIVE_ON_CHAIN.value],
         ValidatorKeyStatus.DEPOSITED.value: [ValidatorKeyStatus.PENDING.value, ValidatorKeyStatus.ACTIVE_ON_CHAIN.value],
         ValidatorKeyStatus.ACTIVE_ON_CHAIN.value: [ValidatorKeyStatus.PENDING_EXIT.value, ValidatorKeyStatus.SLASHED.value, ValidatorKeyStatus.EXITED.value],
         ValidatorKeyStatus.PENDING_EXIT.value: [ValidatorKeyStatus.EXITED.value],
@@ -214,12 +214,20 @@ class ValidatorStateMachine:
                 return True
             
             # 提取元数据
+            # Beacon API 返回格式: {'index': ..., 'status': '...', 'validator': {...}, 'balance': '...'}
+            # index 在顶层，validator 是嵌套对象
             validator_info = validator_data.get('validator', {})
             if not validator_info and validator_data.get('index') is not None:
                 validator_info = validator_data
             
+            # 验证者索引在顶层，不在 validator 对象中
+            validator_index = validator_data.get('index')
+            if validator_index is None:
+                # 如果顶层没有，尝试从 validator_info 中获取（非标准格式）
+                validator_index = validator_info.get('index')
+            
             metadata = {
-                'validator_index': validator_info.get('index'),
+                'validator_index': validator_index,
                 'activation_epoch': validator_info.get('activation_epoch'),
                 'exit_epoch': validator_info.get('exit_epoch'),
                 'effective_balance': validator_info.get('effective_balance'),
@@ -227,12 +235,26 @@ class ValidatorStateMachine:
             }
             
             # 执行状态转换
-            return self.transition(
+            success = self.transition(
                 validator_key,
                 new_status,
                 reason='beacon_sync',
                 metadata=metadata
             )
+            
+            # 如果状态转换成功，更新关联的 DepositTransaction 的 validator_index
+            if success and validator_index is not None:
+                from app.models.database import DepositTransaction
+                # 查找关联的存款交易（可能有多条，选择最新的或未完成的）
+                deposit_tx = self.db.query(DepositTransaction).filter(
+                    DepositTransaction.pubkey == validator_key.pubkey
+                ).order_by(DepositTransaction.submitted_at.desc()).first()
+                
+                if deposit_tx and deposit_tx.validator_index is None:
+                    deposit_tx.validator_index = int(validator_index) if validator_index else None
+                    logger.info(f"更新存款交易的验证者索引: {deposit_tx.tx_hash[:10]}... -> {validator_index}")
+            
+            return success
             
         except Exception as e:
             logger.error(f"从 Beacon 数据更新验证器状态失败: {e}", exc_info=True)
