@@ -114,8 +114,16 @@ async def startup_event():
                     # 测试连接并检查数据库是否存在
                     result = conn.execute(text("SELECT 1"))
                     result.fetchone()
+                    
+                    # 额外验证：检查数据库名称是否正确
+                    db_result = conn.execute(text("SELECT current_database()"))
+                    current_db = db_result.fetchone()[0]
+                    expected_db = settings.database_url.split('/')[-1]
+                    if current_db != expected_db:
+                        raise RuntimeError(f"连接到了错误的数据库: {current_db}，期望: {expected_db}")
+                    
                     db_ready = True
-                    logger.info("数据库连接成功")
+                    logger.info(f"数据库连接成功，当前数据库: {current_db}")
                     break
             except Exception as e:
                 retry_count += 1

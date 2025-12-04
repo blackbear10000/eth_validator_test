@@ -86,12 +86,13 @@ services:
         sh -c "
           pg_isready -U postgres &&
           (chmod +x /usr/local/bin/ensure-db.sh 2>/dev/null || true) &&
-          /usr/local/bin/ensure-db.sh
+          /usr/local/bin/ensure-db.sh &&
+          psql -U postgres -d validator_db -c 'SELECT 1' >/dev/null 2>&1
         "
-      interval: 10s
-      timeout: 10s
+      interval: 5s
+      timeout: 8s
       retries: 10
-      start_period: 30s
+      start_period: 20s
 
   # Web3Signer 实例 1
   web3signer-1:
