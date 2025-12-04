@@ -217,27 +217,25 @@ class NetworkService:
         in_cl_service = False
         
         for i, line in enumerate(lines):
-            # 检查是否是执行层服务行
-            if re.search(r'el-\d+-\w+', line):
+            # 检查是否是执行层服务行（服务名和端口可能在同一行）
+            el_match = re.search(r'el-\d+-\w+', line)
+            if el_match:
                 in_el_service = True
                 in_cl_service = False
                 # 提取服务名称
-                match = re.search(r'(el-\d+-\w+)', line)
-                if match:
-                    current_service = match.group(1)
-                    logger.debug(f"找到执行层服务: {current_service}, 行 {i+1}: {line[:100]}")
-                continue
+                current_service = el_match.group(0)
+                logger.debug(f"找到执行层服务: {current_service}, 行 {i+1}: {line[:100]}")
+                # 注意：不 continue，继续检查同一行是否有端口信息
             
-            # 检查是否是共识层服务行
-            if re.search(r'cl-\d+-\w+', line):
+            # 检查是否是共识层服务行（服务名和端口可能在同一行）
+            cl_match = re.search(r'cl-\d+-\w+', line)
+            if cl_match:
                 in_cl_service = True
                 in_el_service = False
                 # 提取服务名称
-                match = re.search(r'(cl-\d+-\w+)', line)
-                if match:
-                    beacon_service = match.group(1)
-                    logger.debug(f"找到共识层服务: {beacon_service}, 行 {i+1}: {line[:100]}")
-                continue
+                beacon_service = cl_match.group(0)
+                logger.debug(f"找到共识层服务: {beacon_service}, 行 {i+1}: {line[:100]}")
+                # 注意：不 continue，继续检查同一行是否有端口信息
             
             # 如果在执行层服务块中，查找端口映射
             if in_el_service:
@@ -301,14 +299,21 @@ class NetworkService:
                         logger.info(f"找到 Beacon API 端口映射 (Teku): {host_ip}:{host_port} -> {beacon_api_url}")
             
             # 如果遇到新的服务块，重置状态
-            # 检查是否是新的容器/服务行（通常以容器ID开头，或者包含其他服务名）
-            if (in_el_service or in_cl_service) and re.match(r'^[a-f0-9]{12}\s+', line):
-                if in_el_service and not re.search(r'el-\d+-', line):
-                    in_el_service = False
-                    current_service = None
-                if in_cl_service and not re.search(r'cl-\d+-', line):
-                    in_cl_service = False
-                    beacon_service = None
+            # 检查是否是新的容器/服务行（UUID 格式：通常是 12 个十六进制字符，或者包含其他服务名）
+            # 注意：Kurtosis 使用 UUID 格式，例如：4692a1818c6f
+            if (in_el_service or in_cl_service):
+                # 检查是否是新的服务行（以 UUID 开头，但不包含当前服务的标识）
+                uuid_match = re.match(r'^[a-f0-9]{12}\s+', line)
+                if uuid_match:
+                    # 如果当前行不包含当前服务的标识，说明是新服务，重置状态
+                    if in_el_service and not re.search(r'el-\d+-', line):
+                        in_el_service = False
+                        current_service = None
+                        logger.debug(f"重置执行层服务状态，行 {i+1}: {line[:100]}")
+                    if in_cl_service and not re.search(r'cl-\d+-', line):
+                        in_cl_service = False
+                        beacon_service = None
+                        logger.debug(f"重置共识层服务状态，行 {i+1}: {line[:100]}")
         
         if rpc_url:
             # 生成主机可访问的 URL（用于前端显示）
