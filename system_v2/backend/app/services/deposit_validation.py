@@ -113,8 +113,32 @@ class DepositValidationService:
                 validator_info = validator_data
             
             result['validator_index'] = validator_info.get('index')
-            result['activation_epoch'] = validator_info.get('activation_epoch')
-            result['exit_epoch'] = validator_info.get('exit_epoch')
+            
+            # 处理 epoch 值：FAR_FUTURE_EPOCH (2^64 - 1) 表示未设置，应设为 None
+            # 同时检查值是否超出 Integer 范围（PostgreSQL Integer 最大值是 2^31 - 1）
+            from app.services.validator_state_machine import FAR_FUTURE_EPOCH
+            MAX_INTEGER = 2147483647  # PostgreSQL Integer 最大值
+            
+            activation_epoch = validator_info.get('activation_epoch')
+            if activation_epoch is not None:
+                # 转换为整数（如果是从字符串转换）
+                if isinstance(activation_epoch, str):
+                    activation_epoch = int(activation_epoch)
+                # 如果是 FAR_FUTURE_EPOCH 或超出 Integer 范围，设为 None
+                if activation_epoch == FAR_FUTURE_EPOCH or activation_epoch > MAX_INTEGER:
+                    activation_epoch = None
+            result['activation_epoch'] = activation_epoch
+            
+            exit_epoch = validator_info.get('exit_epoch')
+            if exit_epoch is not None:
+                # 转换为整数（如果是从字符串转换）
+                if isinstance(exit_epoch, str):
+                    exit_epoch = int(exit_epoch)
+                # 如果是 FAR_FUTURE_EPOCH 或超出 Integer 范围，设为 None
+                if exit_epoch == FAR_FUTURE_EPOCH or exit_epoch > MAX_INTEGER:
+                    exit_epoch = None
+            result['exit_epoch'] = exit_epoch
+            
             result['effective_balance_gwei'] = validator_info.get('effective_balance')
             result['beacon_status'] = status_info
             
@@ -204,10 +228,13 @@ class DepositValidationService:
         # 更新验证者信息
         if result['validator_index'] is not None:
             tx.validator_index = result['validator_index']
-        if result['activation_epoch'] is not None:
-            tx.activation_epoch = result['activation_epoch']
-        if result['exit_epoch'] is not None:
-            tx.exit_epoch = result['exit_epoch']
+        
+        # 更新 activation_epoch（已经过处理，FAR_FUTURE_EPOCH 已转为 None）
+        tx.activation_epoch = result['activation_epoch']
+        
+        # 更新 exit_epoch（已经过处理，FAR_FUTURE_EPOCH 已转为 None）
+        tx.exit_epoch = result['exit_epoch']
+        
         if result['effective_balance_gwei'] is not None:
             tx.effective_balance_gwei = int(result['effective_balance_gwei'])
         
@@ -277,7 +304,12 @@ class DepositValidationService:
                         reason='deposit_exiting'
                     )
         
-        self.db.commit()
+        try:
+            self.db.commit()
+        except Exception as e:
+            logger.error(f"提交事务失败: {e}", exc_info=True)
+            self.db.rollback()
+            raise
         logger.info(f"存款交易状态已更新: {tx.tx_hash[:10]}... {old_status} -> {result['status']}")
     
     def batch_validate_transactions(

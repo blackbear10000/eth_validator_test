@@ -603,9 +603,19 @@ class DepositManagementService:
                         synced_count += 1
                         
             except Exception as e:
-                logger.error(f"同步交易 {tx.tx_hash} 时出错: {e}", exc_info=True)
+                logger.error(f"同步交易 {tx.tx_hash if hasattr(tx, 'tx_hash') else 'unknown'} 时出错: {e}", exc_info=True)
+                # 如果事务已回滚，需要重新开始
+                try:
+                    self.db.rollback()
+                except Exception:
+                    pass  # 如果已经回滚，忽略错误
         
-        self.db.commit()
+        try:
+            self.db.commit()
+        except Exception as e:
+            logger.error(f"提交事务失败: {e}", exc_info=True)
+            self.db.rollback()
+            raise
         
         logger.info(
             f"交易状态同步完成: 同步 {synced_count} 个，确认 {confirmed_count} 个，"
