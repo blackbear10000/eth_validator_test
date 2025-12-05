@@ -163,27 +163,40 @@ class Web3SignerClient:
         try:
             response = self._request("GET", "/api/v1/eth2/publicKeys", url=url)
             
+            logger.debug(f"Web3Signer {instance} API 响应类型: {type(response)}, 响应长度: {len(response) if isinstance(response, (list, dict)) else 'N/A'}")
+            
             # Web3Signer API 可能直接返回列表，也可能返回包装在字典中的列表
             if isinstance(response, list):
                 # 直接返回列表
-                return [str(item) for item in response if item]
+                keys = [str(item) for item in response if item]
+                logger.info(f"Web3Signer {instance} 返回了 {len(keys)} 个密钥（列表格式）")
+                if keys:
+                    logger.debug(f"前3个密钥示例: {keys[:3]}")
+                return keys
             elif isinstance(response, dict):
                 # 包装在字典中，尝试从 'data' 字段获取
                 data = response.get('data', [])
                 if isinstance(data, list):
                     # 如果 data 是列表，提取公钥
-                    return [str(item.get('publicKey', item) if isinstance(item, dict) else item) for item in data if item]
+                    keys = [str(item.get('publicKey', item) if isinstance(item, dict) else item) for item in data if item]
+                    logger.info(f"Web3Signer {instance} 返回了 {len(keys)} 个密钥（字典格式）")
+                    if keys:
+                        logger.debug(f"前3个密钥示例: {keys[:3]}")
+                    return keys
+                logger.warning(f"Web3Signer {instance} API 返回的 data 字段不是列表: {type(data)}")
                 return []
             else:
-                logger.warning(f"Web3Signer API 返回了意外的格式: {type(response)}")
+                logger.warning(f"Web3Signer {instance} API 返回了意外的格式: {type(response)}, 内容: {response}")
                 return []
         except Exception as e:
-            logger.error(f"获取公钥列表失败: {e}", exc_info=True)
+            logger.error(f"获取 Web3Signer {instance} 公钥列表失败: {e}", exc_info=True)
             return []
     
     def reload_keys(self, instance: str = "primary") -> bool:
         """
-        重新加载密钥（通过 reload-new-keys API）
+        重新加载密钥（通过 reload API）
+        
+        Web3Signer 的 reload API 会重新扫描 key-store-path 目录下的所有配置文件
         
         Args:
             instance: 实例名称 (primary/secondary)
@@ -201,12 +214,25 @@ class Web3SignerClient:
             raise ValueError(f"无效的实例名称: {instance}")
         
         try:
-            # Web3Signer reload-new-keys API
+            # Web3Signer reload API - 重新扫描 key-store-path 目录
+            # 根据 Web3Signer 文档，reload 端点应该是 /reload
             response = self._request("POST", "/reload", url=url)
-            logger.info(f"Web3Signer {instance} 密钥重新加载成功")
+            logger.info(f"Web3Signer {instance} 密钥重新加载成功，响应: {response}")
+            
+            # 等待一小段时间，让 Web3Signer 完成重新扫描
+            import time
+            time.sleep(2)
+            
+            # 验证重新加载是否成功 - 获取当前加载的密钥数量
+            try:
+                current_keys = self.get_public_keys(instance)
+                logger.info(f"Web3Signer {instance} 当前加载了 {len(current_keys)} 个密钥")
+            except Exception as e:
+                logger.warning(f"无法验证 Web3Signer {instance} 重新加载后的密钥数量: {e}")
+            
             return True
         except Exception as e:
-            logger.error(f"Web3Signer {instance} 密钥重新加载失败: {e}")
+            logger.error(f"Web3Signer {instance} 密钥重新加载失败: {e}", exc_info=True)
             raise Web3SignerError(f"密钥重新加载失败: {e}")
     
     def zero_downtime_reload(
