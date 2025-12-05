@@ -60,7 +60,19 @@ class ClientProcessService:
         raise ValueError(f"不支持的客户端类型: {client_type}")
     
     def _check_docker_available(self) -> bool:
-        """检查 Docker 是否可用"""
+        """
+        检查 Docker 是否可用
+        
+        检查项：
+        1. Docker CLI 可执行文件是否存在
+        2. Docker CLI 是否可以执行
+        3. Docker socket 是否存在且可访问
+        4. 是否可以执行基本的 Docker 命令
+        
+        Returns:
+            Docker 是否可用
+        """
+        # 检查 Docker CLI 是否存在
         try:
             result = subprocess.run(
                 ["docker", "--version"],
@@ -68,9 +80,49 @@ class ClientProcessService:
                 text=True,
                 timeout=5
             )
-            return result.returncode == 0
-        except (FileNotFoundError, subprocess.TimeoutExpired):
+            if result.returncode != 0:
+                logger.error(f"Docker CLI 返回错误: {result.stderr}")
+                return False
+            logger.debug(f"Docker CLI 版本: {result.stdout.strip()}")
+        except FileNotFoundError:
+            logger.error("Docker CLI 未安装或不在 PATH 中")
             return False
+        except subprocess.TimeoutExpired:
+            logger.error("Docker CLI 检查超时")
+            return False
+        except Exception as e:
+            logger.error(f"Docker CLI 检查失败: {e}")
+            return False
+        
+        # 检查 Docker socket 是否可访问
+        docker_sock = "/var/run/docker.sock"
+        if not os.path.exists(docker_sock):
+            logger.error(f"Docker socket 不存在: {docker_sock}")
+            return False
+        
+        if not os.access(docker_sock, os.R_OK):
+            logger.error(f"Docker socket 不可读: {docker_sock}")
+            return False
+        
+        # 尝试执行一个简单的 Docker 命令验证连接
+        try:
+            result = subprocess.run(
+                ["docker", "ps", "--format", "{{.Names}}"],
+                capture_output=True,
+                text=True,
+                timeout=5
+            )
+            if result.returncode != 0:
+                logger.warning(f"Docker 命令执行失败: {result.stderr}")
+                # 不返回 False，因为可能是权限问题，但 CLI 可用
+                # 实际使用时可能会失败，但至少 CLI 已安装
+            else:
+                logger.debug("Docker 连接验证成功")
+        except Exception as e:
+            logger.warning(f"Docker 命令测试失败: {e}")
+            # 不返回 False，因为可能是临时问题
+        
+        return True
     
     def get_status(self, client_id: int, client_type: str) -> Dict[str, any]:
         """
