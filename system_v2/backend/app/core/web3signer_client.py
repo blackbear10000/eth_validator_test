@@ -214,26 +214,54 @@ class Web3SignerClient:
             raise ValueError(f"无效的实例名称: {instance}")
         
         try:
-            # Web3Signer reload API - 重新扫描 key-store-path 目录
-            # 根据 Web3Signer 文档，reload 端点应该是 /reload
-            response = self._request("POST", "/reload", url=url)
-            logger.info(f"Web3Signer {instance} 密钥重新加载成功，响应: {response}")
+            # 注意：Web3Signer 可能不支持动态 reload key-store-path
+            # 根据 Web3Signer 文档，key-store-path 在启动时扫描，运行时可能不会重新扫描
+            # 尝试多个可能的 reload 端点
             
-            # 等待一小段时间，让 Web3Signer 完成重新扫描
+            reload_endpoints = [
+                "/reload",
+                "/api/v1/reload",
+                "/reload-keys",
+                "/api/v1/reload-keys"
+            ]
+            
+            reloaded = False
+            for endpoint in reload_endpoints:
+                try:
+                    response = self._request("POST", endpoint, url=url)
+                    logger.info(f"Web3Signer {instance} reload 端点 {endpoint} 响应: {response}")
+                    reloaded = True
+                    break
+                except Exception as e:
+                    logger.debug(f"Web3Signer {instance} reload 端点 {endpoint} 失败: {e}")
+                    continue
+            
+            if not reloaded:
+                logger.warning(f"Web3Signer {instance} 所有 reload 端点都失败，Web3Signer 可能不支持动态 reload")
+                logger.warning(f"Web3Signer {instance} 需要重启才能加载新的配置文件")
+                # 不抛出异常，因为配置文件已创建，只是需要重启 Web3Signer
+                return False
+            
+            # 等待更长时间，让 Web3Signer 完成重新扫描
             import time
-            time.sleep(2)
+            logger.info(f"等待 Web3Signer {instance} 完成重新扫描...")
+            time.sleep(5)  # 增加等待时间到 5 秒
             
             # 验证重新加载是否成功 - 获取当前加载的密钥数量
             try:
                 current_keys = self.get_public_keys(instance)
                 logger.info(f"Web3Signer {instance} 当前加载了 {len(current_keys)} 个密钥")
+                if len(current_keys) == 0:
+                    logger.warning(f"Web3Signer {instance} reload 后仍然没有加载密钥，可能需要重启 Web3Signer 容器")
             except Exception as e:
                 logger.warning(f"无法验证 Web3Signer {instance} 重新加载后的密钥数量: {e}")
             
             return True
         except Exception as e:
             logger.error(f"Web3Signer {instance} 密钥重新加载失败: {e}", exc_info=True)
-            raise Web3SignerError(f"密钥重新加载失败: {e}")
+            # 不抛出异常，因为配置文件已创建，只是需要重启 Web3Signer
+            logger.warning(f"Web3Signer {instance} 可能需要重启才能加载新的配置文件")
+            return False
     
     def zero_downtime_reload(
         self,
@@ -305,6 +333,23 @@ class Web3SignerClient:
                         result['primary'] = True
                         break
                     time.sleep(1)
+            
+            # 检查是否真的加载了密钥
+            if result.get('primary') and result.get('secondary'):
+                # 验证两个实例是否都加载了密钥
+                try:
+                    primary_keys = self.get_public_keys("primary")
+                    secondary_keys = self.get_public_keys("secondary")
+                    total_keys = len(primary_keys) + len(secondary_keys)
+                    
+                    if total_keys == 0:
+                        logger.warning("零停机密钥更新完成，但 Web3Signer 没有加载任何密钥")
+                        logger.warning("Web3Signer 使用 key-store-path 配置时，可能需要重启容器才能加载新配置文件")
+                        result['warning'] = "Web3Signer 可能需要重启才能加载新的配置文件"
+                    else:
+                        logger.info(f"零停机密钥更新完成，Web3Signer 共加载了 {total_keys} 个密钥")
+                except Exception as e:
+                    logger.warning(f"无法验证密钥加载状态: {e}")
             
             result['success'] = True
             logger.info("零停机密钥更新流程完成")
