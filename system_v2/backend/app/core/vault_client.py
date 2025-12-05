@@ -201,31 +201,44 @@ class VaultClient:
         Returns:
             签名私钥（十六进制字符串，不含 0x 前缀），如果不存在则返回 None
         """
-        try:
-            key_path = self._get_key_path(pubkey)
-            response = self.client.secrets.kv.v2.read_secret_version(
-                path=key_path,
-                mount_point=self.mount_point
-            )
-            
-            if response and 'data' in response and 'data' in response['data']:
-                secret_data = response['data']['data']
-                signing_key = secret_data.get('value')
+        # 移除 0x 前缀（如果存在）
+        pubkey_clean = pubkey.lower().replace('0x', '')
+        
+        # 尝试多个可能的路径（兼容不同的存储格式）
+        # 1. 标准路径：web3signer-keys/{pubkey}（相对于 mount_point）
+        # 2. 如果实际存储路径是 secret/data/web3signer-keys/{pubkey}（路径被重复），尝试该路径
+        possible_paths = [
+            f"{self.key_path_prefix}/{pubkey_clean}",  # 标准路径
+            f"{self.mount_point}/data/{self.key_path_prefix}/{pubkey_clean}",  # 如果路径被重复
+        ]
+        
+        for key_path in possible_paths:
+            try:
+                response = self.client.secrets.kv.v2.read_secret_version(
+                    path=key_path,
+                    mount_point=self.mount_point
+                )
                 
-                if signing_key:
-                    logger.debug(f"私钥已读取: {pubkey[:10]}...")
-                    return signing_key
-            
-            logger.warning(f"私钥不存在: {pubkey[:10]}...")
-            return None
-            
-        except VaultError as e:
-            # 如果是 404 错误，说明密钥不存在
-            if 'not found' in str(e).lower() or '404' in str(e):
-                logger.debug(f"私钥不存在: {pubkey[:10]}...")
-                return None
-            logger.error(f"读取私钥失败 ({pubkey[:10]}...): {e}")
-            raise
+                if response and 'data' in response and 'data' in response['data']:
+                    secret_data = response['data']['data']
+                    signing_key = secret_data.get('value')
+                    
+                    if signing_key:
+                        logger.debug(f"私钥已读取: {pubkey[:10]}... (路径: {key_path})")
+                        return signing_key
+                        
+            except VaultError as e:
+                # 如果是 404 错误，尝试下一个路径
+                if 'not found' in str(e).lower() or '404' in str(e):
+                    logger.debug(f"路径不存在，尝试下一个: {key_path}")
+                    continue
+                # 其他错误，记录并继续尝试
+                logger.debug(f"读取路径失败 ({key_path}): {e}，尝试下一个路径")
+                continue
+        
+        # 所有路径都失败
+        logger.warning(f"私钥不存在: {pubkey[:10]}... (已尝试所有可能的路径)")
+        return None
     
     def delete_signing_key(self, pubkey: str) -> bool:
         """

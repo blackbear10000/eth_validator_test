@@ -207,6 +207,9 @@ class DepositGenerator:
             
         Returns:
             Deposit Data 字典
+            
+        Raises:
+            DepositGenerationError: 如果无法获取助记词或生成失败
         """
         if Credential is None:
             raise DepositGenerationError("ethstaker-deposit-cli Credential 类未正确导入")
