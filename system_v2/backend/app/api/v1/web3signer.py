@@ -10,7 +10,7 @@ from sqlalchemy.orm import Session
 from app.core.web3signer_client import Web3SignerClient
 from app.models.database import ValidatorKey
 from app.models.enums import ValidatorKeyStatus
-from app.core.database import get_db
+from app.dependencies import get_db
 
 logger = logging.getLogger(__name__)
 
