@@ -309,8 +309,8 @@ class NetworkService:
                 if uuid_match:
                     # 如果当前行不包含当前服务的标识，说明是新服务，重置状态
                     if in_el_service and not re.search(r'el-\d+-', line):
-                in_el_service = False
-                current_service = None
+                        in_el_service = False
+                        current_service = None
                         logger.debug(f"重置执行层服务状态，行 {i+1}: {line[:100]}")
                     if in_cl_service and not re.search(r'cl-\d+-', line):
                         in_cl_service = False
