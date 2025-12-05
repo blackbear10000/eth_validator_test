@@ -496,7 +496,17 @@ class DepositManagementService:
             rpc_url = settings.execution_rpc_url
         
         if not rpc_url:
-            raise ValueError("无法获取 RPC URL")
+            # 如果没有 RPC URL，返回空结果而不是抛出异常
+            logger.warning("无法获取 RPC URL，跳过交易状态同步（网络可能未启动）")
+            return {
+                "synced": 0,
+                "confirmed": 0,
+                "validated": 0,
+                "invalid": 0,
+                "failed": 0,
+                "skipped": 0,
+                "message": "无法获取 RPC URL，网络可能未启动"
+            }
         
         # 初始化 ETH1 客户端
         eth1_client = ETH1Client(rpc_url)

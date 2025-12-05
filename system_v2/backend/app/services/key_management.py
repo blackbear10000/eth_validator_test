@@ -484,26 +484,35 @@ class KeyManagementService:
                 from app.services.web3signer_key_config_service import Web3SignerKeyConfigService
                 from app.core.web3signer_client import Web3SignerClient
                 
+                logger.info(f"开始同步 Web3Signer 密钥配置文件（激活了 {len(keys)} 个新密钥）...")
+                
                 # 同步配置文件（为所有非 UNUSED 状态的密钥生成配置）
                 config_service = Web3SignerKeyConfigService(self.db)
                 sync_result = config_service.sync_key_configs()
+                
                 logger.info(
-                    f"密钥配置文件同步完成: 创建 {sync_result['created']} 个，"
-                    f"删除 {sync_result['removed']} 个"
+                    f"密钥配置文件同步完成: 创建 {sync_result.get('created', 0)} 个，"
+                    f"删除 {sync_result.get('removed', 0)} 个，"
+                    f"跳过 {sync_result.get('skipped', 0)} 个，"
+                    f"错误 {sync_result.get('errors', 0)} 个"
                 )
                 
-                # 触发零停机密钥更新（轮转加载）
-                web3signer_client = Web3SignerClient()
-                logger.info(f"触发 Web3Signer 轮转加载密钥（激活了 {len(keys)} 个新密钥）...")
-                reload_result = web3signer_client.zero_downtime_reload(wait_for_health=True)
-                
-                if reload_result.get('success'):
-                    logger.info(f"Web3Signer 密钥轮转加载成功，已激活的密钥已自动加载")
+                # 检查是否有新创建的配置文件
+                if sync_result.get('created', 0) > 0 or sync_result.get('removed', 0) > 0:
+                    # 触发零停机密钥更新（轮转加载）
+                    web3signer_client = Web3SignerClient()
+                    logger.info(f"检测到配置文件变更，触发 Web3Signer 轮转加载密钥...")
+                    reload_result = web3signer_client.zero_downtime_reload(wait_for_health=True)
+                    
+                    if reload_result.get('success'):
+                        logger.info(f"Web3Signer 密钥轮转加载成功，已激活的密钥已自动加载")
+                    else:
+                        logger.warning(f"Web3Signer 密钥轮转加载可能失败: {reload_result.get('error', '未知错误')}")
                 else:
-                    logger.warning(f"Web3Signer 密钥轮转加载可能失败: {reload_result.get('error')}")
+                    logger.info(f"配置文件无变更，跳过 Web3Signer 重新加载")
             except Exception as e:
                 # 如果 Web3Signer 重新加载失败，记录警告但不影响密钥激活
-                logger.warning(f"自动加载密钥到 Web3Signer 失败: {e}，密钥已激活但需要手动触发 Web3Signer 重新加载", exc_info=True)
+                logger.error(f"自动加载密钥到 Web3Signer 失败: {e}，密钥已激活但需要手动触发 Web3Signer 重新加载", exc_info=True)
             
             logger.info(f"成功激活 {len(keys)} 个密钥")
             return keys

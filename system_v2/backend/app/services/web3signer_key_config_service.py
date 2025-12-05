@@ -41,18 +41,22 @@ class Web3SignerKeyConfigService:
         if keys_dir:
             self.keys_dir = Path(keys_dir)
         else:
-            # 默认路径：system_v2/infra/web3signer/keys
-            # 在容器中挂载为 /keys，但我们需要主机路径
-            # 从环境变量或配置中获取
-            keys_path = getattr(settings, 'web3signer_keys_dir', None)
-            if keys_path:
-                self.keys_dir = Path(keys_path)
+            # 优先检查容器内挂载的 /keys 目录（Docker Compose 挂载）
+            import os
+            container_keys_dir = Path("/keys")
+            if container_keys_dir.exists() and container_keys_dir.is_dir():
+                self.keys_dir = container_keys_dir
+                logger.info(f"使用容器内挂载的 keys 目录: {self.keys_dir}")
             else:
-                # 默认路径（相对于项目根目录）
-                # 假设服务在 backend 目录运行，需要找到 infra/web3signer/keys
-                import os
-                current_dir = Path(__file__).parent.parent.parent.parent
-                self.keys_dir = current_dir / "infra" / "web3signer" / "keys"
+                # 从环境变量或配置中获取
+                keys_path = getattr(settings, 'web3signer_keys_dir', None)
+                if keys_path:
+                    self.keys_dir = Path(keys_path)
+                else:
+                    # 默认路径（相对于项目根目录）
+                    # 假设服务在 backend 目录运行，需要找到 infra/web3signer/keys
+                    current_dir = Path(__file__).parent.parent.parent.parent
+                    self.keys_dir = current_dir / "infra" / "web3signer" / "keys"
         
         # 确保目录存在
         self.keys_dir.mkdir(parents=True, exist_ok=True)
