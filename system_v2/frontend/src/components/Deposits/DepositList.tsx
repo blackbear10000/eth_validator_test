@@ -365,7 +365,7 @@ const DepositList: React.FC = () => {
       dataIndex: 'balance_eth',
       key: 'balance_eth',
       width: 120,
-      render: (balance: number | null | undefined, record: DepositTransaction) => {
+      render: (balance: number | null | undefined) => {
         if (balance !== null && balance !== undefined) {
           return (
             <span style={{ color: balance >= 32 ? '#3f8600' : '#cf1322' }}>
