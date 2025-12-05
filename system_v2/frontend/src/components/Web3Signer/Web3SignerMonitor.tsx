@@ -15,6 +15,8 @@ import {
   Spin,
   message,
   Modal,
+  Dropdown,
+  MenuProps,
 } from 'antd'
 import {
   ReloadOutlined,
@@ -23,6 +25,7 @@ import {
   WarningOutlined,
   PoweroffOutlined,
   SyncOutlined,
+  MoreOutlined,
   DeleteOutlined,
 } from '@ant-design/icons'
 import {
@@ -66,19 +69,15 @@ const Web3SignerMonitor: React.FC = () => {
     }
   }
 
-  const handleSyncConfigs = async () => {
+  const handleSyncConfigs = async (forceRegenerate: boolean = false) => {
     setSyncing(true)
     try {
-      const result = await web3signerApi.syncConfigs()
+      const result = await web3signerApi.syncConfigs(true, forceRegenerate)
       if (result.needs_restart) {
-        message.warning(
-          '配置文件已同步，但 Web3Signer 需要重启才能加载新密钥。请点击"重启 Web3Signer"按钮。',
-          10
-        )
+        message.warning('配置文件已同步，但需要重启 Web3Signer 才能加载新密钥', 5)
       } else {
-        message.success(result.message || '配置文件已同步并重新加载')
+        message.success(result.message || '配置文件已同步')
       }
-      // 重新加载数据
       await loadData()
     } catch (error: any) {
       message.error(`同步配置失败: ${error.message}`)
@@ -162,25 +161,6 @@ const Web3SignerMonitor: React.FC = () => {
           const result = await web3signerApi.cleanupConfigs()
           if (result.success) {
             message.success(`已清理 ${result.removed} 个孤立配置文件`)
-            if (result.files.length > 0) {
-              Modal.info({
-                title: '已删除的文件',
-                content: (
-                  <div>
-                    <p>共删除 {result.files.length} 个文件：</p>
-                    <ul style={{ maxHeight: '300px', overflow: 'auto' }}>
-                      {result.files.map((file, index) => (
-                        <li key={index} style={{ fontFamily: 'monospace', fontSize: '12px' }}>
-                          {file}
-                        </li>
-                      ))}
-                    </ul>
-                  </div>
-                ),
-                width: 600,
-              })
-            }
-            // 重新加载数据
             await loadData()
           } else {
             message.error(`清理失败: ${result.message}`)
@@ -193,6 +173,34 @@ const Web3SignerMonitor: React.FC = () => {
       },
     })
   }
+
+  // 检查是否有同步问题
+  const hasSyncIssues = () => {
+    if (!syncStatus) return false
+    const primaryMissing = syncStatus.primary?.stats.missing_count || 0
+    const secondaryMissing = syncStatus.secondary?.stats.missing_count || 0
+    const primaryExtra = syncStatus.primary?.stats.extra_count || 0
+    const secondaryExtra = syncStatus.secondary?.stats.extra_count || 0
+    return primaryMissing > 0 || secondaryMissing > 0 || primaryExtra > 0 || secondaryExtra > 0
+  }
+
+  // 更多操作菜单
+  const moreMenuItems: MenuProps['items'] = [
+    {
+      key: 'regenerate',
+      label: '重新生成配置',
+      icon: <SyncOutlined />,
+      onClick: () => handleRegenerate(),
+      danger: true,
+    },
+    {
+      key: 'cleanup',
+      label: '清理孤立文件',
+      icon: <DeleteOutlined />,
+      onClick: () => handleCleanup(),
+      danger: true,
+    },
+  ]
 
   const keysColumns = [
     {
@@ -238,87 +246,53 @@ const Web3SignerMonitor: React.FC = () => {
         <Space>
           <Button
             icon={<SyncOutlined />}
-            onClick={handleSyncConfigs}
+            onClick={() => handleSyncConfigs(false)}
             loading={syncing}
-            type="default"
+            type={hasSyncIssues() ? 'primary' : 'default'}
           >
             同步配置
           </Button>
-          <Button
-            icon={<SyncOutlined />}
-            onClick={handleRegenerate}
-            loading={regenerating}
-            danger
-          >
-            重新生成配置
-          </Button>
-          <Button
-            icon={<DeleteOutlined />}
-            onClick={handleCleanup}
-            loading={cleaning}
-            danger
-          >
-            清理孤立文件
-          </Button>
-          <Button
-            icon={<PoweroffOutlined />}
-            onClick={handleRestart}
-            loading={restarting}
-            danger
-          >
-            重启 Web3Signer
-          </Button>
+          {hasSyncIssues() && (
+            <Button
+              icon={<PoweroffOutlined />}
+              onClick={handleRestart}
+              loading={restarting}
+              danger
+            >
+              重启服务
+            </Button>
+          )}
+          <Dropdown menu={{ items: moreMenuItems }} trigger={['click']}>
+            <Button icon={<MoreOutlined />}>更多</Button>
+          </Dropdown>
           <Button icon={<ReloadOutlined />} onClick={loadData} loading={loading}>
             刷新
           </Button>
         </Space>
       </Space>
 
-      {/* 显示警告信息 */}
-      {syncStatus && (
-        <>
-          {syncStatus.primary && syncStatus.primary.stats.missing_count > 0 && (
-            <Alert
-              message="Web3Signer 未加载所有密钥"
-              description={
-                <div>
-                  <p>
-                    Web3Signer-1 缺少 {syncStatus.primary.stats.missing_count} 个密钥。
-                    Web3Signer 使用 key-store-path 配置时，需要重启容器才能加载新配置文件。
-                  </p>
-                  <p style={{ marginTop: 8 }}>
-                    请点击"重启 Web3Signer"按钮或手动执行：{' '}
-                    <code>docker restart web3signer-1 web3signer-2</code>
-                  </p>
-                </div>
-              }
-              type="warning"
-              showIcon
-              style={{ marginBottom: 16 }}
-              action={
-                <Button size="small" onClick={handleRestart} loading={restarting}>
-                  重启
-                </Button>
-              }
-            />
-          )}
-          {syncStatus.secondary && syncStatus.secondary.stats.missing_count > 0 && (
-            <Alert
-              message="Web3Signer-2 未加载所有密钥"
-              description={
-                <div>
-                  <p>
-                    Web3Signer-2 缺少 {syncStatus.secondary.stats.missing_count} 个密钥。
-                    请重启 Web3Signer 容器以加载新配置文件。
-                  </p>
-                </div>
-              }
-              type="warning"
-              showIcon
-              style={{ marginBottom: 16 }}
-            />
-          )}
-        </>
+      {/* 只在有同步问题时显示警告 */}
+      {hasSyncIssues() && (
+        <Alert
+          message="密钥同步异常"
+          description={
+            <div>
+              {syncStatus?.primary?.stats.missing_count > 0 && (
+                <p>Web3Signer-1 缺少 {syncStatus.primary.stats.missing_count} 个密钥</p>
+              )}
+              {syncStatus?.secondary?.stats.missing_count > 0 && (
+                <p>Web3Signer-2 缺少 {syncStatus.secondary.stats.missing_count} 个密钥</p>
+              )}
+              <p style={{ marginTop: 8, fontSize: '12px', color: '#666' }}>
+                提示：Web3Signer 使用 key-store-path 配置时，需要重启容器才能加载新配置文件
+              </p>
+            </div>
+          }
+          type="warning"
+          showIcon
+          style={{ marginBottom: 16 }}
+          closable
+        />
       )}
 
       <Spin spinning={loading}>
@@ -429,145 +403,93 @@ const Web3SignerMonitor: React.FC = () => {
           </Col>
         </Row>
 
-        {/* 同步状态对比 */}
-        {(syncStatus?.primary || syncStatus?.secondary) && (
+        {/* 同步状态对比 - 只在有异常时显示详细信息 */}
+        {hasSyncIssues() && (syncStatus?.primary || syncStatus?.secondary) && (
           <>
-            <Divider>同步状态对比</Divider>
+            <Divider>同步状态详情</Divider>
             <Row gutter={16} style={{ marginBottom: 24 }}>
               {syncStatus.primary && !syncStatus.primary.error && (
                 <Col span={12}>
-                  <Card title="Web3Signer-1 同步状态">
-                    <Descriptions column={1} bordered size="small">
-                      <Descriptions.Item label="数据库 ACTIVE 密钥数">
-                        {syncStatus.primary.stats.db_active_count}
-                      </Descriptions.Item>
-                      <Descriptions.Item label="Web3Signer 密钥数">
-                        {syncStatus.primary.stats.web3signer_count}
-                      </Descriptions.Item>
-                      <Descriptions.Item label="已同步">
-                        <Tag color="success">
-                          {syncStatus.primary.stats.synced_count}
-                        </Tag>
-                      </Descriptions.Item>
-                      <Descriptions.Item label="缺失（在数据库但未加载）">
-                        <Tag color="warning">
-                          {syncStatus.primary.stats.missing_count}
-                        </Tag>
-                      </Descriptions.Item>
-                      <Descriptions.Item label="多余（已加载但不在数据库）">
-                        <Tag color="error">
-                          {syncStatus.primary.stats.extra_count}
-                        </Tag>
-                      </Descriptions.Item>
-                    </Descriptions>
-                    {syncStatus.primary.missing_in_web3signer.length > 0 && (
-                      <Alert
-                        message="缺失的密钥"
-                        description={
-                          <div>
-                            {syncStatus.primary.missing_in_web3signer.slice(0, 5).map((key) => (
-                              <div key={key} style={{ fontFamily: 'monospace', fontSize: '11px' }}>
-                                {key.slice(0, 20)}...
-                              </div>
-                            ))}
-                            {syncStatus.primary.missing_in_web3signer.length > 5 && (
-                              <div>... 还有 {syncStatus.primary.missing_in_web3signer.length - 5} 个</div>
-                            )}
-                          </div>
-                        }
-                        type="warning"
-                        style={{ marginTop: 16 }}
-                        icon={<WarningOutlined />}
-                      />
-                    )}
-                    {syncStatus.primary.extra_in_web3signer.length > 0 && (
-                      <Alert
-                        message="多余的密钥"
-                        description={
-                          <div>
-                            {syncStatus.primary.extra_in_web3signer.slice(0, 5).map((key) => (
-                              <div key={key} style={{ fontFamily: 'monospace', fontSize: '11px' }}>
-                                {key.slice(0, 20)}...
-                              </div>
-                            ))}
-                            {syncStatus.primary.extra_in_web3signer.length > 5 && (
-                              <div>... 还有 {syncStatus.primary.extra_in_web3signer.length - 5} 个</div>
-                            )}
-                          </div>
-                        }
-                        type="error"
-                        style={{ marginTop: 16 }}
-                        icon={<WarningOutlined />}
-                      />
+                  <Card title="Web3Signer-1 同步状态" size="small">
+                    <Row gutter={16}>
+                      <Col span={8}>
+                        <Statistic
+                          title="数据库密钥"
+                          value={syncStatus.primary.stats.db_active_count}
+                          valueStyle={{ fontSize: '16px' }}
+                        />
+                      </Col>
+                      <Col span={8}>
+                        <Statistic
+                          title="已加载"
+                          value={syncStatus.primary.stats.web3signer_count}
+                          valueStyle={{ fontSize: '16px' }}
+                        />
+                      </Col>
+                      <Col span={8}>
+                        <Statistic
+                          title="已同步"
+                          value={syncStatus.primary.stats.synced_count}
+                          valueStyle={{ color: '#3f8600', fontSize: '16px' }}
+                        />
+                      </Col>
+                    </Row>
+                    {(syncStatus.primary.stats.missing_count > 0 || syncStatus.primary.stats.extra_count > 0) && (
+                      <div style={{ marginTop: 16 }}>
+                        {syncStatus.primary.stats.missing_count > 0 && (
+                          <Tag color="warning" style={{ marginBottom: 8 }}>
+                            缺失 {syncStatus.primary.stats.missing_count} 个
+                          </Tag>
+                        )}
+                        {syncStatus.primary.stats.extra_count > 0 && (
+                          <Tag color="error" style={{ marginBottom: 8 }}>
+                            多余 {syncStatus.primary.stats.extra_count} 个
+                          </Tag>
+                        )}
+                      </div>
                     )}
                   </Card>
                 </Col>
               )}
               {syncStatus.secondary && !syncStatus.secondary.error && (
                 <Col span={12}>
-                  <Card title="Web3Signer-2 同步状态">
-                    <Descriptions column={1} bordered size="small">
-                      <Descriptions.Item label="数据库 ACTIVE 密钥数">
-                        {syncStatus.secondary.stats.db_active_count}
-                      </Descriptions.Item>
-                      <Descriptions.Item label="Web3Signer 密钥数">
-                        {syncStatus.secondary.stats.web3signer_count}
-                      </Descriptions.Item>
-                      <Descriptions.Item label="已同步">
-                        <Tag color="success">
-                          {syncStatus.secondary.stats.synced_count}
-                        </Tag>
-                      </Descriptions.Item>
-                      <Descriptions.Item label="缺失（在数据库但未加载）">
-                        <Tag color="warning">
-                          {syncStatus.secondary.stats.missing_count}
-                        </Tag>
-                      </Descriptions.Item>
-                      <Descriptions.Item label="多余（已加载但不在数据库）">
-                        <Tag color="error">
-                          {syncStatus.secondary.stats.extra_count}
-                        </Tag>
-                      </Descriptions.Item>
-                    </Descriptions>
-                    {syncStatus.secondary.missing_in_web3signer.length > 0 && (
-                      <Alert
-                        message="缺失的密钥"
-                        description={
-                          <div>
-                            {syncStatus.secondary.missing_in_web3signer.slice(0, 5).map((key) => (
-                              <div key={key} style={{ fontFamily: 'monospace', fontSize: '11px' }}>
-                                {key.slice(0, 20)}...
-                              </div>
-                            ))}
-                            {syncStatus.secondary.missing_in_web3signer.length > 5 && (
-                              <div>... 还有 {syncStatus.secondary.missing_in_web3signer.length - 5} 个</div>
-                            )}
-                          </div>
-                        }
-                        type="warning"
-                        style={{ marginTop: 16 }}
-                        icon={<WarningOutlined />}
-                      />
-                    )}
-                    {syncStatus.secondary.extra_in_web3signer.length > 0 && (
-                      <Alert
-                        message="多余的密钥"
-                        description={
-                          <div>
-                            {syncStatus.secondary.extra_in_web3signer.slice(0, 5).map((key) => (
-                              <div key={key} style={{ fontFamily: 'monospace', fontSize: '11px' }}>
-                                {key.slice(0, 20)}...
-                              </div>
-                            ))}
-                            {syncStatus.secondary.extra_in_web3signer.length > 5 && (
-                              <div>... 还有 {syncStatus.secondary.extra_in_web3signer.length - 5} 个</div>
-                            )}
-                          </div>
-                        }
-                        type="error"
-                        style={{ marginTop: 16 }}
-                        icon={<WarningOutlined />}
-                      />
+                  <Card title="Web3Signer-2 同步状态" size="small">
+                    <Row gutter={16}>
+                      <Col span={8}>
+                        <Statistic
+                          title="数据库密钥"
+                          value={syncStatus.secondary.stats.db_active_count}
+                          valueStyle={{ fontSize: '16px' }}
+                        />
+                      </Col>
+                      <Col span={8}>
+                        <Statistic
+                          title="已加载"
+                          value={syncStatus.secondary.stats.web3signer_count}
+                          valueStyle={{ fontSize: '16px' }}
+                        />
+                      </Col>
+                      <Col span={8}>
+                        <Statistic
+                          title="已同步"
+                          value={syncStatus.secondary.stats.synced_count}
+                          valueStyle={{ color: '#3f8600', fontSize: '16px' }}
+                        />
+                      </Col>
+                    </Row>
+                    {(syncStatus.secondary.stats.missing_count > 0 || syncStatus.secondary.stats.extra_count > 0) && (
+                      <div style={{ marginTop: 16 }}>
+                        {syncStatus.secondary.stats.missing_count > 0 && (
+                          <Tag color="warning" style={{ marginBottom: 8 }}>
+                            缺失 {syncStatus.secondary.stats.missing_count} 个
+                          </Tag>
+                        )}
+                        {syncStatus.secondary.stats.extra_count > 0 && (
+                          <Tag color="error" style={{ marginBottom: 8 }}>
+                            多余 {syncStatus.secondary.stats.extra_count} 个
+                          </Tag>
+                        )}
+                      </div>
                     )}
                   </Card>
                 </Col>
