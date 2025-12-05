@@ -190,8 +190,31 @@ class Web3SignerKeyConfigService:
             config_file = self.keys_dir / filename
             
             # 保存 YAML 文件
+            # 使用自定义的 Representer 确保所有字符串值都用双引号（符合 Web3Signer 官方文档格式）
+            def quoted_str_presenter(dumper, data):
+                """自定义字符串表示器，使用双引号"""
+                return dumper.represent_scalar('tag:yaml.org,2002:str', data, style='"')
+            
+            # 创建自定义 Dumper
+            class Web3SignerDumper(yaml.SafeDumper):
+                pass
+            
+            Web3SignerDumper.add_representer(str, quoted_str_presenter)
+            
+            # 确保所有值都是字符串类型（符合 Web3Signer 要求）
+            quoted_config = {}
+            for key, value in config.items():
+                quoted_config[key] = str(value) if value is not None else ""
+            
             with open(config_file, 'w') as f:
-                yaml.dump(config, f, default_flow_style=False, sort_keys=False)
+                yaml.dump(
+                    quoted_config,
+                    f,
+                    Dumper=Web3SignerDumper,
+                    default_flow_style=False,
+                    sort_keys=False,
+                    allow_unicode=True
+                )
             
             logger.debug(f"已保存密钥配置文件: {config_file} (pubkey: {pubkey[:10]}...)")
             
