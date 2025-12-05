@@ -118,7 +118,8 @@ class Web3SignerClient:
             logger.debug(f"检查 Web3Signer {instance} 健康状态: {health_url}")
             
             # 创建一个简单的请求，不包含额外的 headers
-            response = requests.get(health_url, timeout=5)
+            # 缩短超时时间，避免阻塞监控端点
+            response = requests.get(health_url, timeout=2)
             
             # Web3Signer 的 /upcheck 端点可能返回 200 或 403
             # 403 通常表示服务在运行但可能有权限限制，我们也认为它是健康的

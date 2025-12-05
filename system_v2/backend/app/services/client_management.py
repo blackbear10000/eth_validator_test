@@ -697,7 +697,7 @@ url = "{client_instance.web3signer_url}"
         if is_active is not None:
             query = query.filter(ClientInstance.is_active == is_active)
         
-            query = query.order_by(ClientInstance.created_at.desc())
+        query = query.order_by(ClientInstance.created_at.desc())
         
         return query.all()
     

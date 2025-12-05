@@ -120,7 +120,7 @@ async def system_overview(db: Session = Depends(get_db)):
         # 总收益（简化，实际应该从链上查询）
         total_rewards_eth = 0.0
         
-        # 系统健康（使用与 system_health 相同的逻辑）
+        # 系统健康（使用与 system_health 相同的逻辑，但设置更短的超时以避免阻塞）
         vault_health = False
         try:
             # 使用 VaultClient 的健康检查方法（内部使用 requests，更可靠）
@@ -128,42 +128,40 @@ async def system_overview(db: Session = Depends(get_db)):
             vault_health = vault_client.health_check()
             logger.info(f"Vault 健康检查成功: healthy={vault_health}")
         except Exception as health_error:
-            logger.error(f"Vault 健康检查失败: {health_error}", exc_info=True)
+            logger.debug(f"Vault 健康检查失败: {health_error}")
             # 如果 VaultClient 初始化失败（可能是认证问题），尝试直接调用健康检查端点
             try:
                 import requests
                 from app.config import settings
                 vault_url = settings.vault_url
-                logger.info(f"尝试直接调用健康检查端点: {vault_url}")
                 health_url = f"{vault_url.rstrip('/')}/v1/sys/health"
-                response = requests.get(health_url, timeout=5)
+                response = requests.get(health_url, timeout=2)  # 缩短超时时间
                 response.raise_for_status()
                 health = response.json()
                 initialized = health.get('initialized', False)
                 sealed = health.get('sealed', True)
                 vault_health = initialized and not sealed
-                logger.info(f"直接健康检查成功: initialized={initialized}, sealed={sealed}, healthy={vault_health}")
             except Exception as e:
-                logger.error(f"直接健康检查也失败: {e}", exc_info=True)
+                logger.debug(f"直接健康检查也失败: {e}")
         
         web3signer_primary = False
         web3signer_secondary = False
         haproxy = False
         try:
             web3signer_client = Web3SignerClient()
+            # 使用更短的超时时间，避免阻塞
             web3signer_primary = web3signer_client.health_check("primary")
             web3signer_secondary = web3signer_client.health_check("secondary")
             haproxy = web3signer_client.health_check("haproxy")
-            logger.info(f"Web3Signer 健康检查: primary={web3signer_primary}, secondary={web3signer_secondary}, haproxy={haproxy}")
         except Exception as e:
-            logger.error(f"Web3Signer 健康检查失败: {e}", exc_info=True)
+            logger.debug(f"Web3Signer 健康检查失败: {e}")
         
         beacon_api_health = False
         try:
             beacon_api = BeaconAPIClient()
-            beacon_api_health = beacon_api.health_check()
+            beacon_api_health = beacon_api.health_check()  # health_check 内部已经有 3 秒超时
         except Exception as e:
-            logger.error(f"Beacon API 健康检查失败: {e}")
+            logger.debug(f"Beacon API 健康检查失败: {e}")
         
         postgresql_health = True
         

@@ -56,18 +56,42 @@ async def list_clients(
 ):
     """列出客户端实例"""
     try:
+        from app.models.database import ValidatorClientKey
+        from sqlalchemy import func
+        
         clients = client_service.list_clients(client_type=client_type)
+        
+        if not clients:
+            return []
+        
+        # 批量查询所有客户端的密钥数量（优化 N+1 查询问题）
+        client_ids = [client.id for client in clients]
+        key_counts = (
+            client_service.db.query(
+                ValidatorClientKey.client_id,
+                func.count(ValidatorClientKey.pubkey).label('key_count')
+            )
+            .filter(
+                ValidatorClientKey.client_id.in_(client_ids),
+                ValidatorClientKey.status == "active"
+            )
+            .group_by(ValidatorClientKey.client_id)
+            .all()
+        )
+        
+        # 创建 client_id -> key_count 的映射
+        key_count_map = {client_id: count for client_id, count in key_counts}
         
         # 添加密钥数量
         result = []
         for client in clients:
             client_dict = ClientInstanceResponse.model_validate(client).model_dump()
-            keys = client_service.get_client_keys(client)
-            client_dict['key_count'] = len(keys)
+            client_dict['key_count'] = key_count_map.get(client.id, 0)
             result.append(client_dict)
         
         return result
     except Exception as e:
+        logger.error(f"列出客户端失败: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
 
 

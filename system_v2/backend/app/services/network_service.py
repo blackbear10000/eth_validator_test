@@ -40,7 +40,9 @@ class NetworkService:
         url = f"{self.manager_url}{endpoint}"
         try:
             logger.debug(f"调用 Kurtosis 管理服务: {method} {url}")
-            response = requests.request(method, url, timeout=30, **kwargs)
+            # 缩短超时时间，避免阻塞
+            timeout = kwargs.pop('timeout', 10)  # 默认 10 秒，允许调用方覆盖
+            response = requests.request(method, url, timeout=timeout, **kwargs)
             response.raise_for_status()
             result = response.json()
             
@@ -224,7 +226,7 @@ class NetworkService:
                 in_cl_service = False
                 # 提取服务名称
                 current_service = el_match.group(0)
-                logger.debug(f"找到执行层服务: {current_service}, 行 {i+1}: {line[:100]}")
+                    logger.debug(f"找到执行层服务: {current_service}, 行 {i+1}: {line[:100]}")
                 # 注意：不 continue，继续检查同一行是否有端口信息
             
             # 检查是否是共识层服务行（服务名和端口可能在同一行）
@@ -307,8 +309,8 @@ class NetworkService:
                 if uuid_match:
                     # 如果当前行不包含当前服务的标识，说明是新服务，重置状态
                     if in_el_service and not re.search(r'el-\d+-', line):
-                        in_el_service = False
-                        current_service = None
+                in_el_service = False
+                current_service = None
                         logger.debug(f"重置执行层服务状态，行 {i+1}: {line[:100]}")
                     if in_cl_service and not re.search(r'cl-\d+-', line):
                         in_cl_service = False

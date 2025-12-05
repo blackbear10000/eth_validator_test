@@ -230,10 +230,10 @@ class DepositValidationService:
             tx.validator_index = result['validator_index']
         
         # 更新 activation_epoch（已经过处理，FAR_FUTURE_EPOCH 已转为 None）
-        tx.activation_epoch = result['activation_epoch']
+            tx.activation_epoch = result['activation_epoch']
         
         # 更新 exit_epoch（已经过处理，FAR_FUTURE_EPOCH 已转为 None）
-        tx.exit_epoch = result['exit_epoch']
+            tx.exit_epoch = result['exit_epoch']
         
         if result['effective_balance_gwei'] is not None:
             tx.effective_balance_gwei = int(result['effective_balance_gwei'])
@@ -305,7 +305,7 @@ class DepositValidationService:
                     )
         
         try:
-            self.db.commit()
+        self.db.commit()
         except Exception as e:
             logger.error(f"提交事务失败: {e}", exc_info=True)
             self.db.rollback()
