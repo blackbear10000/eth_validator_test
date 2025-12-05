@@ -190,22 +190,27 @@ class Web3SignerKeyConfigService:
             config_file = self.keys_dir / filename
             
             # 保存 YAML 文件
-            # 使用自定义的 Representer 确保所有字符串值都用双引号（符合 Web3Signer 官方文档格式）
-            # 注意：键不使用引号，只有值使用双引号
-            def quoted_str_presenter(dumper, data):
-                """自定义字符串表示器，使用双引号（仅用于值）"""
-                return dumper.represent_scalar('tag:yaml.org,2002:str', data, style='"')
-            
-            # 创建自定义 Dumper
+            # 使用自定义的 Dumper 确保：
+            # - 键不使用引号（YAML 标准格式）
+            # - 值使用双引号（符合 Web3Signer 官方文档格式）
             class Web3SignerDumper(yaml.SafeDumper):
                 def represent_mapping(self, tag, mapping, flow_style=None):
-                    """重写 mapping 表示器，确保键不使用引号"""
-                    # 调用父类方法，但确保键不使用引号
-                    return super().represent_mapping(tag, mapping, flow_style=False)
-            
-            # 只对字符串值使用双引号，键不使用引号
-            # 注意：PyYAML 默认键不使用引号，所以只需要为值添加引号
-            Web3SignerDumper.add_representer(str, quoted_str_presenter)
+                    """重写 mapping 表示器，确保键不使用引号，值使用双引号"""
+                    # 创建新的映射，其中值使用双引号样式
+                    value_node = []
+                    for key, value in mapping.items():
+                        # 键：不使用引号（使用默认样式）
+                        key_node = self.represent_data(key)
+                        
+                        # 值：如果是字符串，使用双引号样式
+                        if isinstance(value, str):
+                            value_node_item = self.represent_scalar('tag:yaml.org,2002:str', value, style='"')
+                        else:
+                            value_node_item = self.represent_data(value)
+                        
+                        value_node.append((key_node, value_node_item))
+                    
+                    return yaml.MappingNode(tag, value_node, flow_style=False)
             
             # 确保所有值都是字符串类型（符合 Web3Signer 要求）
             quoted_config = {}
