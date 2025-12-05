@@ -186,20 +186,22 @@ async def get_web3signer_sync_status(
         db_non_unused_keys = db.query(ValidatorKey).filter(
             ValidatorKey.status != ValidatorKeyStatus.UNUSED.value
         ).all()
-        db_pubkeys = {key.pubkey.lower() for key in db_non_unused_keys}
+        
+        # 规范化数据库中的 pubkey：确保小写且有 0x 前缀
+        def normalize_pubkey(pubkey: str) -> str:
+            """规范化 pubkey：小写，确保有 0x 前缀"""
+            pubkey = pubkey.lower().strip()
+            if not pubkey.startswith('0x'):
+                pubkey = f"0x{pubkey}"
+            return pubkey
+        
+        db_pubkeys = {normalize_pubkey(key.pubkey) for key in db_non_unused_keys}
         
         if instance in ["primary", "both"]:
             try:
                 primary_keys = web3signer_client.get_public_keys("primary")
-                primary_pubkeys = {
-                    (key.lower().strip() if not key.lower().strip().startswith('0x') else f"0x{key.lower().strip()}")
-                    for key in primary_keys
-                }
-                # 确保所有都有 0x 前缀
-                primary_pubkeys = {
-                    key if key.startswith('0x') else f"0x{key}"
-                    for key in primary_pubkeys
-                }
+                # 规范化 Web3Signer 返回的 pubkey
+                primary_pubkeys = {normalize_pubkey(key) for key in primary_keys}
                 
                 missing_in_web3signer = db_pubkeys - primary_pubkeys
                 extra_in_web3signer = primary_pubkeys - db_pubkeys
@@ -226,15 +228,8 @@ async def get_web3signer_sync_status(
         if instance in ["secondary", "both"]:
             try:
                 secondary_keys = web3signer_client.get_public_keys("secondary")
-                secondary_pubkeys = {
-                    (key.lower().strip() if not key.lower().strip().startswith('0x') else f"0x{key.lower().strip()}")
-                    for key in secondary_keys
-                }
-                # 确保所有都有 0x 前缀
-                secondary_pubkeys = {
-                    key if key.startswith('0x') else f"0x{key}"
-                    for key in secondary_pubkeys
-                }
+                # 规范化 Web3Signer 返回的 pubkey
+                secondary_pubkeys = {normalize_pubkey(key) for key in secondary_keys}
                 
                 missing_in_web3signer = db_pubkeys - secondary_pubkeys
                 extra_in_web3signer = secondary_pubkeys - db_pubkeys

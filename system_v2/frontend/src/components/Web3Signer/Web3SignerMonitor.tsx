@@ -194,14 +194,26 @@ const Web3SignerMonitor: React.FC = () => {
 
   const keysColumns = [
     {
+      title: '#',
+      key: 'index',
+      width: 60,
+      render: (_: any, __: any, index: number) => index + 1,
+    },
+    {
       title: '公钥',
       dataIndex: 'pubkey',
       key: 'pubkey',
-      render: (text: string) => (
-        <span style={{ fontFamily: 'monospace', fontSize: '12px' }}>
-          {text.slice(0, 20)}...
-        </span>
-      ),
+      render: (text: string) => {
+        const normalized = text.toLowerCase().trim()
+        const pubkey = normalized.startsWith('0x') ? normalized : `0x${normalized}`
+        const start = pubkey.slice(0, 20)
+        const end = pubkey.slice(-6)
+        return (
+          <span style={{ fontFamily: 'monospace', fontSize: '12px' }}>
+            {start}...{end}
+          </span>
+        )
+      },
     },
     {
       title: '在数据库中',
