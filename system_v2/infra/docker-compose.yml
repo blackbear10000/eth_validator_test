@@ -206,6 +206,7 @@ services:
       - ../backend:/app
       - ../code/external:/app/external:ro
       - ./web3signer/keys:/keys:rw
+      - /var/run/docker.sock:/var/run/docker.sock:ro  # 允许后端重启 Web3Signer 容器
     networks:
       - validator_network
     # 添加 extra_hosts，让容器能够解析 host.docker.internal

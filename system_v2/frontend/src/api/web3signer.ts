@@ -56,6 +56,29 @@ export interface Web3SignerSyncStatus {
   }
 }
 
+export interface Web3SignerSyncConfigsResponse {
+  sync_result: {
+    created: number
+    removed: number
+    skipped: number
+    errors: number
+  }
+  reload_result: {
+    success: boolean
+    warning?: string
+    error?: string
+  }
+  success: boolean
+  needs_restart?: boolean
+  message?: string
+}
+
+export interface Web3SignerRestartResponse {
+  primary: boolean
+  secondary: boolean
+  success: boolean
+}
+
 export const web3signerApi = {
   // 获取 Web3Signer 状态
   getStatus: () => apiClient.get('/web3signer/status') as Promise<Web3SignerStatus>,
@@ -67,5 +90,13 @@ export const web3signerApi = {
   // 获取同步状态
   getSyncStatus: (instance: 'primary' | 'secondary' | 'both' = 'both') =>
     apiClient.get('/web3signer/sync-status', { params: { instance } }) as Promise<Web3SignerSyncStatus>,
+
+  // 同步配置文件并重新加载
+  syncConfigs: () =>
+    apiClient.post('/web3signer/sync-configs') as Promise<Web3SignerSyncConfigsResponse>,
+
+  // 重启 Web3Signer 容器
+  restart: () =>
+    apiClient.post('/web3signer/restart') as Promise<Web3SignerRestartResponse>,
 }
 

@@ -277,6 +277,9 @@ async def sync_web3signer_configs(
     2. 删除 UNUSED 状态密钥的配置文件
     3. 触发 Web3Signer 轮转加载（先加载 Web3Signer-2，再加载 Web3Signer-1）
     
+    注意：Web3Signer 使用 key-store-path 配置时，可能不支持运行时重新扫描。
+    如果 reload 失败，需要重启 Web3Signer 容器才能加载新配置文件。
+    
     Returns:
         同步结果和加载结果
     """
@@ -290,12 +293,125 @@ async def sync_web3signer_configs(
         # 触发轮转加载
         reload_result = web3signer_client.zero_downtime_reload(wait_for_health=True)
         
+        # 检查是否真的加载了密钥
+        needs_restart = False
+        if reload_result.get('success'):
+            # 验证是否真的加载了密钥
+            try:
+                primary_keys = web3signer_client.get_public_keys("primary")
+                secondary_keys = web3signer_client.get_public_keys("secondary")
+                total_keys = len(primary_keys) + len(secondary_keys)
+                
+                if total_keys == 0 and (sync_result.get('created', 0) > 0 or sync_result.get('removed', 0) > 0):
+                    needs_restart = True
+                    logger.warning("Web3Signer reload 完成，但没有加载密钥，可能需要重启容器")
+            except Exception as e:
+                logger.warning(f"无法验证密钥加载状态: {e}")
+        
         return {
             "sync_result": sync_result,
             "reload_result": reload_result,
-            "success": reload_result.get('success', False)
+            "success": reload_result.get('success', False),
+            "needs_restart": needs_restart,
+            "message": "配置文件已同步。如果 Web3Signer 没有加载密钥，请重启 Web3Signer 容器。" if needs_restart else "配置文件已同步并重新加载"
         }
     except Exception as e:
         logger.error(f"同步 Web3Signer 配置失败: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/web3signer/restart")
+async def restart_web3signer():
+    """
+    重启 Web3Signer 容器以加载新的配置文件
+    
+    注意：这会短暂中断 Web3Signer 服务，但 HAProxy 会处理故障转移
+    
+    Returns:
+        重启结果
+    """
+    try:
+        import subprocess
+        import time
+        
+        result = {
+            "primary": False,
+            "secondary": False,
+            "success": False
+        }
+        
+        # 检查是否有权限执行 docker 命令
+        # 在 Docker 容器内，需要挂载 Docker socket 才能执行 docker 命令
+        try:
+            # 尝试重启 web3signer-1
+            logger.info("重启 Web3Signer-1 容器...")
+            restart_1 = subprocess.run(
+                ["docker", "restart", "web3signer-1"],
+                capture_output=True,
+                text=True,
+                timeout=30
+            )
+            
+            if restart_1.returncode == 0:
+                logger.info("Web3Signer-1 重启成功")
+                result["primary"] = True
+                # 等待启动
+                time.sleep(10)
+            else:
+                logger.error(f"Web3Signer-1 重启失败: {restart_1.stderr}")
+                raise HTTPException(
+                    status_code=500,
+                    detail=f"无法重启 Web3Signer-1: {restart_1.stderr}"
+                )
+            
+            # 尝试重启 web3signer-2
+            logger.info("重启 Web3Signer-2 容器...")
+            restart_2 = subprocess.run(
+                ["docker", "restart", "web3signer-2"],
+                capture_output=True,
+                text=True,
+                timeout=30
+            )
+            
+            if restart_2.returncode == 0:
+                logger.info("Web3Signer-2 重启成功")
+                result["secondary"] = True
+                # 等待启动
+                time.sleep(10)
+            else:
+                logger.error(f"Web3Signer-2 重启失败: {restart_2.stderr}")
+                raise HTTPException(
+                    status_code=500,
+                    detail=f"无法重启 Web3Signer-2: {restart_2.stderr}"
+                )
+            
+            # 验证服务是否启动
+            web3signer_client = Web3SignerClient()
+            if web3signer_client.health_check("primary") and web3signer_client.health_check("secondary"):
+                result["success"] = True
+                logger.info("Web3Signer 容器重启成功，服务已恢复")
+            else:
+                logger.warning("Web3Signer 容器已重启，但健康检查未通过，请稍后重试")
+            
+            return result
+            
+        except FileNotFoundError:
+            raise HTTPException(
+                status_code=503,
+                detail="无法执行 docker 命令。后端容器可能没有访问 Docker socket 的权限。请手动重启 Web3Signer 容器：docker restart web3signer-1 web3signer-2"
+            )
+        except subprocess.TimeoutExpired:
+            raise HTTPException(
+                status_code=500,
+                detail="重启 Web3Signer 容器超时"
+            )
+            
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"重启 Web3Signer 失败: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=500,
+            detail=f"重启 Web3Signer 失败: {str(e)}。请手动重启：docker restart web3signer-1 web3signer-2"
+        )
 

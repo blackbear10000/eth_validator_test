@@ -20,6 +20,8 @@ import {
   CheckCircleOutlined,
   CloseCircleOutlined,
   WarningOutlined,
+  PoweroffOutlined,
+  SyncOutlined,
 } from '@ant-design/icons'
 import {
   web3signerApi,
@@ -35,6 +37,8 @@ const Web3SignerMonitor: React.FC = () => {
   const [keys, setKeys] = useState<Web3SignerKeysResponse | null>(null)
   const [syncStatus, setSyncStatus] = useState<Web3SignerSyncStatus | null>(null)
   const [loading, setLoading] = useState(false)
+  const [syncing, setSyncing] = useState(false)
+  const [restarting, setRestarting] = useState(false)
 
   useEffect(() => {
     loadData()
@@ -56,6 +60,62 @@ const Web3SignerMonitor: React.FC = () => {
     } finally {
       setLoading(false)
     }
+  }
+
+  const handleSyncConfigs = async () => {
+    setSyncing(true)
+    try {
+      const result = await web3signerApi.syncConfigs()
+      if (result.needs_restart) {
+        message.warning(
+          '配置文件已同步，但 Web3Signer 需要重启才能加载新密钥。请点击"重启 Web3Signer"按钮。',
+          10
+        )
+      } else {
+        message.success(result.message || '配置文件已同步并重新加载')
+      }
+      // 重新加载数据
+      await loadData()
+    } catch (error: any) {
+      message.error(`同步配置失败: ${error.message}`)
+    } finally {
+      setSyncing(false)
+    }
+  }
+
+  const handleRestart = async () => {
+    Modal.confirm({
+      title: '确认重启 Web3Signer',
+      content: '重启 Web3Signer 容器会导致短暂的服务中断。HAProxy 会自动处理故障转移。是否继续？',
+      okText: '确认重启',
+      cancelText: '取消',
+      onOk: async () => {
+        setRestarting(true)
+        try {
+          const result = await web3signerApi.restart()
+          if (result.success) {
+            message.success('Web3Signer 容器重启成功，等待服务恢复...')
+            // 等待一段时间后重新加载数据
+            setTimeout(() => {
+              loadData()
+            }, 15000)
+          } else {
+            message.error('Web3Signer 容器重启失败，请手动重启：docker restart web3signer-1 web3signer-2')
+          }
+        } catch (error: any) {
+          if (error.response?.status === 503) {
+            message.warning(
+              '后端无法执行 Docker 命令。请手动重启 Web3Signer 容器：docker restart web3signer-1 web3signer-2',
+              10
+            )
+          } else {
+            message.error(`重启失败: ${error.message}`)
+          }
+        } finally {
+          setRestarting(false)
+        }
+      },
+    })
   }
 
   const keysColumns = [
@@ -99,10 +159,75 @@ const Web3SignerMonitor: React.FC = () => {
     <div>
       <Space style={{ marginBottom: 16, width: '100%', justifyContent: 'space-between' }}>
         <Title level={2}>Web3Signer 监控</Title>
-        <Button icon={<ReloadOutlined />} onClick={loadData} loading={loading}>
-          刷新
-        </Button>
+        <Space>
+          <Button
+            icon={<SyncOutlined />}
+            onClick={handleSyncConfigs}
+            loading={syncing}
+            type="default"
+          >
+            同步配置
+          </Button>
+          <Button
+            icon={<PoweroffOutlined />}
+            onClick={handleRestart}
+            loading={restarting}
+            danger
+          >
+            重启 Web3Signer
+          </Button>
+          <Button icon={<ReloadOutlined />} onClick={loadData} loading={loading}>
+            刷新
+          </Button>
+        </Space>
       </Space>
+
+      {/* 显示警告信息 */}
+      {syncStatus && (
+        <>
+          {syncStatus.primary && syncStatus.primary.stats.missing_count > 0 && (
+            <Alert
+              message="Web3Signer 未加载所有密钥"
+              description={
+                <div>
+                  <p>
+                    Web3Signer-1 缺少 {syncStatus.primary.stats.missing_count} 个密钥。
+                    Web3Signer 使用 key-store-path 配置时，需要重启容器才能加载新配置文件。
+                  </p>
+                  <p style={{ marginTop: 8 }}>
+                    请点击"重启 Web3Signer"按钮或手动执行：{' '}
+                    <code>docker restart web3signer-1 web3signer-2</code>
+                  </p>
+                </div>
+              }
+              type="warning"
+              showIcon
+              style={{ marginBottom: 16 }}
+              action={
+                <Button size="small" onClick={handleRestart} loading={restarting}>
+                  重启
+                </Button>
+              }
+            />
+          )}
+          {syncStatus.secondary && syncStatus.secondary.stats.missing_count > 0 && (
+            <Alert
+              message="Web3Signer-2 未加载所有密钥"
+              description={
+                <div>
+                  <p>
+                    Web3Signer-2 缺少 {syncStatus.secondary.stats.missing_count} 个密钥。
+                    请重启 Web3Signer 容器以加载新配置文件。
+                  </p>
+                </div>
+              }
+              type="warning"
+              showIcon
+              style={{ marginBottom: 16 }}
+            />
+          )}
+        </>
+      )}
 
       <Spin spinning={loading}>
         {/* 状态卡片 */}
