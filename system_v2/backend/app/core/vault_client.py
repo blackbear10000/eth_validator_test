@@ -125,14 +125,21 @@ class VaultClient:
             pubkey: 验证者公钥（带或不带 0x 前缀）
             
         Returns:
-            完整的 Vault 路径
+            相对于 mount_point 的路径（不包含 mount_point 和 data/ 前缀）
+            
+        注意：
+            - 对于 KV v2，create_or_update_secret 的 path 参数应该是相对于 mount_point 的路径
+            - KV v2 会自动添加 data/ 前缀，所以 path 不应该包含 data/
+            - 实际存储路径会是：{mount_point}/data/{path}
+            - Web3Signer 访问路径应该是：/v1/{mount_point}/data/{path}
         """
         # 移除 0x 前缀（如果存在）
         pubkey_clean = pubkey.lower().replace('0x', '')
         
-        # Web3Signer 兼容路径格式
-        # secret/data/web3signer-keys/{pubkey}
-        return f"{self.mount_point}/data/{self.key_path_prefix}/{pubkey_clean}"
+        # 返回相对于 mount_point 的路径（不包含 mount_point 和 data/）
+        # 实际存储路径：secret/data/web3signer-keys/{pubkey}
+        # Web3Signer 访问路径：/v1/secret/data/web3signer-keys/{pubkey}
+        return f"{self.key_path_prefix}/{pubkey_clean}"
     
     def store_signing_key(
         self,
