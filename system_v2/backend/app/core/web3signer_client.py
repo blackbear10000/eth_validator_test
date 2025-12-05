@@ -162,14 +162,23 @@ class Web3SignerClient:
         
         try:
             response = self._request("GET", "/api/v1/eth2/publicKeys", url=url)
-            data = response.get('data', [])
             
-            # 返回公钥列表
-            if isinstance(data, list):
-                return [item.get('publicKey', '') if isinstance(item, dict) else item for item in data]
-            return []
+            # Web3Signer API 可能直接返回列表，也可能返回包装在字典中的列表
+            if isinstance(response, list):
+                # 直接返回列表
+                return [str(item) for item in response if item]
+            elif isinstance(response, dict):
+                # 包装在字典中，尝试从 'data' 字段获取
+                data = response.get('data', [])
+                if isinstance(data, list):
+                    # 如果 data 是列表，提取公钥
+                    return [str(item.get('publicKey', item) if isinstance(item, dict) else item) for item in data if item]
+                return []
+            else:
+                logger.warning(f"Web3Signer API 返回了意外的格式: {type(response)}")
+                return []
         except Exception as e:
-            logger.error(f"获取公钥列表失败: {e}")
+            logger.error(f"获取公钥列表失败: {e}", exc_info=True)
             return []
     
     def reload_keys(self, instance: str = "primary") -> bool:
