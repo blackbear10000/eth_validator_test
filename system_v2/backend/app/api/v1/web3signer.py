@@ -182,11 +182,11 @@ async def get_web3signer_sync_status(
     try:
         result = {}
         
-        # 获取数据库中所有 ACTIVE 状态的密钥
-        db_active_keys = db.query(ValidatorKey).filter(
-            ValidatorKey.status == ValidatorKeyStatus.ACTIVE.value
+        # 获取数据库中所有非 UNUSED 状态的密钥（这些密钥应该被加载到 Web3Signer）
+        db_non_unused_keys = db.query(ValidatorKey).filter(
+            ValidatorKey.status != ValidatorKeyStatus.UNUSED.value
         ).all()
-        db_pubkeys = {key.pubkey.lower() for key in db_active_keys}
+        db_pubkeys = {key.pubkey.lower() for key in db_non_unused_keys}
         
         if instance in ["primary", "both"]:
             try:
@@ -261,5 +261,41 @@ async def get_web3signer_sync_status(
         return result
     except Exception as e:
         logger.error(f"获取 Web3Signer 同步状态失败: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/web3signer/sync-configs")
+async def sync_web3signer_configs(
+    db: Session = Depends(get_db),
+    web3signer_client: Web3SignerClient = Depends(get_web3signer_client)
+):
+    """
+    同步 Web3Signer 密钥配置文件并触发轮转加载
+    
+    功能：
+    1. 为所有非 UNUSED 状态的密钥生成配置文件
+    2. 删除 UNUSED 状态密钥的配置文件
+    3. 触发 Web3Signer 轮转加载（先加载 Web3Signer-2，再加载 Web3Signer-1）
+    
+    Returns:
+        同步结果和加载结果
+    """
+    try:
+        from app.services.web3signer_key_config_service import Web3SignerKeyConfigService
+        
+        # 同步配置文件
+        config_service = Web3SignerKeyConfigService(db)
+        sync_result = config_service.sync_key_configs()
+        
+        # 触发轮转加载
+        reload_result = web3signer_client.zero_downtime_reload(wait_for_health=True)
+        
+        return {
+            "sync_result": sync_result,
+            "reload_result": reload_result,
+            "success": reload_result.get('success', False)
+        }
+    except Exception as e:
+        logger.error(f"同步 Web3Signer 配置失败: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
 

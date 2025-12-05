@@ -479,22 +479,31 @@ class KeyManagementService:
             
             self.db.commit()
             
-            # 自动加载到 Web3Signer（零停机更新）
+            # 同步 Web3Signer 密钥配置文件并触发轮转加载
             try:
+                from app.services.web3signer_key_config_service import Web3SignerKeyConfigService
                 from app.core.web3signer_client import Web3SignerClient
-                web3signer_client = Web3SignerClient()
                 
-                # 触发零停机密钥更新（Web3Signer 会从 Vault 重新加载所有密钥）
-                logger.info(f"触发 Web3Signer 重新加载密钥（激活了 {len(keys)} 个新密钥）...")
+                # 同步配置文件（为所有非 UNUSED 状态的密钥生成配置）
+                config_service = Web3SignerKeyConfigService(self.db)
+                sync_result = config_service.sync_key_configs()
+                logger.info(
+                    f"密钥配置文件同步完成: 创建 {sync_result['created']} 个，"
+                    f"删除 {sync_result['removed']} 个"
+                )
+                
+                # 触发零停机密钥更新（轮转加载）
+                web3signer_client = Web3SignerClient()
+                logger.info(f"触发 Web3Signer 轮转加载密钥（激活了 {len(keys)} 个新密钥）...")
                 reload_result = web3signer_client.zero_downtime_reload(wait_for_health=True)
                 
                 if reload_result.get('success'):
-                    logger.info(f"Web3Signer 密钥重新加载成功，已激活的密钥已自动加载")
+                    logger.info(f"Web3Signer 密钥轮转加载成功，已激活的密钥已自动加载")
                 else:
-                    logger.warning(f"Web3Signer 密钥重新加载可能失败: {reload_result.get('error')}")
+                    logger.warning(f"Web3Signer 密钥轮转加载可能失败: {reload_result.get('error')}")
             except Exception as e:
                 # 如果 Web3Signer 重新加载失败，记录警告但不影响密钥激活
-                logger.warning(f"自动加载密钥到 Web3Signer 失败: {e}，密钥已激活但需要手动触发 Web3Signer 重新加载")
+                logger.warning(f"自动加载密钥到 Web3Signer 失败: {e}，密钥已激活但需要手动触发 Web3Signer 重新加载", exc_info=True)
             
             logger.info(f"成功激活 {len(keys)} 个密钥")
             return keys
@@ -529,6 +538,9 @@ class KeyManagementService:
             if not key:
                 raise ValueError(f"密钥不存在: {pubkey}")
             
+            # 记录旧状态，用于判断是否需要同步配置文件
+            old_status = key.status
+            
             # 更新状态
             key.status = status.value
             
@@ -547,6 +559,32 @@ class KeyManagementService:
                     setattr(key, field, value)
             
             self.db.commit()
+            
+            # 如果状态从 UNUSED 变为其他状态，或从其他状态变为 UNUSED，需要同步配置文件
+            if (old_status == ValidatorKeyStatus.UNUSED.value and status != ValidatorKeyStatus.UNUSED) or \
+               (old_status != ValidatorKeyStatus.UNUSED.value and status == ValidatorKeyStatus.UNUSED):
+                try:
+                    from app.services.web3signer_key_config_service import Web3SignerKeyConfigService
+                    from app.core.web3signer_client import Web3SignerClient
+                    
+                    config_service = Web3SignerKeyConfigService(self.db)
+                    
+                    if status == ValidatorKeyStatus.UNUSED:
+                        # 删除配置文件
+                        config_service.remove_key_config(pubkey)
+                    else:
+                        # 生成配置文件
+                        config_service.save_key_config(pubkey)
+                    
+                    # 触发轮转加载
+                    web3signer_client = Web3SignerClient()
+                    reload_result = web3signer_client.zero_downtime_reload(wait_for_health=True)
+                    if reload_result.get('success'):
+                        logger.info(f"密钥状态变更后，Web3Signer 配置已同步并重新加载")
+                    else:
+                        logger.warning(f"密钥状态变更后，Web3Signer 重新加载可能失败: {reload_result.get('error')}")
+                except Exception as e:
+                    logger.warning(f"同步 Web3Signer 配置失败: {e}，密钥状态已更新但需要手动同步配置", exc_info=True)
             
             logger.info(f"密钥状态已更新: {pubkey[:10]}... -> {status.value}")
             return key

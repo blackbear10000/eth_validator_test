@@ -226,7 +226,7 @@ class NetworkService:
                 in_cl_service = False
                 # 提取服务名称
                 current_service = el_match.group(0)
-                    logger.debug(f"找到执行层服务: {current_service}, 行 {i+1}: {line[:100]}")
+                logger.debug(f"找到执行层服务: {current_service}, 行 {i+1}: {line[:100]}")
                 # 注意：不 continue，继续检查同一行是否有端口信息
             
             # 检查是否是共识层服务行（服务名和端口可能在同一行）

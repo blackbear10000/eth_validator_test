@@ -545,26 +545,37 @@ url = "{client_instance.web3signer_url}"
                 pubkey_list = [ck.pubkey for ck in assigned_keys]
                 self.generate_config_files(client_instance, pubkey_list)
                 
-                # 检查是否有 ACTIVE 状态的密钥需要加载到 Web3Signer
-                active_pubkeys = [
+                # 检查是否有非 UNUSED 状态的密钥需要加载到 Web3Signer
+                non_unused_pubkeys = [
                     ck.pubkey for ck in assigned_keys
                     if self.db.query(ValidatorKey).filter(
                         ValidatorKey.pubkey == ck.pubkey,
-                        ValidatorKey.status == ValidatorKeyStatus.ACTIVE.value
+                        ValidatorKey.status != ValidatorKeyStatus.UNUSED.value
                     ).first()
                 ]
                 
-                # 如果有 ACTIVE 状态的密钥，确保 Web3Signer 已加载
-                if active_pubkeys:
+                # 如果有非 UNUSED 状态的密钥，同步配置文件并触发 Web3Signer 轮转加载
+                if non_unused_pubkeys:
                     try:
-                        logger.info(f"触发 Web3Signer 重新加载密钥（分配了 {len(active_pubkeys)} 个 ACTIVE 密钥）...")
+                        from app.services.web3signer_key_config_service import Web3SignerKeyConfigService
+                        
+                        # 同步配置文件
+                        config_service = Web3SignerKeyConfigService(self.db)
+                        sync_result = config_service.sync_key_configs()
+                        logger.info(
+                            f"密钥配置文件同步完成: 创建 {sync_result['created']} 个，"
+                            f"删除 {sync_result['removed']} 个"
+                        )
+                        
+                        # 触发轮转加载
+                        logger.info(f"触发 Web3Signer 轮转加载密钥（分配了 {len(non_unused_pubkeys)} 个非 UNUSED 密钥）...")
                         reload_result = self.web3signer_client.zero_downtime_reload(wait_for_health=True)
                         if reload_result.get('success'):
-                            logger.info(f"Web3Signer 密钥重新加载成功，已分配的 ACTIVE 密钥已自动加载")
+                            logger.info(f"Web3Signer 密钥轮转加载成功，已分配的非 UNUSED 密钥已自动加载")
                         else:
-                            logger.warning(f"Web3Signer 密钥重新加载可能失败: {reload_result.get('error')}")
+                            logger.warning(f"Web3Signer 密钥轮转加载可能失败: {reload_result.get('error')}")
                     except Exception as e:
-                        logger.warning(f"自动加载密钥到 Web3Signer 失败: {e}，密钥已分配但需要手动触发 Web3Signer 重新加载")
+                        logger.warning(f"自动加载密钥到 Web3Signer 失败: {e}，密钥已分配但需要手动触发 Web3Signer 重新加载", exc_info=True)
                 
                 # 如果使用 Remote Validator API，动态添加密钥到 Validator Client
                 if use_remote_keymanager:
