@@ -206,6 +206,8 @@ services:
       - ../backend:/app
       - ../code/external:/app/external:ro
       - ./web3signer/keys:/keys:rw
+      - ./validator-clients/configs:/app/configs:rw  # Validator Client 配置文件目录
+      - ./validator-clients/data:/app/validator-clients-data:rw  # Validator Client 数据目录
       - /var/run/docker.sock:/var/run/docker.sock:ro  # 允许后端重启 Web3Signer 容器
     networks:
       - validator_network

@@ -330,12 +330,24 @@ async def start_client(
             # 如果没有密钥，创建一个空配置
             config = client_service.generate_config_files(client, [])
         
-        # 启动进程
+        # 获取配置文件路径
+        config_file = config.get('config_file')
+        config_dir = client.config_path  # 配置文件目录（用于 Docker 挂载）
+        
+        # 如果 config_file 是相对路径，提取文件名
+        if config_file and config_dir:
+            import os
+            config_file_name = os.path.basename(config_file)
+        else:
+            config_file_name = None
+        
+        # 启动容器
         process_service = ClientProcessService()
         result = process_service.start(
             client_id=client_id,
             client_type=client.client_type,  # client_type 已经是字符串，不需要 .value
-            config_file=config.get('config_file')
+            config_file=config_file_name,  # 容器内路径（相对于 /config）
+            config_dir=config_dir  # 宿主机路径（用于挂载）
         )
         
         if not result.get("success"):
@@ -421,7 +433,7 @@ async def get_client_logs(
         
         # 获取日志
         process_service = ClientProcessService()
-        logs = process_service.get_logs(client_id=client_id, lines=lines)
+        logs = process_service.get_logs(client_id=client_id, client_type=client.client_type, lines=lines)
         
         return logs
     except HTTPException:

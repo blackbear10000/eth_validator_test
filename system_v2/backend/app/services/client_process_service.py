@@ -1,13 +1,12 @@
 """
 客户端进程管理服务
-管理 Validator Client 进程的启动、停止和状态查询
+管理 Validator Client Docker 容器的启动、停止和状态查询
 """
 import subprocess
 import logging
 import os
-import signal
+import json
 import time
-import psutil
 from typing import Dict, Optional, List, Any
 from pathlib import Path
 from app.config import settings
@@ -16,122 +15,163 @@ logger = logging.getLogger(__name__)
 
 
 class ClientProcessService:
-    """Validator Client 进程管理服务"""
+    """Validator Client Docker 容器管理服务"""
     
     def __init__(self):
-        """初始化进程管理服务"""
-        self.processes: Dict[int, subprocess.Popen] = {}  # client_id -> process
-        self.process_info: Dict[int, Dict] = {}  # client_id -> process info
+        """初始化容器管理服务"""
+        self.network_name = "validator_network"  # Docker 网络名称
+        self.image_map = {
+            "prysm": "gcr.io/prysmaticlabs/prysm/validator:latest",
+            "lighthouse": "sigp/lighthouse:latest",
+            "teku": "consensys/teku:latest"
+        }
     
-    def _find_process_by_name(self, name_pattern: str) -> List[psutil.Process]:
+    def _get_container_name(self, client_id: int, client_type: str) -> str:
         """
-        根据进程名称模式查找进程
-        
-        Args:
-            name_pattern: 进程名称模式（如 "prysm", "lighthouse", "teku"）
-            
-        Returns:
-            匹配的进程列表
-        """
-        processes = []
-        for proc in psutil.process_iter(['pid', 'name', 'cmdline']):
-            try:
-                cmdline = ' '.join(proc.info['cmdline'] or [])
-                if name_pattern.lower() in cmdline.lower():
-                    processes.append(proc)
-            except (psutil.NoSuchProcess, psutil.AccessDenied):
-                continue
-        return processes
-    
-    def _get_client_process_name(self, client_type: str) -> str:
-        """
-        获取客户端进程名称
-        
-        Args:
-            client_type: 客户端类型
-            
-        Returns:
-            进程名称
-        """
-        client_type_lower = client_type.lower()
-        if 'prysm' in client_type_lower:
-            return 'prysm'
-        elif 'lighthouse' in client_type_lower:
-            return 'lighthouse'
-        elif 'teku' in client_type_lower:
-            return 'teku'
-        return client_type_lower
-    
-    def get_status(self, client_id: int, client_type: str) -> Dict[str, any]:
-        """
-        获取客户端进程状态
+        获取容器名称
         
         Args:
             client_id: 客户端 ID
             client_type: 客户端类型
             
         Returns:
-            进程状态信息
+            容器名称
         """
-        # 检查内存中的进程
-        if client_id in self.processes:
-            proc = self.processes[client_id]
-            if proc.poll() is None:  # 进程仍在运行
+        client_type_clean = client_type.lower().replace(' ', '-')
+        return f"validator-client-{client_id}-{client_type_clean}"
+    
+    def _get_docker_image(self, client_type: str) -> str:
+        """
+        获取 Docker 镜像名称
+        
+        Args:
+            client_type: 客户端类型
+            
+        Returns:
+            Docker 镜像名称
+        """
+        client_type_lower = client_type.lower()
+        if 'prysm' in client_type_lower:
+            return self.image_map.get("prysm", "gcr.io/prysmaticlabs/prysm/validator:latest")
+        elif 'lighthouse' in client_type_lower:
+            return self.image_map.get("lighthouse", "sigp/lighthouse:latest")
+        elif 'teku' in client_type_lower:
+            return self.image_map.get("teku", "consensys/teku:latest")
+        raise ValueError(f"不支持的客户端类型: {client_type}")
+    
+    def _check_docker_available(self) -> bool:
+        """检查 Docker 是否可用"""
+        try:
+            result = subprocess.run(
+                ["docker", "--version"],
+                capture_output=True,
+                text=True,
+                timeout=5
+            )
+            return result.returncode == 0
+        except (FileNotFoundError, subprocess.TimeoutExpired):
+            return False
+    
+    def get_status(self, client_id: int, client_type: str) -> Dict[str, any]:
+        """
+        获取客户端容器状态
+        
+        Args:
+            client_id: 客户端 ID
+            client_type: 客户端类型
+            
+        Returns:
+            容器状态信息
+        """
+        container_name = self._get_container_name(client_id, client_type)
+        
+        try:
+            # 查询容器状态
+            result = subprocess.run(
+                ["docker", "ps", "-a", "--filter", f"name={container_name}", "--format", "{{.Names}}\t{{.Status}}\t{{.State}}"],
+                capture_output=True,
+                text=True,
+                timeout=10
+            )
+            
+            if result.returncode != 0:
+                logger.warning(f"查询容器状态失败: {result.stderr}")
                 return {
                     "client_id": client_id,
-                    "status": "running",
-                    "pid": proc.pid,
-                    "is_running": True
+                    "status": "unknown",
+                    "is_running": False,
+                    "error": "无法查询容器状态"
                 }
-            else:
-                # 进程已退出
-                del self.processes[client_id]
-                return {
-                    "client_id": client_id,
-                    "status": "stopped",
-                    "exit_code": proc.returncode,
-                    "is_running": False
-                }
-        
-        # 尝试通过进程名称查找
-        process_name = self._get_client_process_name(client_type)
-        matching_processes = self._find_process_by_name(process_name)
-        
-        if matching_processes:
-            # 找到匹配的进程，但不确定是否是我们的客户端
+            
+            # 解析输出
+            if result.stdout.strip():
+                # 容器存在
+                parts = result.stdout.strip().split('\t')
+                if len(parts) >= 3:
+                    status_str = parts[1]
+                    state = parts[2]
+                    
+                    is_running = state == "running"
+                    return {
+                        "client_id": client_id,
+                        "container_name": container_name,
+                        "status": "running" if is_running else "stopped",
+                        "state": state,
+                        "status_string": status_str,
+                        "is_running": is_running
+                    }
+            
+            # 容器不存在
             return {
                 "client_id": client_id,
-                "status": "running",
-                "pid": matching_processes[0].pid,
-                "is_running": True,
-                "note": "Found process by name, may not be this client instance"
+                "container_name": container_name,
+                "status": "stopped",
+                "is_running": False
             }
-        
-        return {
-            "client_id": client_id,
-            "status": "stopped",
-            "is_running": False
-        }
+            
+        except subprocess.TimeoutExpired:
+            logger.error(f"查询容器状态超时: {container_name}")
+            return {
+                "client_id": client_id,
+                "status": "unknown",
+                "is_running": False,
+                "error": "查询超时"
+            }
+        except Exception as e:
+            logger.error(f"查询容器状态失败: {e}")
+            return {
+                "client_id": client_id,
+                "status": "unknown",
+                "is_running": False,
+                "error": str(e)
+            }
     
     def start(
         self,
         client_id: int,
         client_type: str,
         config_file: Optional[str] = None,
-        command: Optional[List[str]] = None
+        config_dir: Optional[str] = None
     ) -> Dict[str, any]:
         """
-        启动客户端进程
+        启动客户端 Docker 容器
         
         Args:
             client_id: 客户端 ID
             client_type: 客户端类型
-            config_file: 配置文件路径
-            command: 自定义启动命令
+            config_file: 配置文件路径（容器内路径）
+            config_dir: 配置文件目录（宿主机路径，用于挂载）
             
         Returns:
             启动结果
         """
+        # 检查 Docker 是否可用
+        if not self._check_docker_available():
+            return {
+                "success": False,
+                "message": "Docker 不可用，无法启动容器"
+            }
+        
         # 检查是否已经在运行
         status = self.get_status(client_id, client_type)
         if status.get("is_running"):
@@ -141,142 +181,185 @@ class ClientProcessService:
                 "status": status
             }
         
-        # 构建启动命令
-        if command:
-            cmd = command
-        else:
-            cmd = self._build_start_command(client_type, config_file)
-        
-        if not cmd:
-            return {
-                "success": False,
-                "message": f"无法构建 {client_type} 的启动命令"
-            }
+        container_name = self._get_container_name(client_id, client_type)
+        docker_image = self._get_docker_image(client_type)
         
         try:
-            # 启动进程
-            logger.info(f"启动客户端 {client_id} ({client_type}): {' '.join(cmd)}")
-            process = subprocess.Popen(
+            # 构建 docker run 命令
+            cmd = ["docker", "run", "-d"]
+            
+            # 容器名称
+            cmd.extend(["--name", container_name])
+            
+            # 网络配置
+            cmd.extend(["--network", self.network_name])
+            
+            # 配置文件挂载
+            if config_dir:
+                # 确保使用绝对路径
+                # 如果 config_dir 是相对路径，需要转换为绝对路径
+                if not os.path.isabs(config_dir):
+                    # 相对于 backend 容器的工作目录
+                    config_dir_abs = os.path.abspath(config_dir)
+                else:
+                    config_dir_abs = config_dir
+                
+                # 确保目录存在
+                if not os.path.exists(config_dir_abs):
+                    logger.warning(f"配置文件目录不存在，将创建: {config_dir_abs}")
+                    os.makedirs(config_dir_abs, exist_ok=True)
+                
+                cmd.extend(["-v", f"{config_dir_abs}:/config:ro"])
+                logger.debug(f"挂载配置目录: {config_dir_abs} -> /config")
+            
+            # 数据目录挂载（持久化）
+            # 在容器内使用 /app/validator-clients-data（挂载到宿主机）
+            if os.path.exists("/app"):
+                # 在容器内
+                data_dir = f"/app/validator-clients-data/{client_id}"
+            else:
+                # 在宿主机上
+                data_dir = f"validator-clients-data/{client_id}"
+            data_dir_abs = os.path.abspath(data_dir)
+            os.makedirs(data_dir_abs, exist_ok=True)
+            cmd.extend(["-v", f"{data_dir_abs}:/data:rw"])
+            logger.debug(f"挂载数据目录: {data_dir_abs} -> /data")
+            
+            # 镜像
+            cmd.append(docker_image)
+            
+            # 构建容器内启动命令
+            container_cmd = self._build_container_command(client_type, config_file)
+            cmd.extend(container_cmd)
+            
+            # 执行 docker run
+            logger.info(f"启动客户端容器 {container_name}: {' '.join(cmd)}")
+            result = subprocess.run(
                 cmd,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
-                cwd=os.getcwd()
+                capture_output=True,
+                text=True,
+                timeout=60
             )
             
-            self.processes[client_id] = process
-            self.process_info[client_id] = {
-                "client_type": client_type,
-                "config_file": config_file,
-                "command": cmd,
-                "started_at": time.time()
-            }
+            if result.returncode != 0:
+                error_msg = result.stderr.strip() or result.stdout.strip()
+                logger.error(f"启动容器失败: {error_msg}")
+                return {
+                    "success": False,
+                    "message": f"启动容器失败: {error_msg}"
+                }
+            
+            container_id = result.stdout.strip()
+            logger.info(f"容器启动成功: {container_name} (ID: {container_id[:12]})")
+            
+            # 等待容器启动
+            time.sleep(2)
             
             return {
                 "success": True,
-                "message": f"客户端 {client_id} 启动成功",
-                "pid": process.pid,
+                "message": f"客户端 {client_id} 容器启动成功",
+                "container_id": container_id,
+                "container_name": container_name,
                 "status": self.get_status(client_id, client_type)
             }
+            
+        except subprocess.TimeoutExpired:
+            logger.error(f"启动容器超时: {container_name}")
+            return {
+                "success": False,
+                "message": "启动容器超时"
+            }
         except Exception as e:
-            logger.error(f"启动客户端 {client_id} 失败: {e}")
+            logger.error(f"启动客户端 {client_id} 失败: {e}", exc_info=True)
             return {
                 "success": False,
                 "message": f"启动失败: {str(e)}"
             }
     
-    def stop(self, client_id: int, client_type: str) -> Dict[str, any]:
+    def stop(self, client_id: int, client_type: str, remove: bool = False) -> Dict[str, any]:
         """
-        停止客户端进程
+        停止客户端 Docker 容器
         
         Args:
             client_id: 客户端 ID
             client_type: 客户端类型
+            remove: 是否删除容器（默认：False，保留容器用于调试）
             
         Returns:
             停止结果
         """
-        # 检查内存中的进程
-        if client_id in self.processes:
-            proc = self.processes[client_id]
-            try:
-                proc.terminate()
-                proc.wait(timeout=10)
-                del self.processes[client_id]
-                if client_id in self.process_info:
-                    del self.process_info[client_id]
-                return {
-                    "success": True,
-                    "message": f"客户端 {client_id} 已停止"
-                }
-            except subprocess.TimeoutExpired:
-                # 强制杀死
-                proc.kill()
-                proc.wait()
-                del self.processes[client_id]
-                if client_id in self.process_info:
-                    del self.process_info[client_id]
-                return {
-                    "success": True,
-                    "message": f"客户端 {client_id} 已强制停止"
-                }
-            except Exception as e:
-                logger.error(f"停止客户端 {client_id} 失败: {e}")
-                return {
-                    "success": False,
-                    "message": f"停止失败: {str(e)}"
-                }
+        container_name = self._get_container_name(client_id, client_type)
         
-        # 尝试通过进程名称查找并停止
+        # 检查容器是否存在
         status = self.get_status(client_id, client_type)
-        if status.get("is_running") and "pid" in status:
-            try:
-                pid = status["pid"]
-                proc = psutil.Process(pid)
-                proc.terminate()
-                proc.wait(timeout=10)
-                return {
-                    "success": True,
-                    "message": f"客户端 {client_id} 已停止 (PID: {pid})"
-                }
-            except psutil.NoSuchProcess:
-                return {
-                    "success": True,
-                    "message": f"客户端 {client_id} 进程不存在"
-                }
-            except psutil.TimeoutExpired:
-                try:
-                    proc.kill()
-                    return {
-                        "success": True,
-                        "message": f"客户端 {client_id} 已强制停止 (PID: {pid})"
-                    }
-                except Exception as e:
+        if not status.get("is_running") and "container_name" not in status:
+            return {
+                "success": True,
+                "message": f"客户端 {client_id} 容器不存在"
+            }
+        
+        try:
+            # 停止容器
+            logger.info(f"停止容器: {container_name}")
+            stop_result = subprocess.run(
+                ["docker", "stop", container_name],
+                capture_output=True,
+                text=True,
+                timeout=30
+            )
+            
+            if stop_result.returncode != 0:
+                # 容器可能已经停止
+                if "No such container" in stop_result.stderr or "is not running" in stop_result.stderr:
+                    logger.debug(f"容器已停止或不存在: {container_name}")
+                else:
+                    logger.warning(f"停止容器失败: {stop_result.stderr}")
                     return {
                         "success": False,
-                        "message": f"强制停止失败: {str(e)}"
+                        "message": f"停止容器失败: {stop_result.stderr.strip()}"
                     }
-            except Exception as e:
-                return {
-                    "success": False,
-                    "message": f"停止失败: {str(e)}"
-                }
-        
-        return {
-            "success": True,
-            "message": f"客户端 {client_id} 未运行"
-        }
+            
+            # 如果需要，删除容器
+            if remove:
+                logger.info(f"删除容器: {container_name}")
+                rm_result = subprocess.run(
+                    ["docker", "rm", container_name],
+                    capture_output=True,
+                    text=True,
+                    timeout=10
+                )
+                if rm_result.returncode != 0:
+                    logger.warning(f"删除容器失败: {rm_result.stderr}")
+            
+            return {
+                "success": True,
+                "message": f"客户端 {client_id} 已停止" + ("并删除" if remove else "")
+            }
+            
+        except subprocess.TimeoutExpired:
+            logger.error(f"停止容器超时: {container_name}")
+            return {
+                "success": False,
+                "message": "停止容器超时"
+            }
+        except Exception as e:
+            logger.error(f"停止客户端 {client_id} 失败: {e}", exc_info=True)
+            return {
+                "success": False,
+                "message": f"停止失败: {str(e)}"
+            }
     
-    def _build_start_command(
+    def _build_container_command(
         self,
         client_type: str,
         config_file: Optional[str] = None
-    ) -> Optional[List[str]]:
+    ) -> List[str]:
         """
-        构建启动命令
+        构建容器内启动命令
         
         Args:
             client_type: 客户端类型
-            config_file: 配置文件路径
+            config_file: 配置文件路径（容器内路径，如 /config/config.yaml）
             
         Returns:
             启动命令列表
@@ -284,47 +367,87 @@ class ClientProcessService:
         client_type_lower = client_type.lower()
         
         if 'prysm' in client_type_lower:
-            cmd = ['prysm', 'validator']
+            cmd = ['validator']
             if config_file:
+                # 如果传入的是相对路径，转换为容器内绝对路径
+                if not config_file.startswith('/'):
+                    config_file = f"/config/{config_file}"
                 cmd.extend(['--config-file', config_file])
             return cmd
         
         elif 'lighthouse' in client_type_lower:
-            cmd = ['lighthouse', 'validator']
+            cmd = ['validator']
             if config_file:
+                if not config_file.startswith('/'):
+                    config_file = f"/config/{config_file}"
                 cmd.extend(['--config-file', config_file])
             return cmd
         
         elif 'teku' in client_type_lower:
-            cmd = ['teku']
+            cmd = []
             if config_file:
+                if not config_file.startswith('/'):
+                    config_file = f"/config/{config_file}"
                 cmd.extend(['--config-file', config_file])
             return cmd
         
-        return None
+        raise ValueError(f"不支持的客户端类型: {client_type}")
     
-    def get_logs(self, client_id: int, lines: int = 100) -> Dict[str, any]:
+    def get_logs(self, client_id: int, client_type: str, lines: int = 100) -> Dict[str, any]:
         """
-        获取客户端日志（简化实现）
+        获取客户端容器日志
         
         Args:
             client_id: 客户端 ID
+            client_type: 客户端类型
             lines: 返回的行数
             
         Returns:
             日志信息
         """
-        # 这是一个简化实现，实际应该从日志文件读取
-        if client_id in self.process_info:
+        container_name = self._get_container_name(client_id, client_type)
+        
+        try:
+            # 获取容器日志
+            result = subprocess.run(
+                ["docker", "logs", "--tail", str(lines), container_name],
+                capture_output=True,
+                text=True,
+                timeout=10
+            )
+            
+            if result.returncode != 0:
+                if "No such container" in result.stderr:
+                    return {
+                        "client_id": client_id,
+                        "logs": [],
+                        "message": "容器不存在"
+                    }
+                return {
+                    "client_id": client_id,
+                    "logs": [],
+                    "error": result.stderr.strip()
+                }
+            
+            logs = result.stdout.strip().split('\n') if result.stdout.strip() else []
+            return {
+                "client_id": client_id,
+                "container_name": container_name,
+                "logs": logs,
+                "lines": len(logs)
+            }
+            
+        except subprocess.TimeoutExpired:
             return {
                 "client_id": client_id,
                 "logs": [],
-                "message": "日志功能需要配置日志文件路径"
+                "error": "获取日志超时"
             }
-        
-        return {
-            "client_id": client_id,
-            "logs": [],
-            "message": "客户端未运行或未找到日志"
-        }
+        except Exception as e:
+            logger.error(f"获取日志失败: {e}")
+            return {
+                "client_id": client_id,
+                "logs": [],
+                "error": str(e)
+            }
 

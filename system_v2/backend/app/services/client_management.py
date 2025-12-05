@@ -41,7 +41,16 @@ class ClientManagementService:
         """
         self.db = db
         self.web3signer_client = web3signer_client or Web3SignerClient()
-        self.config_base_path = config_base_path or "configs"
+        # 默认配置文件路径：在容器内使用 /app/configs（挂载到 ./validator-clients/configs）
+        # 在宿主机上使用相对路径 configs（相对于 backend 目录）
+        if config_base_path:
+            self.config_base_path = config_base_path
+        else:
+            # 检查是否在容器内（/app 目录存在）
+            if os.path.exists("/app"):
+                self.config_base_path = "/app/configs"
+            else:
+                self.config_base_path = os.path.join(os.getcwd(), "configs")
     
     def _get_remote_validator_api_url(self, client_instance: ClientInstance) -> Optional[str]:
         """
@@ -338,10 +347,17 @@ class ClientManagementService:
             pubkeys: 验证者公钥列表
             
         Returns:
-            配置文件路径字典
+            配置文件路径字典（包含绝对路径）
         """
         configs = {}
-        client_dir = Path(self.config_base_path) / client_instance.client_type / client_instance.name
+        # 确保使用绝对路径
+        if os.path.isabs(self.config_base_path):
+            base_path = Path(self.config_base_path)
+        else:
+            # 相对路径转换为绝对路径（相对于当前工作目录）
+            base_path = Path(os.path.abspath(self.config_base_path))
+        
+        client_dir = base_path / client_instance.client_type / client_instance.name
         client_dir.mkdir(parents=True, exist_ok=True)
         
         if client_instance.client_type == "prysm":
@@ -351,8 +367,8 @@ class ClientManagementService:
         elif client_instance.client_type == "teku":
             configs.update(self._generate_teku_config(client_instance, pubkeys, client_dir))
         
-        # 更新配置文件路径
-        client_instance.config_path = str(client_dir)
+        # 更新配置文件路径（使用绝对路径）
+        client_instance.config_path = str(client_dir.absolute())
         self.db.commit()
         
         return configs
