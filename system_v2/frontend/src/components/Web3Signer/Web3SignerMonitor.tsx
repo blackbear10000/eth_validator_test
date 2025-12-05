@@ -10,7 +10,6 @@ import {
   Col,
   Statistic,
   Alert,
-  Descriptions,
   Divider,
   Spin,
   message,
@@ -22,7 +21,6 @@ import {
   ReloadOutlined,
   CheckCircleOutlined,
   CloseCircleOutlined,
-  WarningOutlined,
   PoweroffOutlined,
   SyncOutlined,
   MoreOutlined,
@@ -44,8 +42,6 @@ const Web3SignerMonitor: React.FC = () => {
   const [loading, setLoading] = useState(false)
   const [syncing, setSyncing] = useState(false)
   const [restarting, setRestarting] = useState(false)
-  const [cleaning, setCleaning] = useState(false)
-  const [regenerating, setRegenerating] = useState(false)
 
   useEffect(() => {
     loadData()
@@ -129,7 +125,6 @@ const Web3SignerMonitor: React.FC = () => {
       cancelText: '取消',
       okType: 'danger',
       onOk: async () => {
-        setRegenerating(true)
         try {
           const result = await web3signerApi.regenerateConfigs()
           if (result.success) {
@@ -141,8 +136,6 @@ const Web3SignerMonitor: React.FC = () => {
           }
         } catch (error: any) {
           message.error(`重新生成失败: ${error.message}`)
-        } finally {
-          setRegenerating(false)
         }
       },
     })
@@ -156,7 +149,6 @@ const Web3SignerMonitor: React.FC = () => {
       cancelText: '取消',
       okType: 'danger',
       onOk: async () => {
-        setCleaning(true)
         try {
           const result = await web3signerApi.cleanupConfigs()
           if (result.success) {
@@ -167,8 +159,6 @@ const Web3SignerMonitor: React.FC = () => {
           }
         } catch (error: any) {
           message.error(`清理失败: ${error.message}`)
-        } finally {
-          setCleaning(false)
         }
       },
     })
@@ -272,15 +262,15 @@ const Web3SignerMonitor: React.FC = () => {
       </Space>
 
       {/* 只在有同步问题时显示警告 */}
-      {hasSyncIssues() && (
+      {hasSyncIssues() && syncStatus && (
         <Alert
           message="密钥同步异常"
           description={
             <div>
-              {syncStatus?.primary?.stats.missing_count > 0 && (
+              {syncStatus.primary?.stats.missing_count && syncStatus.primary.stats.missing_count > 0 && (
                 <p>Web3Signer-1 缺少 {syncStatus.primary.stats.missing_count} 个密钥</p>
               )}
-              {syncStatus?.secondary?.stats.missing_count > 0 && (
+              {syncStatus.secondary?.stats.missing_count && syncStatus.secondary.stats.missing_count > 0 && (
                 <p>Web3Signer-2 缺少 {syncStatus.secondary.stats.missing_count} 个密钥</p>
               )}
               <p style={{ marginTop: 8, fontSize: '12px', color: '#666' }}>
