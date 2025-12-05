@@ -334,7 +334,7 @@ async def start_client(
         process_service = ClientProcessService()
         result = process_service.start(
             client_id=client_id,
-            client_type=client.client_type.value,
+            client_type=client.client_type,  # client_type 已经是字符串，不需要 .value
             config_file=config.get('config_file')
         )
         
@@ -365,7 +365,7 @@ async def stop_client(
         process_service = ClientProcessService()
         result = process_service.stop(
             client_id=client_id,
-            client_type=client.client_type.value
+            client_type=client.client_type  # client_type 已经是字符串，不需要 .value
         )
         
         if not result.get("success"):
@@ -395,7 +395,7 @@ async def get_client_status(
         process_service = ClientProcessService()
         status = process_service.get_status(
             client_id=client_id,
-            client_type=client.client_type.value
+            client_type=client.client_type  # client_type 已经是字符串，不需要 .value
         )
         
         return status
