@@ -26,6 +26,94 @@ class ClientProcessService:
             "teku": "consensys/teku:latest"
         }
     
+    def _find_network_name(self) -> Optional[str]:
+        """
+        查找实际的网络名称
+        
+        Docker Compose 创建的网络可能带有前缀（如 infra_validator_network）
+        或者可能使用不同的命名规则
+        
+        Returns:
+            找到的网络名称，如果未找到则返回 None
+        """
+        # 首先尝试使用配置的网络名称
+        try:
+            result = subprocess.run(
+                ["docker", "network", "inspect", self.network_name],
+                capture_output=True,
+                text=True,
+                timeout=5
+            )
+            if result.returncode == 0:
+                logger.debug(f"找到网络: {self.network_name}")
+                return self.network_name
+        except Exception:
+            pass
+        
+        # 尝试查找包含 "validator_network" 的网络
+        try:
+            result = subprocess.run(
+                ["docker", "network", "ls", "--format", "{{.Name}}"],
+                capture_output=True,
+                text=True,
+                timeout=5
+            )
+            if result.returncode == 0:
+                networks = result.stdout.strip().split('\n')
+                for network in networks:
+                    if 'validator_network' in network.lower() or network == self.network_name:
+                        logger.info(f"找到匹配的网络: {network}")
+                        return network
+        except Exception as e:
+            logger.warning(f"查找网络失败: {e}")
+        
+        return None
+    
+    def _ensure_network_exists(self) -> bool:
+        """
+        确保 Docker 网络存在，如果不存在则创建
+        
+        Returns:
+            网络是否存在或创建成功
+        """
+        # 首先尝试查找现有网络
+        actual_network_name = self._find_network_name()
+        if actual_network_name:
+            # 如果找到的网络名称不同，更新 self.network_name
+            if actual_network_name != self.network_name:
+                logger.info(f"使用找到的网络名称: {actual_network_name} (原配置: {self.network_name})")
+                self.network_name = actual_network_name
+            return True
+        
+        # 网络不存在，尝试创建
+        logger.info(f"网络 {self.network_name} 不存在，正在创建...")
+        try:
+            create_result = subprocess.run(
+                ["docker", "network", "create", "--driver", "bridge", self.network_name],
+                capture_output=True,
+                text=True,
+                timeout=10
+            )
+            
+            if create_result.returncode == 0:
+                logger.info(f"网络 {self.network_name} 创建成功")
+                return True
+            else:
+                error_msg = create_result.stderr.strip() or create_result.stdout.strip()
+                # 如果网络已存在（可能是并发创建），也算成功
+                if "already exists" in error_msg.lower():
+                    logger.debug(f"网络 {self.network_name} 已存在（可能是并发创建）")
+                    return True
+                logger.error(f"创建网络失败: {error_msg}")
+                return False
+                
+        except subprocess.TimeoutExpired:
+            logger.error(f"创建网络超时: {self.network_name}")
+            return False
+        except Exception as e:
+            logger.error(f"创建网络失败: {e}")
+            return False
+    
     def _get_container_name(self, client_id: int, client_type: str) -> str:
         """
         获取容器名称
@@ -235,6 +323,36 @@ class ClientProcessService:
         
         container_name = self._get_container_name(client_id, client_type)
         docker_image = self._get_docker_image(client_type)
+        
+        # 如果容器处于 Created 状态，先删除它
+        try:
+            inspect_result = subprocess.run(
+                ["docker", "inspect", "--format", "{{.State.Status}}", container_name],
+                capture_output=True,
+                text=True,
+                timeout=5
+            )
+            if inspect_result.returncode == 0:
+                container_status = inspect_result.stdout.strip()
+                if container_status == "created":
+                    logger.info(f"发现处于 Created 状态的容器 {container_name}，正在删除...")
+                    rm_result = subprocess.run(
+                        ["docker", "rm", container_name],
+                        capture_output=True,
+                        text=True,
+                        timeout=10
+                    )
+                    if rm_result.returncode != 0:
+                        logger.warning(f"删除 Created 状态容器失败: {rm_result.stderr}")
+        except Exception as e:
+            logger.debug(f"检查容器状态时出错（可能容器不存在）: {e}")
+        
+        # 确保网络存在
+        if not self._ensure_network_exists():
+            return {
+                "success": False,
+                "message": f"无法确保网络 {self.network_name} 存在，请检查 Docker 网络配置"
+            }
         
         try:
             # 构建 docker run 命令
