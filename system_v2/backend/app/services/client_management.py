@@ -502,8 +502,14 @@ url = "{client_instance.web3signer_url}"
                     logger.warning(f"密钥不存在: {pubkey[:10]}...")
                     continue
                 
-                # 检查密钥状态：只允许 ACTIVE 和 DEPOSIT_DATA_GENERATED 状态的密钥
-                allowed_statuses = [ValidatorKeyStatus.ACTIVE.value, ValidatorKeyStatus.DEPOSIT_DATA_GENERATED.value]
+                # 检查密钥状态：允许已激活、已生成存款数据、已提交到链上的密钥
+                allowed_statuses = [
+                    ValidatorKeyStatus.ACTIVE.value,
+                    ValidatorKeyStatus.DEPOSIT_DATA_GENERATED.value,
+                    ValidatorKeyStatus.PENDING.value,  # 已提交存款，等待链上确认
+                    ValidatorKeyStatus.DEPOSITED.value,  # 存款已确认，在 deposit queue 中
+                    ValidatorKeyStatus.ACTIVE_ON_CHAIN.value  # 链上激活，正在验证
+                ]
                 if validator_key.status not in allowed_statuses:
                     logger.warning(
                         f"密钥状态不允许加载到客户端: {pubkey[:10]}... "

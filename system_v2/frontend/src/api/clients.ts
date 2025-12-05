@@ -73,5 +73,9 @@ export const clientsApi = {
   // 同步密钥到 Validator Client
   syncKeys: (clientId: number) =>
     apiClient.post(`/clients/${clientId}/sync-keys`),
+
+  // 获取客户端密钥列表
+  getKeys: (clientId: number) =>
+    apiClient.get(`/clients/${clientId}/keys`),
 }
 

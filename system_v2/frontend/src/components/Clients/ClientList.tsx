@@ -12,6 +12,7 @@ import {
   Tag,
   Typography,
   Popconfirm,
+  Switch,
 } from 'antd'
 import {
   PlusOutlined,
@@ -19,9 +20,13 @@ import {
   StopOutlined,
   ReloadOutlined,
   KeyOutlined,
+  EditOutlined,
+  DeleteOutlined,
+  EyeOutlined,
 } from '@ant-design/icons'
 import { clientsApi, ClientInstance } from '../../api/clients'
 import { keysApi } from '../../api/keys'
+import { networkApi } from '../../api/network'
 
 const { Title } = Typography
 const { Option } = Select
@@ -30,11 +35,15 @@ const ClientList: React.FC = () => {
   const [clients, setClients] = useState<ClientInstance[]>([])
   const [loading, setLoading] = useState(false)
   const [createModalVisible, setCreateModalVisible] = useState(false)
+  const [editModalVisible, setEditModalVisible] = useState(false)
   const [assignKeysModalVisible, setAssignKeysModalVisible] = useState(false)
+  const [viewKeysModalVisible, setViewKeysModalVisible] = useState(false)
   const [selectedClient, setSelectedClient] = useState<ClientInstance | null>(null)
   const [availableKeys, setAvailableKeys] = useState<any[]>([])
+  const [clientKeys, setClientKeys] = useState<any[]>([])
   const [clientStatuses, setClientStatuses] = useState<Record<number, any>>({})
   const [form] = Form.useForm()
+  const [editForm] = Form.useForm()
   const [assignForm] = Form.useForm()
 
   useEffect(() => {
@@ -70,6 +79,32 @@ const ClientList: React.FC = () => {
     }
   }
 
+  const loadRecommendedUrls = async () => {
+    try {
+      const networkInfo = await networkApi.getInfo() as any
+      const recommendedValues: any = {}
+      
+      // 推荐 Beacon API URL
+      if (networkInfo?.beacon_api_url) {
+        recommendedValues.beacon_api_url = networkInfo.beacon_api_url
+      }
+      
+      // 推荐 Web3Signer URL（使用默认值，因为这是系统内部服务）
+      recommendedValues.web3signer_url = 'http://host.docker.internal:9002' // HAProxy
+      
+      // gRPC endpoint 根据客户端类型不同而不同，这里先不自动填充
+      // 用户可以根据客户端类型手动填写
+      
+      if (Object.keys(recommendedValues).length > 0) {
+        form.setFieldsValue(recommendedValues)
+        message.info('已自动填充推荐的 API URL')
+      }
+    } catch (error) {
+      // 忽略错误，不影响用户手动输入
+      console.warn('无法获取推荐的 API URL:', error)
+    }
+  }
+
   const handleCreate = async (values: any) => {
     try {
       await clientsApi.create(values)
@@ -79,6 +114,54 @@ const ClientList: React.FC = () => {
       loadClients()
     } catch (error: any) {
       message.error(`创建客户端失败: ${error.message}`)
+    }
+  }
+
+  const handleEdit = async (client: ClientInstance) => {
+    setSelectedClient(client)
+    editForm.setFieldsValue({
+      name: client.name,
+      beacon_api_url: client.beacon_api_url,
+      grpc_endpoint: client.grpc_endpoint,
+      web3signer_url: client.web3signer_url,
+      is_active: client.is_active,
+    })
+    setEditModalVisible(true)
+  }
+
+  const handleUpdate = async (values: any) => {
+    if (!selectedClient) return
+
+    try {
+      await clientsApi.update(selectedClient.id, values)
+      message.success('客户端更新成功')
+      setEditModalVisible(false)
+      editForm.resetFields()
+      setSelectedClient(null)
+      loadClients()
+    } catch (error: any) {
+      message.error(`更新客户端失败: ${error.message}`)
+    }
+  }
+
+  const handleDelete = async (clientId: number) => {
+    try {
+      await clientsApi.delete(clientId, false)
+      message.success('客户端已删除')
+      loadClients()
+    } catch (error: any) {
+      message.error(`删除客户端失败: ${error.message}`)
+    }
+  }
+
+  const handleViewKeys = async (clientId: number) => {
+    setSelectedClient(clients.find((c) => c.id === clientId) || null)
+    try {
+      const keys = await clientsApi.getKeys(clientId) as any
+      setClientKeys(keys || [])
+      setViewKeysModalVisible(true)
+    } catch (error: any) {
+      message.error(`加载密钥列表失败: ${error.message}`)
     }
   }
 
@@ -109,15 +192,23 @@ const ClientList: React.FC = () => {
   const handleAssignKeys = async (clientId: number) => {
     setSelectedClient(clients.find((c) => c.id === clientId) || null)
     
-    // 加载可用密钥（包括 ACTIVE 和 DEPOSIT_DATA_GENERATED 状态）
+    // 加载可用密钥（包括已激活、已生成存款数据、已提交到链上的密钥）
     try {
-      const [activeResponse, depositDataResponse] = await Promise.all([
+      const [activeResponse, depositDataResponse, pendingResponse, depositedResponse, activeOnChainResponse] = await Promise.all([
         keysApi.list({ status: 'active' }) as any,
         keysApi.list({ status: 'deposit_data_generated' }) as any,
+        keysApi.list({ status: 'pending' }) as any,
+        keysApi.list({ status: 'deposited' }) as any,
+        keysApi.list({ status: 'active_on_chain' }) as any,
       ])
-      const activeKeys = activeResponse.items || []
-      const depositDataKeys = depositDataResponse.items || []
-      setAvailableKeys([...activeKeys, ...depositDataKeys])
+      const allKeys = [
+        ...(activeResponse.items || []),
+        ...(depositDataResponse.items || []),
+        ...(pendingResponse.items || []),
+        ...(depositedResponse.items || []),
+        ...(activeOnChainResponse.items || []),
+      ]
+      setAvailableKeys(allKeys)
       setAssignKeysModalVisible(true)
     } catch (error: any) {
       message.error(`加载可用密钥失败: ${error.message}`)
@@ -245,6 +336,33 @@ const ClientList: React.FC = () => {
             >
               重载密钥
             </Button>
+            <Button
+              size="small"
+              icon={<EyeOutlined />}
+              onClick={() => handleViewKeys(record.id)}
+            >
+              查看密钥
+            </Button>
+            <Button
+              size="small"
+              icon={<EditOutlined />}
+              onClick={() => handleEdit(record)}
+            >
+              编辑
+            </Button>
+            <Popconfirm
+              title="确定要删除这个客户端吗？"
+              description="删除后可以恢复（软删除），如果有关联的密钥，请先移除密钥"
+              onConfirm={() => handleDelete(record.id)}
+            >
+              <Button
+                size="small"
+                danger
+                icon={<DeleteOutlined />}
+              >
+                删除
+              </Button>
+            </Popconfirm>
           </Space>
         )
       },
@@ -288,6 +406,11 @@ const ClientList: React.FC = () => {
           form.resetFields()
         }}
         onOk={() => form.submit()}
+        afterOpenChange={(open) => {
+          if (open) {
+            loadRecommendedUrls()
+          }
+        }}
       >
         <Form form={form} layout="vertical" onFinish={handleCreate}>
           <Form.Item
@@ -308,6 +431,53 @@ const ClientList: React.FC = () => {
               <Option value="teku">Teku</Option>
             </Select>
           </Form.Item>
+          <Form.Item 
+            name="beacon_api_url" 
+            label="Beacon API URL"
+            tooltip="系统会自动推荐检测到的 Beacon API URL"
+          >
+            <Input placeholder="http://host.docker.internal:33790" />
+          </Form.Item>
+          <Form.Item 
+            name="grpc_endpoint" 
+            label="gRPC Endpoint"
+            tooltip="Prysm: 4000, Lighthouse: 5052, Teku: 9000"
+          >
+            <Input placeholder="host.docker.internal:4000" />
+          </Form.Item>
+          <Form.Item
+            name="web3signer_url"
+            label="Web3Signer URL"
+            initialValue="http://host.docker.internal:9002"
+            tooltip="推荐使用 HAProxy URL (9002 端口)"
+          >
+            <Input placeholder="http://host.docker.internal:9002" />
+          </Form.Item>
+          <Form.Item name="notes" label="备注">
+            <Input.TextArea rows={3} placeholder="可选备注信息" />
+          </Form.Item>
+        </Form>
+      </Modal>
+
+      {/* 编辑客户端模态框 */}
+      <Modal
+        title="编辑客户端"
+        open={editModalVisible}
+        onCancel={() => {
+          setEditModalVisible(false)
+          editForm.resetFields()
+          setSelectedClient(null)
+        }}
+        onOk={() => editForm.submit()}
+      >
+        <Form form={editForm} layout="vertical" onFinish={handleUpdate}>
+          <Form.Item
+            name="name"
+            label="名称"
+            rules={[{ required: true, message: '请输入客户端名称' }]}
+          >
+            <Input placeholder="请输入客户端名称" />
+          </Form.Item>
           <Form.Item name="beacon_api_url" label="Beacon API URL">
             <Input placeholder="http://localhost:5052" />
           </Form.Item>
@@ -317,14 +487,79 @@ const ClientList: React.FC = () => {
           <Form.Item
             name="web3signer_url"
             label="Web3Signer URL"
-            initialValue="http://localhost:9002"
           >
             <Input placeholder="http://localhost:9002" />
+          </Form.Item>
+          <Form.Item name="is_active" label="是否激活" valuePropName="checked">
+            <Switch />
           </Form.Item>
           <Form.Item name="notes" label="备注">
             <Input.TextArea rows={3} placeholder="可选备注信息" />
           </Form.Item>
         </Form>
+      </Modal>
+
+      {/* 查看密钥列表模态框 */}
+      <Modal
+        title={`客户端密钥列表 - ${selectedClient?.name}`}
+        open={viewKeysModalVisible}
+        onCancel={() => {
+          setViewKeysModalVisible(false)
+          setClientKeys([])
+          setSelectedClient(null)
+        }}
+        footer={[
+          <Button key="close" onClick={() => {
+            setViewKeysModalVisible(false)
+            setClientKeys([])
+            setSelectedClient(null)
+          }}>
+            关闭
+          </Button>,
+        ]}
+        width={800}
+      >
+        <Table
+          columns={[
+            {
+              title: '公钥',
+              dataIndex: 'pubkey',
+              key: 'pubkey',
+              render: (text: string) => (
+                <Typography.Text copyable={{ text }} style={{ fontFamily: 'monospace', fontSize: '12px' }}>
+                  {text.slice(0, 20)}...
+                </Typography.Text>
+              ),
+            },
+            {
+              title: '状态',
+              dataIndex: 'status',
+              key: 'status',
+              render: (status: string) => <Tag>{status}</Tag>,
+            },
+            {
+              title: '激活时间',
+              dataIndex: 'activated_at',
+              key: 'activated_at',
+              render: (time: string | null) => (time ? new Date(time).toLocaleString() : '-'),
+            },
+            {
+              title: '存款时间',
+              dataIndex: 'deposited_at',
+              key: 'deposited_at',
+              render: (time: string | null) => (time ? new Date(time).toLocaleString() : '-'),
+            },
+            {
+              title: '批次ID',
+              dataIndex: 'batch_id',
+              key: 'batch_id',
+              render: (batchId: string | null) => batchId || '-',
+            },
+          ]}
+          dataSource={clientKeys}
+          rowKey="pubkey"
+          pagination={{ pageSize: 10 }}
+        />
       </Modal>
 
       {/* 分配密钥模态框 */}

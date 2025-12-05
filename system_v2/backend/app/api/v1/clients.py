@@ -146,6 +146,42 @@ async def delete_client(
         raise HTTPException(status_code=500, detail=str(e))
 
 
+@router.get("/clients/{client_id}/keys", response_model=List[dict])
+async def get_client_keys(
+    client_id: int,
+    client_service: ClientManagementService = Depends(get_client_service)
+):
+    """获取客户端已分配的密钥列表"""
+    try:
+        from app.models.database import ClientInstance
+        db = client_service.db
+        client = db.query(ClientInstance).filter(ClientInstance.id == client_id).first()
+        
+        if not client:
+            raise HTTPException(status_code=404, detail="客户端不存在")
+        
+        keys = client_service.get_client_keys(client)
+        
+        # 转换为字典格式，包含详细信息
+        result = []
+        for key in keys:
+            result.append({
+                "pubkey": key.pubkey,
+                "status": key.status,
+                "activated_at": key.activated_at.isoformat() if key.activated_at else None,
+                "deposited_at": key.deposited_at.isoformat() if key.deposited_at else None,
+                "withdrawal_pubkey": key.withdrawal_pubkey,
+                "batch_id": key.batch_id,
+            })
+        
+        return result
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"获取客户端密钥列表失败: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 @router.put("/clients/{client_id}/keys", response_model=dict)
 async def assign_keys(
     client_id: int,
