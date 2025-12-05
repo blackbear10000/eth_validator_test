@@ -192,6 +192,39 @@ class Web3SignerClient:
             logger.error(f"获取 Web3Signer {instance} 公钥列表失败: {e}", exc_info=True)
             return []
     
+    def add_keys_via_keystore_api(
+        self,
+        pubkeys: List[str],
+        instance: str = "primary"
+    ) -> Dict[str, Any]:
+        """
+        通过 Keystore API 动态添加密钥到 Web3Signer
+        
+        注意：这需要 Web3Signer 支持 Keystore API，并且密钥已经在 Vault 中
+        当前实现使用 key-store-path，所以这个方法可能不适用
+        
+        Args:
+            pubkeys: 要添加的公钥列表
+            instance: 实例名称 (primary/secondary)
+            
+        Returns:
+            添加结果
+        """
+        url_map = {
+            "primary": self.primary_url,
+            "secondary": self.secondary_url
+        }
+        
+        url = url_map.get(instance)
+        if not url:
+            raise ValueError(f"无效的实例名称: {instance}")
+        
+        # 注意：Web3Signer Keystore API 需要 keystore JSON 和密码
+        # 但当前实现使用 Vault，所以这个方法可能不适用
+        # 保留此方法以备将来使用
+        logger.warning(f"Keystore API 方法当前未实现，因为使用 Vault 存储")
+        return {"success": False, "error": "Keystore API 未实现"}
+    
     def reload_keys(self, instance: str = "primary") -> bool:
         """
         重新加载密钥（通过 reload API）

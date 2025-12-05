@@ -502,12 +502,22 @@ class KeyManagementService:
                     # 触发零停机密钥更新（轮转加载）
                     web3signer_client = Web3SignerClient()
                     logger.info(f"检测到配置文件变更，触发 Web3Signer 轮转加载密钥...")
+                    logger.warning(
+                        "注意：Web3Signer 使用 key-store-path 配置时，可能不支持运行时重新扫描。"
+                        "如果 reload 失败，需要重启 Web3Signer 容器才能加载新配置文件。"
+                    )
                     reload_result = web3signer_client.zero_downtime_reload(wait_for_health=True)
                     
                     if reload_result.get('success'):
-                        logger.info(f"Web3Signer 密钥轮转加载成功，已激活的密钥已自动加载")
+                        # 检查是否真的加载了密钥
+                        if reload_result.get('warning'):
+                            logger.warning(f"Web3Signer reload 完成，但可能未加载密钥: {reload_result.get('warning')}")
+                            logger.warning("建议：重启 Web3Signer 容器以确保新配置文件被加载")
+                        else:
+                            logger.info(f"Web3Signer 密钥轮转加载成功，已激活的密钥已自动加载")
                     else:
                         logger.warning(f"Web3Signer 密钥轮转加载可能失败: {reload_result.get('error', '未知错误')}")
+                        logger.warning("建议：重启 Web3Signer 容器以确保新配置文件被加载")
                 else:
                     logger.info(f"配置文件无变更，跳过 Web3Signer 重新加载")
             except Exception as e:
