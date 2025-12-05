@@ -65,7 +65,7 @@ class Web3SignerKeyConfigService:
         # 缓存有效的 Vault token
         self._cached_vault_token: Optional[str] = None
     
-    def _get_vault_token(self) -> str:
+    def _get_vault_token(self, force_refresh: bool = False) -> str:
         """
         自动获取有效的 Vault token
         
@@ -78,11 +78,14 @@ class Web3SignerKeyConfigService:
         注意：Web3Signer 的 HashiCorp Vault 配置只支持 token 认证，不支持 userpass。
         但我们可以通过 userpass 登录获取 token，然后将 token 用于 Web3Signer 配置。
         
+        Args:
+            force_refresh: 是否强制刷新 token（忽略缓存）
+        
         Returns:
             有效的 Vault token
         """
-        # 如果已缓存，直接返回
-        if self._cached_vault_token:
+        # 如果已缓存且不强制刷新，直接返回
+        if self._cached_vault_token and not force_refresh:
             return self._cached_vault_token
         
         # 1. 尝试从 Consul 读取（初始化脚本保存的 root token）
@@ -131,12 +134,13 @@ class Web3SignerKeyConfigService:
         )
         return settings.vault_token
     
-    def generate_key_config(self, pubkey: str) -> Dict[str, Any]:
+    def generate_key_config(self, pubkey: str, force_refresh_token: bool = False) -> Dict[str, Any]:
         """
         为单个密钥生成 Web3Signer 配置文件
         
         Args:
             pubkey: 验证者公钥
+            force_refresh_token: 是否强制刷新 Vault token
             
         Returns:
             配置文件内容（字典格式）
@@ -145,10 +149,11 @@ class Web3SignerKeyConfigService:
         pubkey_clean = pubkey.lower().replace('0x', '')
         
         # Vault 路径（与 VaultClient 中的路径格式一致）
+        # Web3Signer 期望完整的 API 路径，包括 /v1 前缀
         vault_path = f"/v1/{settings.vault_mount_point}/data/{settings.vault_key_path_prefix}/{pubkey_clean}"
         
-        # 获取有效的 Vault token
-        vault_token = self._get_vault_token()
+        # 获取有效的 Vault token（每次生成配置时都获取最新的 token）
+        vault_token = self._get_vault_token(force_refresh=force_refresh_token)
         
         # Web3Signer HashiCorp Vault 配置格式
         config = {
@@ -165,7 +170,7 @@ class Web3SignerKeyConfigService:
         
         return config
     
-    def save_key_config(self, pubkey: str) -> bool:
+    def save_key_config(self, pubkey: str, force_refresh_token: bool = True) -> bool:
         """
         保存密钥配置文件到磁盘
         
@@ -176,7 +181,8 @@ class Web3SignerKeyConfigService:
             是否成功
         """
         try:
-            config = self.generate_key_config(pubkey)
+            # 每次保存配置时都获取最新的 token
+            config = self.generate_key_config(pubkey, force_refresh_token=force_refresh_token)
             
             # 文件名：使用 pubkey 的前 16 个字符（去除 0x 前缀）
             pubkey_clean = pubkey.lower().replace('0x', '')
@@ -188,6 +194,20 @@ class Web3SignerKeyConfigService:
                 yaml.dump(config, f, default_flow_style=False, sort_keys=False)
             
             logger.debug(f"已保存密钥配置文件: {config_file} (pubkey: {pubkey[:10]}...)")
+            
+            # 验证配置文件中的 token 是否有效（可选，用于调试）
+            try:
+                vault_url = settings.vault_url
+                vault_token = config.get("token")
+                if vault_token:
+                    test_url = f"{vault_url}/v1/sys/health"
+                    headers = {"X-Vault-Token": vault_token}
+                    response = requests.get(test_url, headers=headers, timeout=2)
+                    if response.status_code != 200:
+                        logger.warning(f"配置文件中的 Vault token 可能无效 (pubkey: {pubkey[:10]}...): HTTP {response.status_code}")
+            except Exception as e:
+                logger.debug(f"验证 Vault token 失败: {e}")
+            
             return True
             
         except Exception as e:
