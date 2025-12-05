@@ -262,13 +262,17 @@ class Web3SignerKeyConfigService:
             logger.error(f"删除密钥配置文件失败 ({pubkey[:10]}...): {e}", exc_info=True)
             return False
     
-    def sync_key_configs(self) -> Dict[str, Any]:
+    def sync_key_configs(self, cleanup_orphaned: bool = True) -> Dict[str, Any]:
         """
         同步所有密钥的配置文件
         
         确保：
         1. 所有非 UNUSED 状态的密钥都有配置文件
         2. 所有 UNUSED 状态的密钥都没有配置文件
+        3. 删除所有无效的配置文件（数据库中不存在的密钥对应的配置文件）
+        
+        Args:
+            cleanup_orphaned: 是否清理孤立的配置文件（数据库中不存在的密钥）
         
         Returns:
             同步结果统计
@@ -276,6 +280,7 @@ class Web3SignerKeyConfigService:
         result = {
             'created': 0,
             'removed': 0,
+            'orphaned_removed': 0,
             'skipped': 0,
             'errors': 0
         }
@@ -284,13 +289,23 @@ class Web3SignerKeyConfigService:
             # 获取所有密钥
             all_keys = self.db.query(ValidatorKey).all()
             
-            # 获取当前配置文件列表
-            existing_configs = set()
-            for config_file in self.keys_dir.glob("vault-*.yaml"):
-                # 从文件名提取 pubkey（简化处理，只记录文件名）
-                existing_configs.add(config_file.name)
+            # 构建数据库中所有密钥的预期文件名集合
+            # 格式：vault-{pubkey[:16]}.yaml
+            expected_filenames = set()
+            key_filename_map = {}  # filename -> pubkey 映射，用于查找
             
-            logger.info(f"开始同步密钥配置文件，共 {len(all_keys)} 个密钥")
+            for key in all_keys:
+                pubkey_clean = key.pubkey.lower().replace('0x', '')
+                expected_filename = f"vault-{pubkey_clean[:16]}.yaml"
+                expected_filenames.add(expected_filename)
+                key_filename_map[expected_filename] = key.pubkey
+            
+            # 获取当前配置文件列表
+            existing_config_files = {}
+            for config_file in self.keys_dir.glob("vault-*.yaml"):
+                existing_config_files[config_file.name] = config_file
+            
+            logger.info(f"开始同步密钥配置文件，共 {len(all_keys)} 个密钥，发现 {len(existing_config_files)} 个配置文件")
             
             # 处理每个密钥
             for key in all_keys:
@@ -299,35 +314,125 @@ class Web3SignerKeyConfigService:
                 
                 if key.status == ValidatorKeyStatus.UNUSED.value:
                     # UNUSED 状态：应该删除配置文件
-                    if expected_filename in existing_configs:
+                    if expected_filename in existing_config_files:
                         if self.remove_key_config(key.pubkey):
                             result['removed'] += 1
-                            existing_configs.discard(expected_filename)
+                            del existing_config_files[expected_filename]
                         else:
                             result['errors'] += 1
                     else:
                         result['skipped'] += 1
                 else:
                     # 非 UNUSED 状态：应该存在配置文件
-                    if expected_filename not in existing_configs:
+                    if expected_filename not in existing_config_files:
                         if self.save_key_config(key.pubkey):
                             result['created'] += 1
-                            existing_configs.add(expected_filename)
+                            # 注意：这里不添加到 existing_config_files，因为文件刚创建
                         else:
                             result['errors'] += 1
                     else:
                         result['skipped'] += 1
+                        # 从 existing_config_files 中移除，表示已处理
+                        del existing_config_files[expected_filename]
+            
+            # 清理孤立的配置文件（数据库中不存在的密钥对应的配置文件）
+            if cleanup_orphaned:
+                orphaned_files = list(existing_config_files.keys())
+                for orphaned_filename in orphaned_files:
+                    try:
+                        config_file = existing_config_files[orphaned_filename]
+                        # 尝试从文件名提取 pubkey（如果可能）
+                        # 文件名格式：vault-{pubkey[:16]}.yaml
+                        filename_without_ext = orphaned_filename.replace('.yaml', '')
+                        if filename_without_ext.startswith('vault-'):
+                            pubkey_prefix = filename_without_ext.replace('vault-', '')
+                            # 尝试在数据库中查找匹配的密钥
+                            matching_key = self.db.query(ValidatorKey).filter(
+                                ValidatorKey.pubkey.like(f"%{pubkey_prefix}%")
+                            ).first()
+                            
+                            if matching_key:
+                                # 找到了匹配的密钥，但文件名不匹配（可能是 pubkey 格式问题）
+                                logger.debug(f"发现文件名不匹配的配置文件: {orphaned_filename}，匹配的密钥: {matching_key.pubkey[:10]}...")
+                                # 删除旧文件，让系统重新生成正确的文件
+                                config_file.unlink()
+                                result['orphaned_removed'] += 1
+                                logger.info(f"已删除不匹配的配置文件: {orphaned_filename}")
+                            else:
+                                # 没有找到匹配的密钥，这是真正的孤立文件
+                                config_file.unlink()
+                                result['orphaned_removed'] += 1
+                                logger.info(f"已删除孤立的配置文件: {orphaned_filename}")
+                        else:
+                            # 文件名格式不正确，直接删除
+                            config_file.unlink()
+                            result['orphaned_removed'] += 1
+                            logger.info(f"已删除格式错误的配置文件: {orphaned_filename}")
+                    except Exception as e:
+                        logger.error(f"删除孤立配置文件失败 ({orphaned_filename}): {e}", exc_info=True)
+                        result['errors'] += 1
             
             logger.info(
                 f"密钥配置文件同步完成: 创建 {result['created']} 个，"
-                f"删除 {result['removed']} 个，跳过 {result['skipped']} 个，"
-                f"错误 {result['errors']} 个"
+                f"删除 {result['removed']} 个，清理孤立文件 {result['orphaned_removed']} 个，"
+                f"跳过 {result['skipped']} 个，错误 {result['errors']} 个"
             )
             
             return result
             
         except Exception as e:
             logger.error(f"同步密钥配置文件失败: {e}", exc_info=True)
+            result['errors'] += 1
+            return result
+    
+    def cleanup_orphaned_configs(self) -> Dict[str, Any]:
+        """
+        清理所有孤立的配置文件（数据库中不存在的密钥对应的配置文件）
+        
+        Returns:
+            清理结果统计
+        """
+        result = {
+            'removed': 0,
+            'errors': 0,
+            'files': []
+        }
+        
+        try:
+            # 获取数据库中所有密钥的预期文件名集合
+            all_keys = self.db.query(ValidatorKey).all()
+            expected_filenames = set()
+            
+            for key in all_keys:
+                pubkey_clean = key.pubkey.lower().replace('0x', '')
+                expected_filename = f"vault-{pubkey_clean[:16]}.yaml"
+                expected_filenames.add(expected_filename)
+            
+            # 查找所有配置文件
+            orphaned_files = []
+            for config_file in self.keys_dir.glob("vault-*.yaml"):
+                if config_file.name not in expected_filenames:
+                    orphaned_files.append(config_file)
+            
+            logger.info(f"发现 {len(orphaned_files)} 个孤立的配置文件")
+            
+            # 删除孤立文件
+            for config_file in orphaned_files:
+                try:
+                    config_file.unlink()
+                    result['removed'] += 1
+                    result['files'].append(config_file.name)
+                    logger.info(f"已删除孤立配置文件: {config_file.name}")
+                except Exception as e:
+                    logger.error(f"删除孤立配置文件失败 ({config_file.name}): {e}", exc_info=True)
+                    result['errors'] += 1
+            
+            logger.info(f"清理完成: 删除 {result['removed']} 个孤立配置文件，错误 {result['errors']} 个")
+            
+            return result
+            
+        except Exception as e:
+            logger.error(f"清理孤立配置文件失败: {e}", exc_info=True)
             result['errors'] += 1
             return result
     

@@ -79,6 +79,14 @@ export interface Web3SignerRestartResponse {
   success: boolean
 }
 
+export interface Web3SignerCleanupResponse {
+  success: boolean
+  removed: number
+  errors: number
+  files: string[]
+  message: string
+}
+
 export const web3signerApi = {
   // 获取 Web3Signer 状态
   getStatus: () => apiClient.get('/web3signer/status') as Promise<Web3SignerStatus>,
@@ -92,11 +100,15 @@ export const web3signerApi = {
     apiClient.get('/web3signer/sync-status', { params: { instance } }) as Promise<Web3SignerSyncStatus>,
 
   // 同步配置文件并重新加载
-  syncConfigs: () =>
-    apiClient.post('/web3signer/sync-configs') as Promise<Web3SignerSyncConfigsResponse>,
+  syncConfigs: (cleanupOrphaned: boolean = true) =>
+    apiClient.post(`/web3signer/sync-configs?cleanup_orphaned=${cleanupOrphaned}`) as Promise<Web3SignerSyncConfigsResponse>,
 
   // 重启 Web3Signer 容器
   restart: () =>
     apiClient.post('/web3signer/restart') as Promise<Web3SignerRestartResponse>,
+
+  // 清理孤立的配置文件
+  cleanupConfigs: () =>
+    apiClient.post('/web3signer/cleanup-configs') as Promise<Web3SignerCleanupResponse>,
 }
 

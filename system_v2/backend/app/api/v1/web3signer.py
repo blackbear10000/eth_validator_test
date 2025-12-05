@@ -266,6 +266,7 @@ async def get_web3signer_sync_status(
 
 @router.post("/web3signer/sync-configs")
 async def sync_web3signer_configs(
+    cleanup_orphaned: bool = Query(True, description="是否清理孤立的配置文件"),
     db: Session = Depends(get_db),
     web3signer_client: Web3SignerClient = Depends(get_web3signer_client)
 ):
@@ -275,10 +276,14 @@ async def sync_web3signer_configs(
     功能：
     1. 为所有非 UNUSED 状态的密钥生成配置文件
     2. 删除 UNUSED 状态密钥的配置文件
-    3. 触发 Web3Signer 轮转加载（先加载 Web3Signer-2，再加载 Web3Signer-1）
+    3. 清理孤立的配置文件（数据库中不存在的密钥对应的配置文件）
+    4. 触发 Web3Signer 轮转加载（先加载 Web3Signer-2，再加载 Web3Signer-1）
     
     注意：Web3Signer 使用 key-store-path 配置时，可能不支持运行时重新扫描。
     如果 reload 失败，需要重启 Web3Signer 容器才能加载新配置文件。
+    
+    Args:
+        cleanup_orphaned: 是否清理孤立的配置文件（默认：True）
     
     Returns:
         同步结果和加载结果
@@ -288,7 +293,7 @@ async def sync_web3signer_configs(
         
         # 同步配置文件
         config_service = Web3SignerKeyConfigService(db)
-        sync_result = config_service.sync_key_configs()
+        sync_result = config_service.sync_key_configs(cleanup_orphaned=cleanup_orphaned)
         
         # 触发轮转加载
         reload_result = web3signer_client.zero_downtime_reload(wait_for_health=True)
@@ -414,4 +419,35 @@ async def restart_web3signer():
             status_code=500,
             detail=f"重启 Web3Signer 失败: {str(e)}。请手动重启：docker restart web3signer-1 web3signer-2"
         )
+
+
+@router.post("/web3signer/cleanup-configs")
+async def cleanup_web3signer_configs(
+    db: Session = Depends(get_db)
+):
+    """
+    清理所有孤立的 Web3Signer 配置文件
+    
+    功能：
+    删除所有数据库中不存在的密钥对应的配置文件
+    
+    Returns:
+        清理结果
+    """
+    try:
+        from app.services.web3signer_key_config_service import Web3SignerKeyConfigService
+        
+        config_service = Web3SignerKeyConfigService(db)
+        cleanup_result = config_service.cleanup_orphaned_configs()
+        
+        return {
+            "success": cleanup_result['errors'] == 0,
+            "removed": cleanup_result['removed'],
+            "errors": cleanup_result['errors'],
+            "files": cleanup_result['files'],
+            "message": f"已清理 {cleanup_result['removed']} 个孤立配置文件"
+        }
+    except Exception as e:
+        logger.error(f"清理 Web3Signer 配置文件失败: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
 

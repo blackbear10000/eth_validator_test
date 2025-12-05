@@ -22,6 +22,7 @@ import {
   WarningOutlined,
   PoweroffOutlined,
   SyncOutlined,
+  DeleteOutlined,
 } from '@ant-design/icons'
 import {
   web3signerApi,
@@ -39,6 +40,7 @@ const Web3SignerMonitor: React.FC = () => {
   const [loading, setLoading] = useState(false)
   const [syncing, setSyncing] = useState(false)
   const [restarting, setRestarting] = useState(false)
+  const [cleaning, setCleaning] = useState(false)
 
   useEffect(() => {
     loadData()
@@ -118,6 +120,51 @@ const Web3SignerMonitor: React.FC = () => {
     })
   }
 
+  const handleCleanup = async () => {
+    Modal.confirm({
+      title: '确认清理孤立配置文件',
+      content: '这将删除所有数据库中不存在的密钥对应的配置文件。此操作不可恢复。是否继续？',
+      okText: '确认清理',
+      cancelText: '取消',
+      okType: 'danger',
+      onOk: async () => {
+        setCleaning(true)
+        try {
+          const result = await web3signerApi.cleanupConfigs()
+          if (result.success) {
+            message.success(`已清理 ${result.removed} 个孤立配置文件`)
+            if (result.files.length > 0) {
+              Modal.info({
+                title: '已删除的文件',
+                content: (
+                  <div>
+                    <p>共删除 {result.files.length} 个文件：</p>
+                    <ul style={{ maxHeight: '300px', overflow: 'auto' }}>
+                      {result.files.map((file, index) => (
+                        <li key={index} style={{ fontFamily: 'monospace', fontSize: '12px' }}>
+                          {file}
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                ),
+                width: 600,
+              })
+            }
+            // 重新加载数据
+            await loadData()
+          } else {
+            message.error(`清理失败: ${result.message}`)
+          }
+        } catch (error: any) {
+          message.error(`清理失败: ${error.message}`)
+        } finally {
+          setCleaning(false)
+        }
+      },
+    })
+  }
+
   const keysColumns = [
     {
       title: '公钥',
@@ -167,6 +214,14 @@ const Web3SignerMonitor: React.FC = () => {
             type="default"
           >
             同步配置
+          </Button>
+          <Button
+            icon={<DeleteOutlined />}
+            onClick={handleCleanup}
+            loading={cleaning}
+            danger
+          >
+            清理孤立文件
           </Button>
           <Button
             icon={<PoweroffOutlined />}
