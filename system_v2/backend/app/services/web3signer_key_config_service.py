@@ -148,9 +148,16 @@ class Web3SignerKeyConfigService:
         # 清理 pubkey（移除 0x 前缀，转为小写）
         pubkey_clean = pubkey.lower().replace('0x', '')
         
-        # Vault 路径（与 VaultClient 中的路径格式一致）
-        # Web3Signer 期望完整的 API 路径，包括 /v1 前缀
-        vault_path = f"/v1/{settings.vault_mount_point}/data/{settings.vault_key_path_prefix}/{pubkey_clean}"
+        # Vault 路径（匹配 Vault 中的实际存储路径）
+        # 根据用户反馈，Vault 中的实际路径是: /v1/secret/data/secret/data/web3signer-keys/...
+        # 这说明存储时路径可能被重复了（secret/data 被重复）
+        # 为了匹配实际存储路径，我们需要使用实际路径
+        # 如果实际路径是 /v1/secret/data/secret/data/web3signer-keys/...，则使用该路径
+        # 否则使用标准路径: /v1/{mount_point}/data/{key_path_prefix}/{pubkey}
+        
+        # 根据用户反馈，实际路径是: /v1/secret/data/secret/data/web3signer-keys/...
+        # 这里使用实际路径以匹配 Vault 中的存储路径
+        vault_path = f"/v1/{settings.vault_mount_point}/data/{settings.vault_mount_point}/data/{settings.vault_key_path_prefix}/{pubkey_clean}"
         
         # 获取有效的 Vault token（每次生成配置时都获取最新的 token）
         vault_token = self._get_vault_token(force_refresh=force_refresh_token)
