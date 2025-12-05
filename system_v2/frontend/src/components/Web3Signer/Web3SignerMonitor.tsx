@@ -42,6 +42,7 @@ const Web3SignerMonitor: React.FC = () => {
   const [syncing, setSyncing] = useState(false)
   const [restarting, setRestarting] = useState(false)
   const [cleaning, setCleaning] = useState(false)
+  const [regenerating, setRegenerating] = useState(false)
 
   useEffect(() => {
     loadData()
@@ -116,6 +117,33 @@ const Web3SignerMonitor: React.FC = () => {
           }
         } finally {
           setRestarting(false)
+        }
+      },
+    })
+  }
+
+  const handleRegenerate = async () => {
+    Modal.confirm({
+      title: '确认重新生成所有配置文件',
+      content: '这将删除所有现有配置文件并重新生成，确保格式正确。此操作会使用最新的 Vault token 和路径格式。是否继续？',
+      okText: '确认重新生成',
+      cancelText: '取消',
+      okType: 'danger',
+      onOk: async () => {
+        setRegenerating(true)
+        try {
+          const result = await web3signerApi.regenerateConfigs()
+          if (result.success) {
+            message.success(result.message)
+            // 重新加载数据
+            await loadData()
+          } else {
+            message.error(`重新生成失败: ${result.message}`)
+          }
+        } catch (error: any) {
+          message.error(`重新生成失败: ${error.message}`)
+        } finally {
+          setRegenerating(false)
         }
       },
     })
@@ -215,6 +243,14 @@ const Web3SignerMonitor: React.FC = () => {
             type="default"
           >
             同步配置
+          </Button>
+          <Button
+            icon={<SyncOutlined />}
+            onClick={handleRegenerate}
+            loading={regenerating}
+            danger
+          >
+            重新生成配置
           </Button>
           <Button
             icon={<DeleteOutlined />}

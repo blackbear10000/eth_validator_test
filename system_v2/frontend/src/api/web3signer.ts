@@ -100,8 +100,8 @@ export const web3signerApi = {
     apiClient.get('/web3signer/sync-status', { params: { instance } }) as Promise<Web3SignerSyncStatus>,
 
   // 同步配置文件并重新加载
-  syncConfigs: (cleanupOrphaned: boolean = true) =>
-    apiClient.post(`/web3signer/sync-configs?cleanup_orphaned=${cleanupOrphaned}`) as Promise<Web3SignerSyncConfigsResponse>,
+  syncConfigs: (cleanupOrphaned: boolean = true, forceRegenerate: boolean = false) =>
+    apiClient.post(`/web3signer/sync-configs?cleanup_orphaned=${cleanupOrphaned}&force_regenerate=${forceRegenerate}`) as Promise<Web3SignerSyncConfigsResponse>,
 
   // 重启 Web3Signer 容器
   restart: () =>
@@ -110,5 +110,9 @@ export const web3signerApi = {
   // 清理孤立的配置文件
   cleanupConfigs: () =>
     apiClient.post('/web3signer/cleanup-configs') as Promise<Web3SignerCleanupResponse>,
+
+  // 强制重新生成所有配置文件
+  regenerateConfigs: () =>
+    apiClient.post('/web3signer/regenerate-configs') as Promise<Web3SignerCleanupResponse>,
 }
 

@@ -262,7 +262,7 @@ class Web3SignerKeyConfigService:
             logger.error(f"删除密钥配置文件失败 ({pubkey[:10]}...): {e}", exc_info=True)
             return False
     
-    def sync_key_configs(self, cleanup_orphaned: bool = True) -> Dict[str, Any]:
+    def sync_key_configs(self, cleanup_orphaned: bool = True, force_regenerate: bool = False) -> Dict[str, Any]:
         """
         同步所有密钥的配置文件
         
@@ -273,6 +273,7 @@ class Web3SignerKeyConfigService:
         
         Args:
             cleanup_orphaned: 是否清理孤立的配置文件（数据库中不存在的密钥）
+            force_regenerate: 是否强制重新生成所有配置文件（用于修复格式问题）
         
         Returns:
             同步结果统计
@@ -331,7 +332,15 @@ class Web3SignerKeyConfigService:
                         else:
                             result['errors'] += 1
                     else:
-                        result['skipped'] += 1
+                        # 文件已存在
+                        if force_regenerate:
+                            # 强制重新生成配置文件以确保格式正确（使用最新的 token 和路径格式）
+                            if self.save_key_config(key.pubkey, force_refresh_token=True):
+                                result['created'] += 1  # 实际上是更新，但统计为 created
+                            else:
+                                result['errors'] += 1
+                        else:
+                            result['skipped'] += 1
                         # 从 existing_config_files 中移除，表示已处理
                         del existing_config_files[expected_filename]
             

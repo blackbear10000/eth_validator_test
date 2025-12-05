@@ -267,6 +267,7 @@ async def get_web3signer_sync_status(
 @router.post("/web3signer/sync-configs")
 async def sync_web3signer_configs(
     cleanup_orphaned: bool = Query(True, description="是否清理孤立的配置文件"),
+    force_regenerate: bool = Query(False, description="是否强制重新生成所有配置文件（用于修复格式问题）"),
     db: Session = Depends(get_db),
     web3signer_client: Web3SignerClient = Depends(get_web3signer_client)
 ):
@@ -284,6 +285,7 @@ async def sync_web3signer_configs(
     
     Args:
         cleanup_orphaned: 是否清理孤立的配置文件（默认：True）
+        force_regenerate: 是否强制重新生成所有配置文件（默认：False）
     
     Returns:
         同步结果和加载结果
@@ -293,7 +295,10 @@ async def sync_web3signer_configs(
         
         # 同步配置文件
         config_service = Web3SignerKeyConfigService(db)
-        sync_result = config_service.sync_key_configs(cleanup_orphaned=cleanup_orphaned)
+        sync_result = config_service.sync_key_configs(
+            cleanup_orphaned=cleanup_orphaned,
+            force_regenerate=force_regenerate
+        )
         
         # 触发轮转加载
         reload_result = web3signer_client.zero_downtime_reload(wait_for_health=True)
@@ -449,5 +454,43 @@ async def cleanup_web3signer_configs(
         }
     except Exception as e:
         logger.error(f"清理 Web3Signer 配置文件失败: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/web3signer/regenerate-configs")
+async def regenerate_web3signer_configs(
+    db: Session = Depends(get_db)
+):
+    """
+    强制重新生成所有 Web3Signer 配置文件
+    
+    功能：
+    删除所有现有配置文件并重新生成，确保格式正确（所有字符串值使用双引号）
+    使用最新的 Vault token 和路径格式
+    
+    Returns:
+        重新生成结果
+    """
+    try:
+        from app.services.web3signer_key_config_service import Web3SignerKeyConfigService
+        
+        config_service = Web3SignerKeyConfigService(db)
+        
+        # 强制重新生成所有配置文件
+        sync_result = config_service.sync_key_configs(
+            cleanup_orphaned=True,
+            force_regenerate=True
+        )
+        
+        return {
+            "success": sync_result['errors'] == 0,
+            "created": sync_result['created'],
+            "removed": sync_result['removed'],
+            "orphaned_removed": sync_result.get('orphaned_removed', 0),
+            "errors": sync_result['errors'],
+            "message": f"已重新生成 {sync_result['created']} 个配置文件，删除 {sync_result['removed']} 个，清理孤立文件 {sync_result.get('orphaned_removed', 0)} 个"
+        }
+    except Exception as e:
+        logger.error(f"重新生成 Web3Signer 配置文件失败: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
 
