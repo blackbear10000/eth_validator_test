@@ -23,6 +23,9 @@ import {
   EditOutlined,
   DeleteOutlined,
   EyeOutlined,
+  PauseCircleOutlined,
+  CaretRightOutlined,
+  CloseCircleOutlined,
 } from '@ant-design/icons'
 import { clientsApi, ClientInstance } from '../../api/clients'
 import { keysApi } from '../../api/keys'
@@ -189,6 +192,42 @@ const ClientList: React.FC = () => {
     }
   }
 
+  const handlePause = async (clientId: number) => {
+    try {
+      await clientsApi.pause(clientId)
+      message.success('客户端已暂停')
+      setTimeout(() => {
+        loadClientStatus(clientId)
+      }, 1000)
+    } catch (error: any) {
+      message.error(`暂停客户端失败: ${error.message}`)
+    }
+  }
+
+  const handleUnpause = async (clientId: number) => {
+    try {
+      await clientsApi.unpause(clientId)
+      message.success('客户端已恢复')
+      setTimeout(() => {
+        loadClientStatus(clientId)
+      }, 1000)
+    } catch (error: any) {
+      message.error(`恢复客户端失败: ${error.message}`)
+    }
+  }
+
+  const handleDestroy = async (clientId: number) => {
+    try {
+      await clientsApi.destroy(clientId)
+      message.success('客户端容器已销毁')
+      setTimeout(() => {
+        loadClientStatus(clientId)
+      }, 1000)
+    } catch (error: any) {
+      message.error(`销毁客户端容器失败: ${error.message}`)
+    }
+  }
+
   const handleAssignKeys = async (clientId: number) => {
     setSelectedClient(clients.find((c) => c.id === clientId) || null)
     
@@ -243,6 +282,9 @@ const ClientList: React.FC = () => {
     if (!status) return <Tag>未知</Tag>
     if (status.is_running) {
       return <Tag color="success">运行中</Tag>
+    }
+    if (status.state === 'paused') {
+      return <Tag color="warning">已暂停</Tag>
     }
     return <Tag>已停止</Tag>
   }
@@ -300,18 +342,49 @@ const ClientList: React.FC = () => {
       render: (_: any, record: ClientInstance) => {
         const status = clientStatuses[record.id]
         const isRunning = status?.is_running
+        const isPaused = status?.state === 'paused'
 
         return (
           <Space>
-            {isRunning ? (
-              <Popconfirm
-                title="确定要停止客户端吗？"
-                onConfirm={() => handleStop(record.id)}
-              >
-                <Button size="small" danger icon={<StopOutlined />}>
-                  停止
+            {isRunning && !isPaused ? (
+              <>
+                <Popconfirm
+                  title="确定要停止客户端吗？"
+                  onConfirm={() => handleStop(record.id)}
+                >
+                  <Button size="small" danger icon={<StopOutlined />}>
+                    停止
+                  </Button>
+                </Popconfirm>
+                <Popconfirm
+                  title="确定要暂停客户端吗？"
+                  description="暂停后容器会暂停运行，但不会删除"
+                  onConfirm={() => handlePause(record.id)}
+                >
+                  <Button size="small" icon={<PauseCircleOutlined />}>
+                    暂停
+                  </Button>
+                </Popconfirm>
+              </>
+            ) : isPaused ? (
+              <>
+                <Button
+                  size="small"
+                  type="primary"
+                  icon={<CaretRightOutlined />}
+                  onClick={() => handleUnpause(record.id)}
+                >
+                  恢复
                 </Button>
-              </Popconfirm>
+                <Popconfirm
+                  title="确定要停止客户端吗？"
+                  onConfirm={() => handleStop(record.id)}
+                >
+                  <Button size="small" danger icon={<StopOutlined />}>
+                    停止
+                  </Button>
+                </Popconfirm>
+              </>
             ) : (
               <Button
                 size="small"
@@ -322,6 +395,19 @@ const ClientList: React.FC = () => {
                 启动
               </Button>
             )}
+            <Popconfirm
+              title="确定要销毁容器吗？"
+              description="销毁会停止并删除容器，但不会删除客户端配置。容器销毁后可以重新启动。"
+              onConfirm={() => handleDestroy(record.id)}
+            >
+              <Button
+                size="small"
+                danger
+                icon={<CloseCircleOutlined />}
+              >
+                销毁
+              </Button>
+            </Popconfirm>
             <Button
               size="small"
               icon={<KeyOutlined />}

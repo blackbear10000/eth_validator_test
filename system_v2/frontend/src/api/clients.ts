@@ -44,6 +44,18 @@ export const clientsApi = {
   stop: (clientId: number) =>
     apiClient.post(`/clients/${clientId}/stop`),
 
+  // 暂停客户端容器
+  pause: (clientId: number) =>
+    apiClient.post(`/clients/${clientId}/pause`),
+
+  // 恢复（取消暂停）客户端容器
+  unpause: (clientId: number) =>
+    apiClient.post(`/clients/${clientId}/unpause`),
+
+  // 销毁（停止并删除）客户端容器
+  destroy: (clientId: number) =>
+    apiClient.post(`/clients/${clientId}/destroy`),
+
   // 获取客户端状态
   getStatus: (clientId: number) =>
     apiClient.get(`/clients/${clientId}/status`),
