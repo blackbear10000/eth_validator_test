@@ -318,12 +318,65 @@ async def submit_deposits(
 
 @router.get("/deposits", response_model=List[DepositTransactionResponse])
 async def list_deposits(
-    deposit_service: DepositManagementService = Depends(get_deposit_service)
+    deposit_service: DepositManagementService = Depends(get_deposit_service),
+    include_balance: bool = Query(False, description="是否包含验证者余额和收益信息")
 ):
     """列出存款交易"""
     try:
         transactions, total = deposit_service.get_deposit_transactions()
-        return [DepositTransactionResponse.model_validate(t) for t in transactions]
+        result = []
+        
+        for t in transactions:
+            tx_dict = DepositTransactionResponse.model_validate(t).model_dump()
+            
+            # 如果请求包含余额信息，且验证者已注册（有 validator_index）
+            if include_balance and t.validator_index is not None:
+                try:
+                    from app.core.beacon_api import BeaconAPIClient
+                    beacon_api = BeaconAPIClient()
+                    validator_data = beacon_api.get_validator(t.pubkey)
+                    
+                    if validator_data:
+                        # 提取余额信息
+                        # Beacon API 返回格式: {'index': ..., 'balance': '...', 'status': '...', 'validator': {...}}
+                        # balance 在顶层，单位是 gwei（字符串格式）
+                        balance_gwei_str = validator_data.get('balance', '0')
+                        validator_info = validator_data.get('validator', {})
+                        if not validator_info and validator_data.get('index') is not None:
+                            validator_info = validator_data
+                        
+                        effective_balance_gwei_str = validator_info.get('effective_balance', '0')
+                        
+                        # 转换余额（Beacon API 返回的 balance 是 gwei，字符串格式）
+                        try:
+                            balance_gwei = int(balance_gwei_str) if isinstance(balance_gwei_str, str) else balance_gwei_str
+                            effective_balance_gwei = int(effective_balance_gwei_str) if isinstance(effective_balance_gwei_str, str) else effective_balance_gwei_str
+                            
+                            # 计算余额（ETH）：gwei 转 ETH
+                            balance_eth = float(balance_gwei) / 1e9
+                            effective_balance_eth = float(effective_balance_gwei) / 1e9
+                            
+                            # 计算收益（当前余额 - 初始存款 32 ETH）
+                            initial_deposit = 32.0
+                            earnings = balance_eth - initial_deposit
+                            
+                            tx_dict['balance_eth'] = balance_eth
+                            tx_dict['effective_balance_eth'] = effective_balance_eth
+                            tx_dict['earnings_eth'] = earnings
+                        except (ValueError, TypeError) as e:
+                            logger.warning(f"解析余额失败 {t.pubkey[:10]}...: balance={balance_gwei_str}, effective={effective_balance_gwei_str}, error={e}")
+                            tx_dict['balance_eth'] = None
+                            tx_dict['effective_balance_eth'] = None
+                            tx_dict['earnings_eth'] = None
+                except Exception as e:
+                    logger.warning(f"获取验证者余额失败 {t.pubkey[:10]}...: {e}")
+                    tx_dict['balance_eth'] = None
+                    tx_dict['effective_balance_eth'] = None
+                    tx_dict['earnings_eth'] = None
+            
+            result.append(tx_dict)
+        
+        return result
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 

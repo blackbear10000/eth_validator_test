@@ -42,6 +42,7 @@ const DepositList: React.FC = () => {
   const [batchContracts, setBatchContracts] = useState<BatchDepositContract[]>([])
   const [syncing, setSyncing] = useState(false)
   const [statusFilter, setStatusFilter] = useState<string | undefined>(undefined)
+  const [showBalance, setShowBalance] = useState(true) // 默认显示余额
   const [form] = Form.useForm()
   const [submitForm] = Form.useForm()
 
@@ -64,7 +65,7 @@ const DepositList: React.FC = () => {
   const loadDeposits = async () => {
     setLoading(true)
     try {
-      const response = await depositsApi.list() as any
+      const response = await depositsApi.list(showBalance) as any
       setDeposits(response || [])
     } catch (error: any) {
       message.error(`加载存款列表失败: ${error.message}`)
@@ -360,6 +361,52 @@ const DepositList: React.FC = () => {
       render: (index: number | null) => (index !== null && index !== undefined ? index.toLocaleString() : '-'),
     },
     {
+      title: '余额 (ETH)',
+      dataIndex: 'balance_eth',
+      key: 'balance_eth',
+      width: 120,
+      render: (balance: number | null | undefined, record: DepositTransaction) => {
+        if (balance !== null && balance !== undefined) {
+          return (
+            <span style={{ color: balance >= 32 ? '#3f8600' : '#cf1322' }}>
+              {balance.toFixed(4)}
+            </span>
+          )
+        }
+        return '-'
+      },
+    },
+    {
+      title: '有效余额 (ETH)',
+      dataIndex: 'effective_balance_eth',
+      key: 'effective_balance_eth',
+      width: 130,
+      render: (effectiveBalance: number | null | undefined) => {
+        if (effectiveBalance !== null && effectiveBalance !== undefined) {
+          return effectiveBalance.toFixed(4)
+        }
+        return '-'
+      },
+    },
+    {
+      title: '收益 (ETH)',
+      dataIndex: 'earnings_eth',
+      key: 'earnings_eth',
+      width: 120,
+      render: (earnings: number | null | undefined) => {
+        if (earnings !== null && earnings !== undefined) {
+          const color = earnings >= 0 ? '#3f8600' : '#cf1322'
+          const prefix = earnings >= 0 ? '+' : ''
+          return (
+            <span style={{ color, fontWeight: 'bold' }}>
+              {prefix}{earnings.toFixed(4)}
+            </span>
+          )
+        }
+        return '-'
+      },
+    },
+    {
       title: '操作',
       key: 'action',
       width: 150,
@@ -426,6 +473,15 @@ const DepositList: React.FC = () => {
               <Option value="failed">交易失败</Option>
               <Option value="rejected">交易被拒绝</Option>
             </Select>
+            <Button
+              type={showBalance ? 'default' : 'primary'}
+              onClick={() => {
+                setShowBalance(!showBalance)
+                setTimeout(() => loadDeposits(), 100)
+              }}
+            >
+              {showBalance ? '隐藏余额' : '显示余额'}
+            </Button>
             <Button icon={<SyncOutlined />} onClick={() => handleSync()} loading={syncing}>
               同步状态
             </Button>
@@ -815,6 +871,29 @@ const DepositList: React.FC = () => {
             {selectedDeposit.effective_balance_gwei !== null && selectedDeposit.effective_balance_gwei !== undefined && (
               <Descriptions.Item label="有效余额">
                 {(selectedDeposit.effective_balance_gwei / 1e9).toFixed(4)} ETH ({selectedDeposit.effective_balance_gwei.toLocaleString()} Gwei)
+              </Descriptions.Item>
+            )}
+            {selectedDeposit.balance_eth !== null && selectedDeposit.balance_eth !== undefined && (
+              <Descriptions.Item label="当前余额">
+                <span style={{ color: selectedDeposit.balance_eth >= 32 ? '#3f8600' : '#cf1322', fontWeight: 'bold' }}>
+                  {selectedDeposit.balance_eth.toFixed(4)} ETH
+                </span>
+              </Descriptions.Item>
+            )}
+            {selectedDeposit.effective_balance_eth !== null && selectedDeposit.effective_balance_eth !== undefined && (
+              <Descriptions.Item label="当前有效余额">
+                {selectedDeposit.effective_balance_eth.toFixed(4)} ETH
+              </Descriptions.Item>
+            )}
+            {selectedDeposit.earnings_eth !== null && selectedDeposit.earnings_eth !== undefined && (
+              <Descriptions.Item label="收益">
+                <span style={{ 
+                  color: selectedDeposit.earnings_eth >= 0 ? '#3f8600' : '#cf1322', 
+                  fontWeight: 'bold',
+                  fontSize: '16px'
+                }}>
+                  {selectedDeposit.earnings_eth >= 0 ? '+' : ''}{selectedDeposit.earnings_eth.toFixed(4)} ETH
+                </span>
               </Descriptions.Item>
             )}
             {selectedDeposit.validation_error && (

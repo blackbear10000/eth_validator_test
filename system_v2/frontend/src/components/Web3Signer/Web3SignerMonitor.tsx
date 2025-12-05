@@ -58,18 +58,6 @@ const Web3SignerMonitor: React.FC = () => {
     }
   }
 
-  const getStatusTag = (healthy: boolean) => {
-    return healthy ? (
-      <Tag color="success" icon={<CheckCircleOutlined />}>
-        健康
-      </Tag>
-    ) : (
-      <Tag color="error" icon={<CloseCircleOutlined />}>
-        异常
-      </Tag>
-    )
-  }
-
   const keysColumns = [
     {
       title: '公钥',

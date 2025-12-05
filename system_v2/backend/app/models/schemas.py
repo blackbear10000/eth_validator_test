@@ -154,6 +154,10 @@ class DepositTransactionResponse(BaseModel):
     validation_error: Optional[str] = None
     status_history: Optional[List[dict]] = None
     notes: Optional[str] = None
+    # 余额和收益信息（可选，仅在 include_balance=true 时返回）
+    balance_eth: Optional[float] = None
+    effective_balance_eth: Optional[float] = None
+    earnings_eth: Optional[float] = None
 
     model_config = {"from_attributes": True}
 

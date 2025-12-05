@@ -49,6 +49,10 @@ export interface DepositTransaction {
     reason?: string
   }>
   notes?: string
+  // 余额和收益信息（可选）
+  balance_eth?: number
+  effective_balance_eth?: number
+  earnings_eth?: number
 }
 
 export const depositsApi = {
@@ -80,7 +84,10 @@ export const depositsApi = {
     }),
 
   // 列出存款交易
-  list: () => apiClient.get('/deposits'),
+  list: (includeBalance?: boolean) =>
+    apiClient.get('/deposits', {
+      params: includeBalance ? { include_balance: true } : {},
+    }),
 
   // 同步状态
   sync: (txHash?: string, validateImmediately?: boolean) => {
