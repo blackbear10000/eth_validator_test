@@ -446,6 +446,179 @@ class ClientProcessService:
                 "message": f"启动失败: {str(e)}"
             }
     
+    def pause(self, client_id: int, client_type: str) -> Dict[str, any]:
+        """
+        暂停客户端 Docker 容器
+        
+        Args:
+            client_id: 客户端 ID
+            client_type: 客户端类型
+            
+        Returns:
+            暂停结果
+        """
+        container_name = self._get_container_name(client_id, client_type)
+        
+        # 检查容器状态
+        status = self.get_status(client_id, client_type)
+        if not status.get("is_running"):
+            return {
+                "success": False,
+                "message": f"客户端 {client_id} 容器未运行，无法暂停"
+            }
+        
+        try:
+            logger.info(f"暂停容器: {container_name}")
+            result = subprocess.run(
+                ["docker", "pause", container_name],
+                capture_output=True,
+                text=True,
+                timeout=10
+            )
+            
+            if result.returncode != 0:
+                error_msg = result.stderr.strip()
+                logger.error(f"暂停容器失败: {error_msg}")
+                return {
+                    "success": False,
+                    "message": f"暂停容器失败: {error_msg}"
+                }
+            
+            return {
+                "success": True,
+                "message": f"客户端 {client_id} 已暂停"
+            }
+            
+        except subprocess.TimeoutExpired:
+            logger.error(f"暂停容器超时: {container_name}")
+            return {
+                "success": False,
+                "message": "暂停容器超时"
+            }
+        except Exception as e:
+            logger.error(f"暂停客户端 {client_id} 失败: {e}", exc_info=True)
+            return {
+                "success": False,
+                "message": f"暂停失败: {str(e)}"
+            }
+    
+    def unpause(self, client_id: int, client_type: str) -> Dict[str, any]:
+        """
+        恢复（取消暂停）客户端 Docker 容器
+        
+        Args:
+            client_id: 客户端 ID
+            client_type: 客户端类型
+            
+        Returns:
+            恢复结果
+        """
+        container_name = self._get_container_name(client_id, client_type)
+        
+        try:
+            logger.info(f"恢复容器: {container_name}")
+            result = subprocess.run(
+                ["docker", "unpause", container_name],
+                capture_output=True,
+                text=True,
+                timeout=10
+            )
+            
+            if result.returncode != 0:
+                error_msg = result.stderr.strip()
+                logger.error(f"恢复容器失败: {error_msg}")
+                return {
+                    "success": False,
+                    "message": f"恢复容器失败: {error_msg}"
+                }
+            
+            return {
+                "success": True,
+                "message": f"客户端 {client_id} 已恢复"
+            }
+            
+        except subprocess.TimeoutExpired:
+            logger.error(f"恢复容器超时: {container_name}")
+            return {
+                "success": False,
+                "message": "恢复容器超时"
+            }
+        except Exception as e:
+            logger.error(f"恢复客户端 {client_id} 失败: {e}", exc_info=True)
+            return {
+                "success": False,
+                "message": f"恢复失败: {str(e)}"
+            }
+    
+    def destroy(self, client_id: int, client_type: str) -> Dict[str, any]:
+        """
+        销毁（停止并删除）客户端 Docker 容器
+        
+        Args:
+            client_id: 客户端 ID
+            client_type: 客户端类型
+            
+        Returns:
+            销毁结果
+        """
+        container_name = self._get_container_name(client_id, client_type)
+        
+        try:
+            # 先停止容器（如果正在运行）
+            status = self.get_status(client_id, client_type)
+            if status.get("is_running") or status.get("state") in ["running", "restarting"]:
+                logger.info(f"停止容器: {container_name}")
+                stop_result = subprocess.run(
+                    ["docker", "stop", container_name],
+                    capture_output=True,
+                    text=True,
+                    timeout=30
+                )
+                if stop_result.returncode != 0:
+                    logger.warning(f"停止容器失败（可能已停止）: {stop_result.stderr}")
+            
+            # 删除容器
+            logger.info(f"删除容器: {container_name}")
+            rm_result = subprocess.run(
+                ["docker", "rm", "-f", container_name],  # -f 强制删除，即使容器在运行
+                capture_output=True,
+                text=True,
+                timeout=10
+            )
+            
+            if rm_result.returncode != 0:
+                error_msg = rm_result.stderr.strip()
+                # 如果容器不存在，也算成功
+                if "No such container" in error_msg:
+                    logger.debug(f"容器不存在: {container_name}")
+                    return {
+                        "success": True,
+                        "message": f"客户端 {client_id} 容器不存在或已删除"
+                    }
+                logger.error(f"删除容器失败: {error_msg}")
+                return {
+                    "success": False,
+                    "message": f"删除容器失败: {error_msg}"
+                }
+            
+            return {
+                "success": True,
+                "message": f"客户端 {client_id} 容器已销毁"
+            }
+            
+        except subprocess.TimeoutExpired:
+            logger.error(f"销毁容器超时: {container_name}")
+            return {
+                "success": False,
+                "message": "销毁容器超时"
+            }
+        except Exception as e:
+            logger.error(f"销毁客户端 {client_id} 失败: {e}", exc_info=True)
+            return {
+                "success": False,
+                "message": f"销毁失败: {str(e)}"
+            }
+    
     def stop(self, client_id: int, client_type: str, remove: bool = False) -> Dict[str, any]:
         """
         停止客户端 Docker 容器
@@ -527,17 +700,22 @@ class ClientProcessService:
         """
         构建容器内启动命令
         
+        注意：Prysm 官方镜像的 ENTRYPOINT 已经是 ["prysm", "validator"]，
+        所以我们只需要传递参数，不需要再添加 "validator" 子命令。
+        
         Args:
             client_type: 客户端类型
             config_file: 配置文件路径（容器内路径，如 /config/config.yaml）
             
         Returns:
-            启动命令列表
+            启动命令参数列表（不包含主命令）
         """
         client_type_lower = client_type.lower()
         
         if 'prysm' in client_type_lower:
-            cmd = ['validator']
+            # Prysm 官方镜像 ENTRYPOINT 已经是 ["prysm", "validator"]
+            # 我们只需要传递参数
+            cmd = []
             if config_file:
                 # 如果传入的是相对路径，转换为容器内绝对路径
                 if not config_file.startswith('/'):
@@ -546,6 +724,7 @@ class ClientProcessService:
             return cmd
         
         elif 'lighthouse' in client_type_lower:
+            # Lighthouse 官方镜像可能需要完整命令
             cmd = ['validator']
             if config_file:
                 if not config_file.startswith('/'):
@@ -554,6 +733,7 @@ class ClientProcessService:
             return cmd
         
         elif 'teku' in client_type_lower:
+            # Teku 官方镜像的 ENTRYPOINT 可能已经设置
             cmd = []
             if config_file:
                 if not config_file.startswith('/'):

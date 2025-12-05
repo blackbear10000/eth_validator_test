@@ -390,6 +390,93 @@ async def stop_client(
         raise HTTPException(status_code=500, detail=str(e))
 
 
+@router.post("/clients/{client_id}/pause", response_model=dict)
+async def pause_client(
+    client_id: int,
+    db: Session = Depends(get_db)
+):
+    """暂停客户端容器"""
+    try:
+        from app.models.database import ClientInstance
+        client = db.query(ClientInstance).filter(ClientInstance.id == client_id).first()
+        
+        if not client:
+            raise HTTPException(status_code=404, detail="客户端不存在")
+        
+        process_service = ClientProcessService()
+        result = process_service.pause(
+            client_id=client_id,
+            client_type=client.client_type
+        )
+        
+        if not result.get("success"):
+            raise HTTPException(status_code=500, detail=result.get("message", "暂停失败"))
+        
+        return result
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/clients/{client_id}/unpause", response_model=dict)
+async def unpause_client(
+    client_id: int,
+    db: Session = Depends(get_db)
+):
+    """恢复（取消暂停）客户端容器"""
+    try:
+        from app.models.database import ClientInstance
+        client = db.query(ClientInstance).filter(ClientInstance.id == client_id).first()
+        
+        if not client:
+            raise HTTPException(status_code=404, detail="客户端不存在")
+        
+        process_service = ClientProcessService()
+        result = process_service.unpause(
+            client_id=client_id,
+            client_type=client.client_type
+        )
+        
+        if not result.get("success"):
+            raise HTTPException(status_code=500, detail=result.get("message", "恢复失败"))
+        
+        return result
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/clients/{client_id}/destroy", response_model=dict)
+async def destroy_client(
+    client_id: int,
+    db: Session = Depends(get_db)
+):
+    """销毁（停止并删除）客户端容器"""
+    try:
+        from app.models.database import ClientInstance
+        client = db.query(ClientInstance).filter(ClientInstance.id == client_id).first()
+        
+        if not client:
+            raise HTTPException(status_code=404, detail="客户端不存在")
+        
+        process_service = ClientProcessService()
+        result = process_service.destroy(
+            client_id=client_id,
+            client_type=client.client_type
+        )
+        
+        if not result.get("success"):
+            raise HTTPException(status_code=500, detail=result.get("message", "销毁失败"))
+        
+        return result
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 @router.get("/clients/{client_id}/status", response_model=dict)
 async def get_client_status(
     client_id: int,
