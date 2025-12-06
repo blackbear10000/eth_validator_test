@@ -211,6 +211,7 @@ services:
       - ./validator-clients/configs:/app/configs:rw  # Validator Client 配置文件目录
       - ./validator-clients/data:/app/validator-clients-data:rw  # Validator Client 数据目录
       - /var/run/docker.sock:/var/run/docker.sock:ro  # 允许后端重启 Web3Signer 容器
+      - ../../infra/kurtosis:/kurtosis-config:ro  # 挂载 kurtosis 配置目录（包含 network-config.yaml）
     networks:
       - validator_network
     # 添加 extra_hosts，让容器能够解析 host.docker.internal
