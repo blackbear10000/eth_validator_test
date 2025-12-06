@@ -24,7 +24,6 @@ import {
   PoweroffOutlined,
   SyncOutlined,
   MoreOutlined,
-  DeleteOutlined,
 } from '@ant-design/icons'
 import {
   web3signerApi,
@@ -141,28 +140,6 @@ const Web3SignerMonitor: React.FC = () => {
     })
   }
 
-  const handleCleanup = async () => {
-    Modal.confirm({
-      title: '确认清理孤立配置文件',
-      content: '这将删除所有数据库中不存在的密钥对应的配置文件。此操作不可恢复。是否继续？',
-      okText: '确认清理',
-      cancelText: '取消',
-      okType: 'danger',
-      onOk: async () => {
-        try {
-          const result = await web3signerApi.cleanupConfigs()
-          if (result.success) {
-            message.success(`已清理 ${result.removed} 个孤立配置文件`)
-            await loadData()
-          } else {
-            message.error(`清理失败: ${result.message}`)
-          }
-        } catch (error: any) {
-          message.error(`清理失败: ${error.message}`)
-        }
-      },
-    })
-  }
 
   // 检查是否有同步问题
   const hasSyncIssues = () => {
@@ -178,16 +155,9 @@ const Web3SignerMonitor: React.FC = () => {
   const moreMenuItems: MenuProps['items'] = [
     {
       key: 'regenerate',
-      label: '重新生成配置',
+      label: '重新生成所有配置',
       icon: <SyncOutlined />,
       onClick: () => handleRegenerate(),
-      danger: true,
-    },
-    {
-      key: 'cleanup',
-      label: '清理孤立文件',
-      icon: <DeleteOutlined />,
-      onClick: () => handleCleanup(),
       danger: true,
     },
   ]
@@ -254,16 +224,14 @@ const Web3SignerMonitor: React.FC = () => {
           >
             同步配置
           </Button>
-          {hasSyncIssues() && (
-            <Button
-              icon={<PoweroffOutlined />}
-              onClick={handleRestart}
-              loading={restarting}
-              danger
-            >
-              重启服务
-            </Button>
-          )}
+          <Button
+            icon={<PoweroffOutlined />}
+            onClick={handleRestart}
+            loading={restarting}
+            danger={hasSyncIssues()}
+          >
+            重启服务
+          </Button>
           <Dropdown menu={{ items: moreMenuItems }} trigger={['click']}>
             <Button icon={<MoreOutlined />}>更多</Button>
           </Dropdown>
