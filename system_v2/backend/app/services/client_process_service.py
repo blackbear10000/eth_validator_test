@@ -595,30 +595,72 @@ class ClientProcessService:
                 
                 # 验证配置文件是否存在（如果指定了配置文件）
                 if config_file:
-                    # config_file 是文件名（如 config.yaml），需要检查宿主机路径
+                    # config_file 是文件名（如 config.yaml）
+                    # 在容器内，我们需要检查容器内的路径（/app/configs/...）
+                    # 而不是宿主机路径，因为容器内无法直接访问宿主机文件系统
                     config_file_host = os.path.join(config_dir_abs, config_file)
-                    if not os.path.exists(config_file_host):
-                        error_msg = (
-                            f"配置文件不存在: {config_file_host} "
-                            f"(容器内路径: /config/{config_file}, "
-                            f"原始路径: {config_dir})"
-                        )
-                        logger.error(error_msg)
-                        # 列出目录内容用于调试
+                    
+                    # 检查文件是否存在（在容器内或宿主机上）
+                    file_exists = False
+                    if os.path.exists("/app"):
+                        # 在容器内，检查容器内的路径
+                        # config_dir 是容器内路径（如 /app/configs/prysm/vc-5）
+                        # 转换为容器内路径进行检查
+                        if config_dir.startswith("/app/configs"):
+                            container_config_file = os.path.join(config_dir, config_file)
+                            file_exists = os.path.exists(container_config_file)
+                            if file_exists:
+                                logger.info(f"在容器内找到配置文件: {container_config_file}")
+                            else:
+                                logger.warning(f"在容器内未找到配置文件: {container_config_file}")
+                        else:
+                            # 如果 config_dir 不是容器内路径，尝试检查宿主机路径
+                            # 但这在容器内可能失败
+                            file_exists = os.path.exists(config_file_host)
+                    else:
+                        # 在宿主机上，直接检查宿主机路径
+                        file_exists = os.path.exists(config_file_host)
+                    
+                    if not file_exists:
+                        # 如果文件不存在，列出目录内容用于调试
                         try:
-                            if os.path.exists(config_dir_abs):
-                                files = os.listdir(config_dir_abs)
-                                logger.error(f"配置文件目录内容: {files}")
+                            # 尝试检查容器内路径
+                            if os.path.exists("/app") and config_dir.startswith("/app/configs"):
+                                container_dir = config_dir
+                            else:
+                                container_dir = config_dir_abs
+                            
+                            if os.path.exists(container_dir):
+                                files = os.listdir(container_dir)
+                                logger.error(f"配置文件目录内容 ({container_dir}): {files}")
+                            else:
+                                logger.error(f"配置文件目录不存在: {container_dir}")
                         except Exception as e:
                             logger.warning(f"无法列出目录内容: {e}")
                         
-                        return {
-                            "success": False,
-                            "message": error_msg,
-                            "config_file_path": config_file_host,
-                            "config_dir": config_dir_abs,
-                            "container_path": f"/config/{config_file}"
-                        }
+                        # 在容器内，如果文件在容器内路径存在，我们仍然可以继续
+                        # 因为挂载会确保文件在容器内可见
+                        if os.path.exists("/app") and config_dir.startswith("/app/configs"):
+                            container_config_file = os.path.join(config_dir, config_file)
+                            if os.path.exists(container_config_file):
+                                logger.info(f"在容器内找到配置文件，继续启动: {container_config_file}")
+                                file_exists = True
+                        
+                        if not file_exists:
+                            error_msg = (
+                                f"配置文件不存在: {config_file_host} "
+                                f"(容器内路径: /config/{config_file}, "
+                                f"原始路径: {config_dir})"
+                            )
+                            logger.error(error_msg)
+                            return {
+                                "success": False,
+                                "message": error_msg,
+                                "config_file_path": config_file_host,
+                                "config_dir": config_dir_abs,
+                                "container_path": f"/config/{config_file}"
+                            }
+                    
                     logger.info(f"验证配置文件存在: {config_file_host} (容器内: /config/{config_file})")
                 
                 cmd.extend(["-v", f"{config_dir_abs}:/config:ro"])
