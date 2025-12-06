@@ -288,8 +288,8 @@ async def sync_web3signer_configs(
     try:
         from app.services.web3signer_key_config_service import Web3SignerKeyConfigService
         
-        # 同步配置文件
-        config_service = Web3SignerKeyConfigService(db)
+        # 同步配置文件（传递 web3signer_client 以便通过 API 删除密钥）
+        config_service = Web3SignerKeyConfigService(db, web3signer_client=web3signer_client)
         sync_result = config_service.sync_key_configs(
             cleanup_orphaned=cleanup_orphaned,
             force_regenerate=force_regenerate
@@ -423,13 +423,15 @@ async def restart_web3signer():
 
 @router.post("/web3signer/cleanup-configs")
 async def cleanup_web3signer_configs(
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    web3signer_client: Web3SignerClient = Depends(get_web3signer_client)
 ):
     """
     清理所有孤立的 Web3Signer 配置文件
     
     功能：
     删除所有数据库中不存在的密钥对应的配置文件
+    在删除配置文件之前，先通过 Web3Signer API 删除密钥，确保数据一致性
     
     Returns:
         清理结果
@@ -437,7 +439,8 @@ async def cleanup_web3signer_configs(
     try:
         from app.services.web3signer_key_config_service import Web3SignerKeyConfigService
         
-        config_service = Web3SignerKeyConfigService(db)
+        # 传递 web3signer_client 以便通过 API 删除密钥
+        config_service = Web3SignerKeyConfigService(db, web3signer_client=web3signer_client)
         cleanup_result = config_service.cleanup_orphaned_configs()
         
         return {
@@ -454,7 +457,8 @@ async def cleanup_web3signer_configs(
 
 @router.post("/web3signer/regenerate-configs")
 async def regenerate_web3signer_configs(
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    web3signer_client: Web3SignerClient = Depends(get_web3signer_client)
 ):
     """
     强制重新生成所有 Web3Signer 配置文件
@@ -462,6 +466,7 @@ async def regenerate_web3signer_configs(
     功能：
     删除所有现有配置文件并重新生成，确保格式正确（所有字符串值使用双引号）
     使用最新的 Vault token 和路径格式
+    在删除配置文件之前，先通过 Web3Signer API 删除密钥，确保数据一致性
     
     Returns:
         重新生成结果
@@ -469,7 +474,8 @@ async def regenerate_web3signer_configs(
     try:
         from app.services.web3signer_key_config_service import Web3SignerKeyConfigService
         
-        config_service = Web3SignerKeyConfigService(db)
+        # 传递 web3signer_client 以便通过 API 删除密钥
+        config_service = Web3SignerKeyConfigService(db, web3signer_client=web3signer_client)
         
         # 强制重新生成所有配置文件
         sync_result = config_service.sync_key_configs(

@@ -16,6 +16,11 @@ from app.config import settings
 
 logger = logging.getLogger(__name__)
 
+# 避免循环导入
+from typing import TYPE_CHECKING
+if TYPE_CHECKING:
+    from app.core.web3signer_client import Web3SignerClient
+
 
 class Web3SignerKeyConfigService:
     """
@@ -27,15 +32,17 @@ class Web3SignerKeyConfigService:
     3. 同步配置文件与数据库状态
     """
     
-    def __init__(self, db: Session, keys_dir: Optional[str] = None):
+    def __init__(self, db: Session, keys_dir: Optional[str] = None, web3signer_client: Optional['Web3SignerClient'] = None):
         """
         初始化服务
         
         Args:
             db: 数据库会话
             keys_dir: 密钥配置文件目录（默认使用配置中的路径）
+            web3signer_client: Web3Signer 客户端（可选，用于通过 API 删除密钥）
         """
         self.db = db
+        self.web3signer_client = web3signer_client
         
         # 确定密钥配置文件目录
         if keys_dir:
@@ -148,16 +155,11 @@ class Web3SignerKeyConfigService:
         # 清理 pubkey（移除 0x 前缀，转为小写）
         pubkey_clean = pubkey.lower().replace('0x', '')
         
-        # Vault 路径（匹配 Vault 中的实际存储路径）
-        # 根据用户反馈，Vault 中的实际路径是: /v1/secret/data/secret/data/web3signer-keys/...
-        # 这说明存储时路径可能被重复了（secret/data 被重复）
-        # 为了匹配实际存储路径，我们需要使用实际路径
-        # 如果实际路径是 /v1/secret/data/secret/data/web3signer-keys/...，则使用该路径
-        # 否则使用标准路径: /v1/{mount_point}/data/{key_path_prefix}/{pubkey}
-        
-        # 根据用户反馈，实际路径是: /v1/secret/data/secret/data/web3signer-keys/...
-        # 这里使用实际路径以匹配 Vault 中的存储路径
-        vault_path = f"/v1/{settings.vault_mount_point}/data/{settings.vault_mount_point}/data/{settings.vault_key_path_prefix}/{pubkey_clean}"
+        # Vault 路径（标准 KV v2 格式）
+        # Vault KV v2 存储路径格式：{mount_point}/data/{key_path_prefix}/{pubkey}
+        # Web3Signer 访问路径格式：/v1/{mount_point}/data/{key_path_prefix}/{pubkey}
+        # 例如：/v1/secret/data/web3signer-keys/{pubkey}
+        vault_path = f"/v1/{settings.vault_mount_point}/data/{settings.vault_key_path_prefix}/{pubkey_clean}"
         
         # 获取有效的 Vault token（每次生成配置时都获取最新的 token）
         vault_token = self._get_vault_token(force_refresh=force_refresh_token)
@@ -334,6 +336,16 @@ class Web3SignerKeyConfigService:
                 if key.status == ValidatorKeyStatus.UNUSED.value:
                     # UNUSED 状态：应该删除配置文件
                     if expected_filename in existing_config_files:
+                        # 先通过 Web3Signer API 删除密钥（清理内存和数据库）
+                        if self.web3signer_client:
+                            try:
+                                self.web3signer_client.delete_key(key.pubkey, instance="primary")
+                                self.web3signer_client.delete_key(key.pubkey, instance="secondary")
+                                logger.info(f"已通过 API 从 Web3Signer 删除密钥: {key.pubkey[:10]}...")
+                            except Exception as e:
+                                logger.warning(f"通过 API 删除密钥失败 ({key.pubkey[:10]}...)，继续删除配置文件: {e}")
+                        
+                        # 然后删除配置文件
                         if self.remove_key_config(key.pubkey):
                             result['removed'] += 1
                             del existing_config_files[expected_filename]
@@ -371,6 +383,8 @@ class Web3SignerKeyConfigService:
                         # 尝试从文件名提取 pubkey（如果可能）
                         # 文件名格式：vault-{pubkey[:16]}.yaml
                         filename_without_ext = orphaned_filename.replace('.yaml', '')
+                        extracted_pubkey = None
+                        
                         if filename_without_ext.startswith('vault-'):
                             pubkey_prefix = filename_without_ext.replace('vault-', '')
                             # 尝试在数据库中查找匹配的密钥
@@ -381,20 +395,36 @@ class Web3SignerKeyConfigService:
                             if matching_key:
                                 # 找到了匹配的密钥，但文件名不匹配（可能是 pubkey 格式问题）
                                 logger.debug(f"发现文件名不匹配的配置文件: {orphaned_filename}，匹配的密钥: {matching_key.pubkey[:10]}...")
-                                # 删除旧文件，让系统重新生成正确的文件
-                                config_file.unlink()
-                                result['orphaned_removed'] += 1
-                                logger.info(f"已删除不匹配的配置文件: {orphaned_filename}")
+                                extracted_pubkey = matching_key.pubkey
                             else:
                                 # 没有找到匹配的密钥，这是真正的孤立文件
-                                config_file.unlink()
-                                result['orphaned_removed'] += 1
-                                logger.info(f"已删除孤立的配置文件: {orphaned_filename}")
-                        else:
-                            # 文件名格式不正确，直接删除
-                            config_file.unlink()
-                            result['orphaned_removed'] += 1
-                            logger.info(f"已删除格式错误的配置文件: {orphaned_filename}")
+                                # 尝试从配置文件中读取 pubkey（如果可能）
+                                try:
+                                    import yaml
+                                    with open(config_file, 'r') as f:
+                                        config = yaml.safe_load(f)
+                                        key_path = config.get('keyPath', '')
+                                        # 从 keyPath 中提取 pubkey
+                                        # 格式：/v1/secret/data/web3signer-keys/{pubkey}
+                                        if '/web3signer-keys/' in key_path:
+                                            pubkey_from_config = key_path.split('/web3signer-keys/')[-1]
+                                            extracted_pubkey = f"0x{pubkey_from_config}"
+                                except Exception as e:
+                                    logger.debug(f"无法从配置文件读取 pubkey ({orphaned_filename}): {e}")
+                        
+                        # 如果提取到了 pubkey，先通过 Web3Signer API 删除密钥
+                        if extracted_pubkey and self.web3signer_client:
+                            try:
+                                self.web3signer_client.delete_key(extracted_pubkey, instance="primary")
+                                self.web3signer_client.delete_key(extracted_pubkey, instance="secondary")
+                                logger.info(f"已通过 API 从 Web3Signer 删除孤立密钥: {extracted_pubkey[:10]}...")
+                            except Exception as e:
+                                logger.warning(f"通过 API 删除孤立密钥失败 ({extracted_pubkey[:10] if extracted_pubkey else 'unknown'}...)，继续删除配置文件: {e}")
+                        
+                        # 删除配置文件
+                        config_file.unlink()
+                        result['orphaned_removed'] += 1
+                        logger.info(f"已删除孤立配置文件: {orphaned_filename}")
                     except Exception as e:
                         logger.error(f"删除孤立配置文件失败 ({orphaned_filename}): {e}", exc_info=True)
                         result['errors'] += 1
@@ -446,6 +476,42 @@ class Web3SignerKeyConfigService:
             # 删除孤立文件
             for config_file in orphaned_files:
                 try:
+                    extracted_pubkey = None
+                    
+                    # 尝试从文件名提取 pubkey
+                    filename_without_ext = config_file.name.replace('.yaml', '')
+                    if filename_without_ext.startswith('vault-'):
+                        pubkey_prefix = filename_without_ext.replace('vault-', '')
+                        # 尝试在数据库中查找匹配的密钥
+                        matching_key = self.db.query(ValidatorKey).filter(
+                            ValidatorKey.pubkey.like(f"%{pubkey_prefix}%")
+                        ).first()
+                        if matching_key:
+                            extracted_pubkey = matching_key.pubkey
+                    
+                    # 如果无法从文件名提取，尝试从配置文件读取
+                    if not extracted_pubkey:
+                        try:
+                            with open(config_file, 'r') as f:
+                                config = yaml.safe_load(f)
+                                key_path = config.get('keyPath', '')
+                                # 从 keyPath 中提取 pubkey
+                                if '/web3signer-keys/' in key_path:
+                                    pubkey_from_config = key_path.split('/web3signer-keys/')[-1]
+                                    extracted_pubkey = f"0x{pubkey_from_config}"
+                        except Exception as e:
+                            logger.debug(f"无法从配置文件读取 pubkey ({config_file.name}): {e}")
+                    
+                    # 如果提取到了 pubkey，先通过 Web3Signer API 删除密钥
+                    if extracted_pubkey and self.web3signer_client:
+                        try:
+                            self.web3signer_client.delete_key(extracted_pubkey, instance="primary")
+                            self.web3signer_client.delete_key(extracted_pubkey, instance="secondary")
+                            logger.info(f"已通过 API 从 Web3Signer 删除孤立密钥: {extracted_pubkey[:10]}...")
+                        except Exception as e:
+                            logger.warning(f"通过 API 删除孤立密钥失败 ({extracted_pubkey[:10]}...)，继续删除配置文件: {e}")
+                    
+                    # 删除配置文件
                     config_file.unlink()
                     result['removed'] += 1
                     result['files'].append(config_file.name)
