@@ -25,8 +25,13 @@ export const clientsApi = {
   }) => apiClient.post('/clients', params),
 
   // 列出客户端
-  list: (clientType?: string) =>
-    apiClient.get('/clients', { params: clientType ? { client_type: clientType } : {} }),
+  list: (clientType?: string, isActive?: boolean) =>
+    apiClient.get('/clients', { 
+      params: { 
+        ...(clientType ? { client_type: clientType } : {}),
+        ...(isActive !== undefined ? { is_active: isActive } : {})
+      } 
+    }),
 
   // 分配密钥
   assignKeys: (clientId: number, pubkeys: string[]) =>
@@ -89,5 +94,9 @@ export const clientsApi = {
   // 获取客户端密钥列表
   getKeys: (clientId: number) =>
     apiClient.get(`/clients/${clientId}/keys`),
+
+  // 删除客户端密钥
+  removeKeys: (clientId: number, pubkeys: string[]) =>
+    apiClient.delete(`/clients/${clientId}/keys`, { data: { pubkeys } }),
 }
 

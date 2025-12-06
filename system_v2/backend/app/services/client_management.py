@@ -316,6 +316,37 @@ class ClientManagementService:
             if not client_instance:
                 raise ValueError(f"客户端实例不存在: {client_id}")
             
+            # 删除前，先释放所有关联的密钥
+            active_keys = self.db.query(ValidatorClientKey).filter(
+                ValidatorClientKey.client_id == client_id,
+                ValidatorClientKey.status == "active"
+            ).all()
+            
+            if active_keys:
+                pubkeys = [key.pubkey for key in active_keys]
+                logger.info(f"删除客户端前释放 {len(pubkeys)} 个密钥: {client_instance.name}")
+                
+                # 释放密钥（设置状态为 removed）
+                for client_key in active_keys:
+                    client_key.status = "removed"
+                    client_key.removed_at = datetime.utcnow()
+                
+                # 重新生成配置文件（移除所有密钥）
+                try:
+                    self.generate_config_files(client_instance, [])
+                except Exception as e:
+                    logger.warning(f"重新生成空配置文件失败: {e}")
+                
+                # 通过 Remote Validator API 删除密钥
+                try:
+                    self.sync_keys_to_validator_client(
+                        client_instance,
+                        remove_pubkeys=pubkeys
+                    )
+                    logger.info(f"密钥已通过 Remote Validator API 从客户端删除: {client_instance.name}")
+                except Exception as e:
+                    logger.warning(f"通过 Remote Validator API 删除密钥失败: {e}")
+            
             if hard_delete:
                 # 硬删除：物理删除记录（关联的 ValidatorClientKey 会通过 cascade 自动删除）
                 self.db.delete(client_instance)
@@ -370,6 +401,16 @@ class ClientManagementService:
         # 更新配置文件路径（使用绝对路径）
         client_instance.config_path = str(client_dir.absolute())
         self.db.commit()
+        
+        # 验证配置文件是否真的存在
+        if 'config_file' in configs:
+            config_file_path = configs['config_file']
+            if not os.path.exists(config_file_path):
+                raise ClientManagementError(
+                    f"配置文件生成失败: {config_file_path} 不存在。"
+                    f"请检查目录权限和磁盘空间。"
+                )
+            logger.info(f"配置文件已生成并验证: {config_file_path}")
         
         return configs
     
@@ -533,7 +574,7 @@ url = "{client_instance.web3signer_url}"
                     )
                     continue
                 
-                # 检查是否已分配
+                # 检查是否已分配给当前客户端
                 existing = self.db.query(ValidatorClientKey).filter(
                     ValidatorClientKey.client_id == client_instance.id,
                     ValidatorClientKey.pubkey == pubkey.lower(),
@@ -541,8 +582,25 @@ url = "{client_instance.web3signer_url}"
                 ).first()
                 
                 if existing:
-                    logger.debug(f"密钥已分配: {pubkey[:10]}...")
+                    logger.debug(f"密钥已分配给当前客户端: {pubkey[:10]}...")
                     continue
+                
+                # 检查密钥是否已被其他激活的客户端使用
+                other_client_key = self.db.query(ValidatorClientKey).join(ClientInstance).filter(
+                    ValidatorClientKey.pubkey == pubkey.lower(),
+                    ValidatorClientKey.status == "active",
+                    ValidatorClientKey.client_id != client_instance.id,
+                    ClientInstance.is_active == True
+                ).first()
+                
+                if other_client_key:
+                    other_client = other_client_key.client_instance
+                    error_msg = (
+                        f"密钥 {pubkey[:10]}... 已被激活的客户端 '{other_client.name}' (ID: {other_client.id}) 使用。"
+                        f"每个密钥在同一时刻只能被一个激活的客户端使用。"
+                    )
+                    logger.warning(error_msg)
+                    raise ValueError(error_msg)
                 
                 # 创建映射关系
                 client_key = ValidatorClientKey(

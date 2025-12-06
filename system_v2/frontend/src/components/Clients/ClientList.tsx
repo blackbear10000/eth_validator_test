@@ -15,6 +15,7 @@ import {
   Switch,
   Alert,
   Spin,
+  Tabs,
 } from 'antd'
 import {
   PlusOutlined,
@@ -40,6 +41,7 @@ const { Option } = Select
 const ClientList: React.FC = () => {
   const [clients, setClients] = useState<ClientInstance[]>([])
   const [loading, setLoading] = useState(false)
+  const [activeTab, setActiveTab] = useState<string>('active')
   const [createModalVisible, setCreateModalVisible] = useState(false)
   const [editModalVisible, setEditModalVisible] = useState(false)
   const [assignKeysModalVisible, setAssignKeysModalVisible] = useState(false)
@@ -57,14 +59,12 @@ const ClientList: React.FC = () => {
   const [editForm] = Form.useForm()
   const [assignForm] = Form.useForm()
 
-  useEffect(() => {
-    loadClients()
-  }, [])
-
   const loadClients = async () => {
     setLoading(true)
     try {
-      const response = await clientsApi.list() as any
+      // 根据当前 tab 加载不同的客户端列表
+      const isActive = activeTab === 'active'
+      const response = await clientsApi.list(undefined, isActive) as any
       setClients(response || [])
       
       // 加载每个客户端的状态
@@ -77,6 +77,10 @@ const ClientList: React.FC = () => {
       setLoading(false)
     }
   }
+
+  useEffect(() => {
+    loadClients()
+  }, [activeTab])
 
   const loadClientStatus = async (clientId: number) => {
     try {
@@ -162,6 +166,29 @@ const ClientList: React.FC = () => {
       loadClients()
     } catch (error: any) {
       message.error(`删除客户端失败: ${error.message}`)
+    }
+  }
+
+  const handleRestore = async (clientId: number) => {
+    try {
+      await clientsApi.update(clientId, { is_active: true })
+      message.success('客户端已恢复')
+      loadClients()
+    } catch (error: any) {
+      message.error(`恢复客户端失败: ${error.message}`)
+    }
+  }
+
+  const handleRemoveKey = async (clientId: number, pubkey: string) => {
+    try {
+      await clientsApi.removeKeys(clientId, [pubkey])
+      message.success('密钥已移除')
+      // 重新加载密钥列表
+      const keys = await clientsApi.getKeys(clientId) as any
+      setClientKeys(keys || [])
+      loadClients() // 刷新客户端列表（更新密钥数量）
+    } catch (error: any) {
+      message.error(`移除密钥失败: ${error.message}`)
     }
   }
 
@@ -557,54 +584,78 @@ const ClientList: React.FC = () => {
                 销毁
               </Button>
             </Popconfirm>
-            <Button
-              size="small"
-              icon={<KeyOutlined />}
-              onClick={() => handleAssignKeys(record.id)}
-            >
-              分配密钥
-            </Button>
-            <Button
-              size="small"
-              icon={<ReloadOutlined />}
-              onClick={() => handleReloadKeys(record.id)}
-            >
-              重载密钥
-            </Button>
-            <Button
-              size="small"
-              icon={<EyeOutlined />}
-              onClick={() => handleViewKeys(record.id)}
-            >
-              查看密钥
-            </Button>
-            <Button
-              size="small"
-              icon={<FileTextOutlined />}
-              onClick={() => handleViewLogs(record.id)}
-            >
-              查看日志
-            </Button>
-            <Button
-              size="small"
-              icon={<EditOutlined />}
-              onClick={() => handleEdit(record)}
-            >
-              编辑
-            </Button>
-            <Popconfirm
-              title="确定要删除这个客户端吗？"
-              description="删除后可以恢复（软删除），如果有关联的密钥，请先移除密钥"
-              onConfirm={() => handleDelete(record.id)}
-            >
+            {activeTab === 'active' && (
+              <>
+                <Button
+                  size="small"
+                  icon={<KeyOutlined />}
+                  onClick={() => handleAssignKeys(record.id)}
+                >
+                  分配密钥
+                </Button>
+                <Button
+                  size="small"
+                  icon={<ReloadOutlined />}
+                  onClick={() => handleReloadKeys(record.id)}
+                >
+                  重载密钥
+                </Button>
+                <Button
+                  size="small"
+                  icon={<EyeOutlined />}
+                  onClick={() => handleViewKeys(record.id)}
+                >
+                  查看密钥
+                </Button>
+                <Button
+                  size="small"
+                  icon={<FileTextOutlined />}
+                  onClick={() => handleViewLogs(record.id)}
+                >
+                  查看日志
+                </Button>
+                <Button
+                  size="small"
+                  icon={<EditOutlined />}
+                  onClick={() => handleEdit(record)}
+                >
+                  编辑
+                </Button>
+              </>
+            )}
+            {activeTab === 'deleted' && (
               <Button
                 size="small"
-                danger
-                icon={<DeleteOutlined />}
+                icon={<EyeOutlined />}
+                onClick={() => handleViewKeys(record.id)}
               >
-                删除
+                查看密钥
               </Button>
-            </Popconfirm>
+            )}
+            {activeTab === 'active' ? (
+              <Popconfirm
+                title="确定要删除这个客户端吗？"
+                description="删除后可以恢复（软删除），如果有关联的密钥，将自动释放"
+                onConfirm={() => handleDelete(record.id)}
+              >
+                <Button
+                  size="small"
+                  danger
+                  icon={<DeleteOutlined />}
+                >
+                  删除
+                </Button>
+              </Popconfirm>
+            ) : (
+              <Button
+                size="small"
+                type="primary"
+                icon={<ReloadOutlined />}
+                onClick={() => handleRestore(record.id)}
+              >
+                恢复
+              </Button>
+            )}
           </Space>
         )
       },
@@ -627,6 +678,20 @@ const ClientList: React.FC = () => {
           </Button>
         }
       >
+        <Tabs
+          activeKey={activeTab}
+          onChange={setActiveTab}
+          items={[
+            {
+              key: 'active',
+              label: '激活的客户端',
+            },
+            {
+              key: 'deleted',
+              label: '已删除的客户端',
+            },
+          ]}
+        />
         {/* 显示有错误的客户端 */}
         {clients.some((client) => {
           const status = clientStatuses[client.id]
@@ -829,6 +894,24 @@ const ClientList: React.FC = () => {
               dataIndex: 'deposited_at',
               key: 'deposited_at',
               render: (time: string | null) => (time ? new Date(time).toLocaleString() : '-'),
+            },
+            {
+              title: '操作',
+              key: 'action',
+              width: 100,
+              render: (_: any, record: any) => (
+                selectedClient && activeTab === 'active' ? (
+                  <Popconfirm
+                    title="确定要移除这个密钥吗？"
+                    description="移除后需要重新分配才能使用"
+                    onConfirm={() => handleRemoveKey(selectedClient.id, record.pubkey)}
+                  >
+                    <Button size="small" danger icon={<DeleteOutlined />}>
+                      移除
+                    </Button>
+                  </Popconfirm>
+                ) : null
+              ),
             },
             {
               title: '批次ID',

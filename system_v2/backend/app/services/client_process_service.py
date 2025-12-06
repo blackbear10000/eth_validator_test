@@ -281,13 +281,13 @@ class ClientProcessService:
                     }
             
             # 容器不存在
-            return {
-                "client_id": client_id,
+                return {
+                    "client_id": client_id,
                 "container_name": container_name,
-                "status": "stopped",
-                "is_running": False
-            }
-            
+                    "status": "stopped",
+                    "is_running": False
+                }
+        
         except subprocess.TimeoutExpired:
             logger.error(f"查询容器状态超时: {container_name}")
             return {
@@ -298,12 +298,12 @@ class ClientProcessService:
             }
         except Exception as e:
             logger.error(f"查询容器状态失败: {e}")
-            return {
-                "client_id": client_id,
+        return {
+            "client_id": client_id,
                 "status": "unknown",
                 "is_running": False,
                 "error": str(e)
-            }
+        }
     
     def start(
         self,
@@ -497,7 +497,7 @@ class ClientProcessService:
                     "exit_code": exit_code,
                     "error_logs": error_logs,
                     "status": final_status
-                }
+            }
             
             return {
                 "success": True,
@@ -558,8 +558,8 @@ class ClientProcessService:
                     "message": f"暂停容器失败: {error_msg}"
                 }
             
-            return {
-                "success": True,
+                return {
+                    "success": True,
                 "message": f"客户端 {client_id} 已暂停"
             }
             
@@ -568,8 +568,8 @@ class ClientProcessService:
             return {
                 "success": False,
                 "message": "暂停容器超时"
-            }
-        except Exception as e:
+                }
+            except Exception as e:
             logger.error(f"暂停客户端 {client_id} 失败: {e}", exc_info=True)
             return {
                 "success": False,
@@ -624,6 +624,50 @@ class ClientProcessService:
                 "message": f"恢复失败: {str(e)}"
             }
     
+    def _force_remove_container(self, container_name: str) -> bool:
+        """
+        强制删除容器（处理各种异常状态）
+        
+        Args:
+            container_name: 容器名称
+            
+        Returns:
+            是否成功删除
+        """
+        # 尝试多种方法删除容器
+        methods = [
+            # 方法1: 标准删除
+            ["docker", "rm", "-f", container_name],
+            # 方法2: 使用 --force 参数（某些 Docker 版本）
+            ["docker", "rm", "--force", container_name],
+            # 方法3: 先 kill 再删除
+            ["docker", "kill", container_name],
+        ]
+        
+        for method in methods:
+            try:
+                result = subprocess.run(
+                    method,
+                    capture_output=True,
+                    text=True,
+                    timeout=10
+                )
+                if result.returncode == 0:
+                    logger.info(f"容器删除成功: {container_name} (方法: {' '.join(method)})")
+                    return True
+                # 如果容器不存在，也算成功
+                if "No such container" in result.stderr:
+                    logger.debug(f"容器不存在: {container_name}")
+                    return True
+            except subprocess.TimeoutExpired:
+                logger.warning(f"删除容器超时: {container_name} (方法: {' '.join(method)})")
+                continue
+            except Exception as e:
+                logger.warning(f"删除容器失败: {e} (方法: {' '.join(method)})")
+                continue
+        
+        return False
+    
     def destroy(self, client_id: int, client_type: str) -> Dict[str, any]:
         """
         销毁（停止并删除）客户端 Docker 容器
@@ -638,10 +682,13 @@ class ClientProcessService:
         container_name = self._get_container_name(client_id, client_type)
         
         try:
-            # 先停止容器（如果正在运行）
+            # 先检查容器状态
             status = self.get_status(client_id, client_type)
-            if status.get("is_running") or status.get("state") in ["running", "restarting"]:
-                logger.info(f"停止容器: {container_name}")
+            container_state = status.get("state", "unknown")
+            
+            # 如果容器在运行，先停止
+            if status.get("is_running") or container_state in ["running", "restarting"]:
+                logger.info(f"停止容器: {container_name} (状态: {container_state})")
                 stop_result = subprocess.run(
                     ["docker", "stop", container_name],
                     capture_output=True,
@@ -650,43 +697,42 @@ class ClientProcessService:
                 )
                 if stop_result.returncode != 0:
                     logger.warning(f"停止容器失败（可能已停止）: {stop_result.stderr}")
+                    # 即使停止失败，也继续尝试删除
             
-            # 删除容器
-            logger.info(f"删除容器: {container_name}")
-            rm_result = subprocess.run(
-                ["docker", "rm", "-f", container_name],  # -f 强制删除，即使容器在运行
-                capture_output=True,
-                text=True,
-                timeout=10
-            )
-            
-            if rm_result.returncode != 0:
-                error_msg = rm_result.stderr.strip()
-                # 如果容器不存在，也算成功
-                if "No such container" in error_msg:
-                    logger.debug(f"容器不存在: {container_name}")
+            # 强制删除容器（处理各种异常状态）
+            logger.info(f"删除容器: {container_name} (状态: {container_state})")
+            if self._force_remove_container(container_name):
+                return {
+                    "success": True,
+                    "message": f"客户端 {client_id} 容器已销毁"
+                }
+            else:
+                # 最后检查容器是否真的还存在
+                final_status = self.get_status(client_id, client_type)
+                if "container_name" not in final_status:
+                    # 容器不存在，算成功
+                    logger.info(f"容器已不存在: {container_name}")
                     return {
                         "success": True,
-                        "message": f"客户端 {client_id} 容器不存在或已删除"
+                        "message": f"客户端 {client_id} 容器已删除或不存在"
                     }
-                logger.error(f"删除容器失败: {error_msg}")
+                
+                error_msg = f"无法删除容器 {container_name}，当前状态: {final_status.get('state', 'unknown')}"
+                logger.error(error_msg)
                 return {
                     "success": False,
-                    "message": f"删除容器失败: {error_msg}"
+                    "message": error_msg,
+                    "container_state": final_status.get("state"),
+                    "suggestion": "请手动检查容器状态: docker ps -a | grep " + container_name
                 }
-            
-            return {
-                "success": True,
-                "message": f"客户端 {client_id} 容器已销毁"
-            }
             
         except subprocess.TimeoutExpired:
             logger.error(f"销毁容器超时: {container_name}")
             return {
                 "success": False,
                 "message": "销毁容器超时"
-            }
-        except Exception as e:
+                    }
+                except Exception as e:
             logger.error(f"销毁客户端 {client_id} 失败: {e}", exc_info=True)
             return {
                 "success": False,
@@ -758,14 +804,14 @@ class ClientProcessService:
             return {
                 "success": False,
                 "message": "停止容器超时"
-            }
-        except Exception as e:
+                    }
+            except Exception as e:
             logger.error(f"停止客户端 {client_id} 失败: {e}", exc_info=True)
-            return {
-                "success": False,
-                "message": f"停止失败: {str(e)}"
-            }
-    
+                return {
+                    "success": False,
+                    "message": f"停止失败: {str(e)}"
+                }
+        
     def _build_container_command(
         self,
         client_type: str,
@@ -869,9 +915,9 @@ class ClientProcessService:
             }
         except Exception as e:
             logger.error(f"获取日志失败: {e}")
-            return {
-                "client_id": client_id,
-                "logs": [],
+        return {
+            "client_id": client_id,
+            "logs": [],
                 "error": str(e)
-            }
+        }
 

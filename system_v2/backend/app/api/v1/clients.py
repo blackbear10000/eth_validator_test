@@ -52,6 +52,7 @@ async def create_client(
 @router.get("/clients", response_model=List[ClientInstanceResponse])
 async def list_clients(
     client_type: Optional[str] = None,
+    is_active: Optional[bool] = Query(None, description="是否只返回激活的客户端（True：激活，False：已删除，None：全部）"),
     client_service: ClientManagementService = Depends(get_client_service)
 ):
     """列出客户端实例"""
@@ -59,7 +60,7 @@ async def list_clients(
         from app.models.database import ValidatorClientKey
         from sqlalchemy import func
         
-        clients = client_service.list_clients(client_type=client_type)
+        clients = client_service.list_clients(client_type=client_type, is_active=is_active)
         
         if not clients:
             return []
@@ -221,10 +222,40 @@ async def assign_keys(
         if not client:
             raise HTTPException(status_code=404, detail="客户端不存在")
         
+        if not client.is_active:
+            raise HTTPException(status_code=400, detail="无法为已删除的客户端分配密钥，请先恢复客户端")
+        
         assigned = client_service.assign_keys_to_client(client, request.pubkeys)
         return {
             "client_id": client_id,
             "assigned_count": len(assigned),
+            "pubkeys": request.pubkeys
+        }
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.delete("/clients/{client_id}/keys", response_model=dict)
+async def remove_keys(
+    client_id: int,
+    request: ClientKeyAssignment,
+    client_service: ClientManagementService = Depends(get_client_service)
+):
+    """从客户端移除密钥"""
+    try:
+        from app.models.database import ClientInstance
+        db = client_service.db
+        client = db.query(ClientInstance).filter(ClientInstance.id == client_id).first()
+        
+        if not client:
+            raise HTTPException(status_code=404, detail="客户端不存在")
+        
+        removed_count = client_service.remove_keys_from_client(client, request.pubkeys)
+        return {
+            "client_id": client_id,
+            "removed_count": removed_count,
             "pubkeys": request.pubkeys
         }
     except Exception as e:
