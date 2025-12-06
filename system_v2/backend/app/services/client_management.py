@@ -165,23 +165,39 @@ class ClientManagementService:
             
             # 方法2：从容器日志中提取 token（备用方案）
             # Prysm 会在日志中打印: http://127.0.0.1:7500/initialize?token=...
+            # 或者: INFO rpc: http://127.0.0.1:7500/initialize?token=...
             try:
                 log_result = subprocess.run(
                     ['docker', 'logs', container_name],
                     capture_output=True,
                     text=True,
-                    timeout=5
+                    timeout=10
                 )
                 if log_result.returncode == 0:
-                    # 查找 token URL 模式: /initialize?token=...
-                    token_pattern = r'/initialize\?token=([a-zA-Z0-9._-]+)'
-                    matches = re.findall(token_pattern, log_result.stdout)
-                    if matches:
-                        token = matches[-1]  # 使用最后一个匹配（最新的）
-                        logger.info(f"从容器 {container_name} 日志中提取到 auth token")
-                        return token
-                    else:
-                        logger.debug(f"容器 {container_name} 日志中未找到 token URL")
+                    # 查找 token URL 模式: /initialize?token=... 或 initialize?token=...
+                    # 支持多种格式：
+                    # - http://127.0.0.1:7500/initialize?token=...
+                    # - http://0.0.0.0:7500/initialize?token=...
+                    # - INFO rpc: http://127.0.0.1:7500/initialize?token=...
+                    token_patterns = [
+                        r'/initialize\?token=([a-zA-Z0-9._-]+)',  # 标准格式
+                        r'initialize\?token=([a-zA-Z0-9._-]+)',   # 无前导斜杠
+                        r'token=([a-zA-Z0-9._-]+)',                # 更宽松的匹配
+                    ]
+                    
+                    for pattern in token_patterns:
+                        matches = re.findall(pattern, log_result.stdout)
+                        if matches:
+                            token = matches[-1]  # 使用最后一个匹配（最新的）
+                            # 验证 token 格式（JWT token 通常包含点号分隔的三部分）
+                            if '.' in token and len(token) > 20:
+                                logger.info(f"从容器 {container_name} 日志中提取到 auth token (使用模式: {pattern})")
+                                return token
+                    
+                    # 如果没找到，记录日志内容（前1000字符）用于调试
+                    log_preview = log_result.stdout[:1000] if len(log_result.stdout) > 1000 else log_result.stdout
+                    logger.warning(f"容器 {container_name} 日志中未找到 token URL。日志预览（前1000字符）:\n{log_preview}")
+                    logger.warning(f"完整日志长度: {len(log_result.stdout)} 字符")
             except Exception as e:
                 logger.debug(f"从容器日志提取 token 失败: {e}")
                 
