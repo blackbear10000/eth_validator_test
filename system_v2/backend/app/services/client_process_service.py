@@ -78,24 +78,56 @@ class ClientProcessService:
         # 尝试多个可能的路径
         possible_paths = [
             # 从 backend 容器内运行时
-            "/app/../infra",  # backend 在 /app，infra 在 /app/../infra
+            # backend 在 /app，但 docker-compose.yml 在 system_v2/infra/
+            # 所以需要从 /app 向上找到 system_v2，然后进入 infra
+            "/app/../infra",  # 如果 backend 在 system_v2/backend，那么 ../infra 是 system_v2/infra
+            "/app/../../infra",  # 如果 backend 在 system_v2/backend/app，那么 ../../infra 是 system_v2/infra
             # 从 backend/app/services 向上查找
             os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), "infra"),
             # 从当前工作目录查找
             os.path.join(os.getcwd(), "infra"),
             os.path.join(os.getcwd(), "..", "infra"),
+            os.path.join(os.getcwd(), "../infra"),
             # 相对路径
             "infra",
             "../infra",
+            "../../infra",
         ]
         
         for path in possible_paths:
-            abs_path = os.path.abspath(path)
-            if os.path.exists(abs_path) and os.path.isdir(abs_path):
-                logger.debug(f"找到 infra 目录: {abs_path}")
-                return abs_path
+            try:
+                abs_path = os.path.abspath(path)
+                # 检查路径是否存在，并且包含 docker-compose.yml
+                if os.path.exists(abs_path) and os.path.isdir(abs_path):
+                    docker_compose_file = os.path.join(abs_path, "docker-compose.yml")
+                    if os.path.exists(docker_compose_file):
+                        logger.info(f"找到 infra 目录: {abs_path} (包含 docker-compose.yml)")
+                        return abs_path
+                    else:
+                        logger.debug(f"目录存在但无 docker-compose.yml: {abs_path}")
+            except Exception as e:
+                logger.debug(f"检查路径失败 {path}: {e}")
+                continue
         
-        logger.warning("未找到 infra 目录")
+        # 特殊处理：在容器内，/app/../infra 会被 os.path.abspath 解析为 /infra（错误）
+        # 需要手动构建路径
+        if os.path.exists("/app"):
+            # 在容器内，backend 挂载在 /app
+            # 由于 docker-compose 挂载 ../backend:/app，我们需要找到实际的 infra 目录
+            # 但容器内无法直接知道，所以我们需要通过其他方式
+            # 检查 /app/configs 是否存在（这是 docker-compose 挂载的）
+            if os.path.exists("/app/configs"):
+                # 在容器内，配置文件目录已经挂载到 /app/configs
+                # 但我们需要找到 infra 目录来构建完整的宿主机路径
+                # 由于 docker-compose 挂载 ./validator-clients/configs:/app/configs
+                # 我们可以通过检查 /app/configs 的父目录来找到 infra
+                # 但实际上，在容器内执行 docker run 时，我们需要的是宿主机路径
+                # 所以我们需要从环境变量或配置中获取，或者使用相对路径
+                logger.warning("在容器内运行，但无法直接找到 infra 目录")
+                # 返回 None，让调用者使用备用逻辑
+                return None
+        
+        logger.warning("未找到 infra 目录（包含 docker-compose.yml）")
         return None
     
     def _find_network_name(self) -> Optional[str]:
@@ -470,13 +502,81 @@ class ClientProcessService:
                     
                     if infra_dir:
                         # 使用 infra 目录作为基准路径
-                        config_dir_abs = os.path.join(infra_dir, config_dir_host)
+                        # 确保 infra_dir 是绝对路径
+                        infra_dir_abs = os.path.abspath(infra_dir)
+                        config_dir_abs = os.path.join(infra_dir_abs, config_dir_host)
                         config_dir_abs = os.path.abspath(config_dir_abs)
-                        logger.info(f"使用 infra 目录作为基准: {infra_dir}, 配置文件目录: {config_dir_abs}")
+                        logger.info(f"使用 infra 目录作为基准: {infra_dir_abs}, 配置文件目录: {config_dir_abs}")
                     else:
-                        # 如果找不到 infra 目录，使用当前工作目录
-                        config_dir_abs = os.path.abspath(config_dir_host)
-                        logger.warning(f"未找到 infra 目录，使用当前工作目录: {config_dir_abs}")
+                        # 如果找不到 infra 目录，需要特殊处理
+                        # 在容器内，/app/../infra 会被 os.path.abspath 解析为 /infra（错误）
+                        # 我们需要使用不同的方法
+                        
+                        cwd = os.getcwd()
+                        logger.warning(f"未找到 infra 目录，当前工作目录: {cwd}")
+                        
+                        # 关键问题：在容器内执行 docker run 时
+                        # Docker 会从宿主机路径解析挂载路径
+                        # 所以我们需要宿主机路径，但我们在容器内
+                        
+                        # 解决方案：使用 docker inspect 查找 backend 容器的挂载点
+                        # 或者，通过检查 /app/configs 的挂载信息
+                        # 或者，使用环境变量
+                        
+                        # 方法1: 检查环境变量
+                        infra_path_env = os.getenv("INFRA_DIR")
+                        if infra_path_env:
+                            config_dir_abs = os.path.join(infra_path_env, config_dir_host)
+                            config_dir_abs = os.path.abspath(config_dir_abs)
+                            logger.info(f"从环境变量 INFRA_DIR 获取: {infra_path_env}, 配置文件目录: {config_dir_abs}")
+                        else:
+                            # 方法2: 在容器内，通过 docker inspect 查找挂载点
+                            # 查找 backend 容器的挂载信息
+                            try:
+                                inspect_result = subprocess.run(
+                                    ["docker", "inspect", "--format", "{{range .Mounts}}{{.Source}} {{.Destination}}\n{{end}}", "backend"],
+                                    capture_output=True,
+                                    text=True,
+                                    timeout=5
+                                )
+                                if inspect_result.returncode == 0:
+                                    # 解析挂载信息，找到 validator-clients/configs 的挂载点
+                                    mounts = inspect_result.stdout.strip().split('\n')
+                                    found_mount = False
+                                    for mount in mounts:
+                                        if mount and 'validator-clients/configs' in mount:
+                                            parts = mount.split()
+                                            if len(parts) >= 2:
+                                                host_path = parts[0]  # 宿主机路径
+                                                # 提取 infra 目录（validator-clients/configs 的父目录）
+                                                if host_path.endswith('/validator-clients/configs') or host_path.endswith('\\validator-clients\\configs'):
+                                                    infra_dir = os.path.dirname(host_path)
+                                                    config_dir_abs = os.path.join(infra_dir, config_dir_host)
+                                                    config_dir_abs = os.path.abspath(config_dir_abs)
+                                                    logger.info(f"从 Docker 挂载信息找到 infra 目录: {infra_dir}, 配置文件目录: {config_dir_abs}")
+                                                    found_mount = True
+                                                    break
+                                    
+                                    if not found_mount:
+                                        # 如果没找到，使用备用方法
+                                        raise ValueError("未找到挂载信息")
+                            except Exception as e:
+                                logger.warning(f"无法从 Docker 挂载信息获取路径: {e}")
+                                # 方法3: 使用相对路径，但需要确保 docker run 在正确的目录执行
+                                # 由于我们无法可靠地找到 infra 目录，返回错误
+                                error_msg = (
+                                    f"无法找到 infra 目录来解析配置文件路径。"
+                                    f"请设置 INFRA_DIR 环境变量指向 docker-compose.yml 所在目录。"
+                                    f"当前工作目录: {cwd}, 配置文件路径: {config_dir_host}"
+                                )
+                                logger.error(error_msg)
+                                return {
+                                    "success": False,
+                                    "message": error_msg,
+                                    "config_dir": config_dir,
+                                    "config_dir_host": config_dir_host,
+                                    "suggestion": "设置 INFRA_DIR 环境变量，例如: export INFRA_DIR=/path/to/system_v2/infra"
+                                }
                 else:
                     config_dir_abs = config_dir_host
                 

@@ -202,6 +202,8 @@ services:
       # kurtosis-manager 使用 host 网络，后端通过主机 IP 访问
       # 使用 host.docker.internal 或主机网关 IP (通常是 172.18.0.1)
       - KURTOSIS_MANAGER_URL=http://host.docker.internal:8002
+      # INFRA_DIR: docker-compose.yml 所在目录的绝对路径（用于解析客户端配置文件路径）
+      - INFRA_DIR=${PWD}
     volumes:
       - ../backend:/app
       - ../code/external:/app/external:ro
