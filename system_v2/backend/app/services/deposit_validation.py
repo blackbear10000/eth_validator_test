@@ -305,7 +305,7 @@ class DepositValidationService:
                     )
         
         try:
-        self.db.commit()
+            self.db.commit()
         except Exception as e:
             logger.error(f"提交事务失败: {e}", exc_info=True)
             self.db.rollback()
