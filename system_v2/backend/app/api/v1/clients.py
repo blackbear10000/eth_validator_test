@@ -394,7 +394,9 @@ async def start_client(
             client_id=client_id,
             client_type=client.client_type,  # client_type 已经是字符串，不需要 .value
             config_file=config_file_name,  # 容器内路径（相对于 /config）
-            config_dir=config_dir  # 宿主机路径（用于挂载）
+            config_dir=config_dir,  # 宿主机路径（用于挂载）
+            web3signer_url=client.web3signer_url,  # Web3Signer URL
+            pubkeys=pubkeys  # 公钥列表
         )
         
         if not result.get("success"):

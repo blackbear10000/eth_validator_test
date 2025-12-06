@@ -414,7 +414,9 @@ class ClientProcessService:
         client_id: int,
         client_type: str,
         config_file: Optional[str] = None,
-        config_dir: Optional[str] = None
+        config_dir: Optional[str] = None,
+        web3signer_url: Optional[str] = None,
+        pubkeys: Optional[List[str]] = None
     ) -> Dict[str, any]:
         """
         启动客户端 Docker 容器
@@ -683,7 +685,12 @@ class ClientProcessService:
             cmd.append(docker_image)
             
             # 构建容器内启动命令
-            container_cmd = self._build_container_command(client_type, config_file)
+            container_cmd = self._build_container_command(
+                client_type, 
+                config_file,
+                web3signer_url=web3signer_url,
+                pubkeys=pubkeys or []
+            )
             cmd.extend(container_cmd)
             
             # 执行 docker run
@@ -1065,7 +1072,9 @@ class ClientProcessService:
     def _build_container_command(
         self,
         client_type: str,
-        config_file: Optional[str] = None
+        config_file: Optional[str] = None,
+        web3signer_url: Optional[str] = None,
+        pubkeys: Optional[List[str]] = None
     ) -> List[str]:
         """
         构建容器内启动命令
@@ -1076,39 +1085,112 @@ class ClientProcessService:
         Args:
             client_type: 客户端类型
             config_file: 配置文件路径（容器内路径，如 /config/config.yaml）
+            web3signer_url: Web3Signer URL
+            pubkeys: 公钥列表（可选，如果不设置则等待通过 Remote Keymanager API 设置）
             
         Returns:
             启动命令参数列表（不包含主命令）
         """
         client_type_lower = client_type.lower()
+        pubkeys = pubkeys or []
         
         if 'prysm' in client_type_lower:
             # Prysm 官方镜像 ENTRYPOINT 已经是 ["prysm", "validator"]
             # 我们只需要传递参数
             cmd = []
+            
+            # 配置文件（如果提供）
             if config_file:
                 # 如果传入的是相对路径，转换为容器内绝对路径
                 if not config_file.startswith('/'):
                     config_file = f"/config/{config_file}"
                 cmd.extend(['--config-file', config_file])
+            
+            # Web3Signer 配置
+            if web3signer_url:
+                cmd.extend(['--validators-external-signer-url', web3signer_url])
+            
+            # 公钥列表（可选）
+            if pubkeys:
+                # 格式化公钥列表（逗号分隔）
+                pubkeys_clean = []
+                for pubkey in pubkeys:
+                    pubkey_clean = pubkey.lower().strip()
+                    if not pubkey_clean.startswith('0x'):
+                        pubkey_clean = f"0x{pubkey_clean}"
+                    pubkeys_clean.append(pubkey_clean)
+                pubkeys_str = ','.join(pubkeys_clean)
+                cmd.extend(['--validators-external-signer-public-keys', pubkeys_str])
+            
+            # 启用 Remote Keymanager API
+            cmd.append('--web')
+            
+            # Public Key Persistence 文件路径
+            cmd.extend(['--validators-external-signer-key-file', '/config/pubkey_persistence.txt'])
+            
+            # Wallet 目录（用于 auth-token，即使不使用本地钱包）
+            cmd.extend(['--wallet-dir', '/wallet'])
+            
             return cmd
         
         elif 'lighthouse' in client_type_lower:
             # Lighthouse 官方镜像可能需要完整命令
             cmd = ['validator']
+            
+            # 配置文件（如果提供）
             if config_file:
                 if not config_file.startswith('/'):
                     config_file = f"/config/{config_file}"
                 cmd.extend(['--config-file', config_file])
+            
+            # Web3Signer 配置
+            if web3signer_url:
+                cmd.extend(['--validators-external-signer-url', web3signer_url])
+            
+            # 公钥列表（可选）
+            if pubkeys:
+                pubkeys_clean = []
+                for pubkey in pubkeys:
+                    pubkey_clean = pubkey.lower().strip()
+                    if not pubkey_clean.startswith('0x'):
+                        pubkey_clean = f"0x{pubkey_clean}"
+                    pubkeys_clean.append(pubkey_clean)
+                pubkeys_str = ','.join(pubkeys_clean)
+                cmd.extend(['--validators-external-signer-public-keys', pubkeys_str])
+            
+            # Lighthouse 的 Remote Keymanager API 通常通过 HTTP API 端口启用
+            # 已在配置文件中设置 http.port = 5062
+            
             return cmd
         
         elif 'teku' in client_type_lower:
             # Teku 官方镜像的 ENTRYPOINT 可能已经设置
             cmd = []
+            
+            # 配置文件（如果提供）
             if config_file:
                 if not config_file.startswith('/'):
                     config_file = f"/config/{config_file}"
                 cmd.extend(['--config-file', config_file])
+            
+            # Web3Signer 配置
+            if web3signer_url:
+                cmd.extend(['--validators-external-signer-url', web3signer_url])
+            
+            # 公钥列表（可选）
+            if pubkeys:
+                pubkeys_clean = []
+                for pubkey in pubkeys:
+                    pubkey_clean = pubkey.lower().strip()
+                    if not pubkey_clean.startswith('0x'):
+                        pubkey_clean = f"0x{pubkey_clean}"
+                    pubkeys_clean.append(pubkey_clean)
+                pubkeys_str = ','.join(pubkeys_clean)
+                cmd.extend(['--validators-external-signer-public-keys', pubkeys_str])
+            
+            # Teku 的 Remote Keymanager API 通过 REST API 启用
+            # 已在配置文件中设置 beacon.beacon-rest-api-enabled = true
+            
             return cmd
         
         raise ValueError(f"不支持的客户端类型: {client_type}")

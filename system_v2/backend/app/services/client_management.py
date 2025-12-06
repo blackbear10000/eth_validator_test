@@ -421,15 +421,19 @@ class ClientManagementService:
         config_dir: Path
     ) -> Dict[str, str]:
         """生成 Prysm 配置"""
-        # Public Key Persistence 文件
-        pubkey_file = config_dir / "pubkey_persistence.json"
-        pubkey_data = {
-            "pubkeys": pubkeys
-        }
+        # Public Key Persistence 文件（文本格式，每行一个公钥）
+        # 根据 Prysm 文档：https://prysm.offchainlabs.com/docs/manage-wallet/web3signer/
+        pubkey_file = config_dir / "pubkey_persistence.txt"
         with open(pubkey_file, 'w') as f:
-            json.dump(pubkey_data, f, indent=2)
+            for pubkey in pubkeys:
+                # 确保公钥格式正确（hex 格式，带 0x 前缀）
+                pubkey_clean = pubkey.lower().strip()
+                if not pubkey_clean.startswith('0x'):
+                    pubkey_clean = f"0x{pubkey_clean}"
+                f.write(f"{pubkey_clean}\n")
         
         # 主配置文件（YAML 格式，Prysm 使用）
+        # 注意：web3signer-url 将通过命令行参数传递，不放在配置文件中
         config_file = config_dir / "config.yaml"
         config = {
             "validator": {
@@ -441,8 +445,8 @@ class ClientManagementService:
                 "rpc-host": client_instance.grpc_endpoint or "localhost:4000",
                 "web3-provider": client_instance.beacon_api_url or "http://localhost:5052"
             },
-            "slashing-protection-db-url": "postgresql://postgres:password@localhost:5432/web3signer",
-            "web3signer-url": client_instance.web3signer_url
+            "slashing-protection-db-url": "postgresql://postgres:password@localhost:5432/web3signer"
+            # web3signer-url 已移除，将通过命令行参数传递
         }
         
         import yaml
@@ -461,27 +465,30 @@ class ClientManagementService:
         config_dir: Path
     ) -> Dict[str, str]:
         """生成 Lighthouse 配置"""
-        # Public Key Persistence 文件
-        pubkey_file = config_dir / "pubkey_persistence.json"
-        pubkey_data = {
-            "pubkeys": pubkeys
-        }
+        # Public Key Persistence 文件（文本格式，每行一个公钥）
+        pubkey_file = config_dir / "pubkey_persistence.txt"
         with open(pubkey_file, 'w') as f:
-            json.dump(pubkey_data, f, indent=2)
+            for pubkey in pubkeys:
+                # 确保公钥格式正确（hex 格式，带 0x 前缀）
+                pubkey_clean = pubkey.lower().strip()
+                if not pubkey_clean.startswith('0x'):
+                    pubkey_clean = f"0x{pubkey_clean}"
+                f.write(f"{pubkey_clean}\n")
         
         # Lighthouse 使用 TOML 配置
+        # 注意：Lighthouse 的 Web3Signer 配置可能需要通过命令行参数传递
         config_file = config_dir / "config.toml"
         config_content = f"""
 [validator_client]
 beacon-node = "{client_instance.beacon_api_url or 'http://localhost:5052'}"
-wallet = "/wallet"
 
 [http]
 address = "0.0.0.0"
 port = 5062
 
-[web3signer]
-url = "{client_instance.web3signer_url}"
+# Web3Signer 配置将通过命令行参数传递
+# [web3signer]
+# url = "{client_instance.web3signer_url}"
 """
         
         with open(config_file, 'w') as f:
@@ -499,15 +506,19 @@ url = "{client_instance.web3signer_url}"
         config_dir: Path
     ) -> Dict[str, str]:
         """生成 Teku 配置"""
-        # Public Key Persistence 文件
-        pubkey_file = config_dir / "pubkey_persistence.json"
-        pubkey_data = {
-            "pubkeys": pubkeys
-        }
+        # Public Key Persistence 文件（文本格式，每行一个公钥）
+        pubkey_file = config_dir / "pubkey_persistence.txt"
         with open(pubkey_file, 'w') as f:
-            json.dump(pubkey_data, f, indent=2)
+            for pubkey in pubkeys:
+                # 确保公钥格式正确（hex 格式，带 0x 前缀）
+                pubkey_clean = pubkey.lower().strip()
+                if not pubkey_clean.startswith('0x'):
+                    pubkey_clean = f"0x{pubkey_clean}"
+                f.write(f"{pubkey_clean}\n")
         
         # Teku 使用 YAML 配置
+        # 注意：validator-external-signer-public-keys 可以通过命令行参数传递
+        # 如果 pubkeys 为空，则不设置，让验证器等待通过 Remote Keymanager API 设置
         config_file = config_dir / "config.yaml"
         config = {
             "beacon": {
@@ -515,8 +526,8 @@ url = "{client_instance.web3signer_url}"
                 "beacon-rest-api-port": 5051
             },
             "validator-client": {
-                "validator-external-signer-url": client_instance.web3signer_url,
-                "validator-external-signer-public-keys": pubkeys
+                "validator-external-signer-url": client_instance.web3signer_url
+                # validator-external-signer-public-keys 将通过命令行参数传递（如果 pubkeys 不为空）
             }
         }
         
