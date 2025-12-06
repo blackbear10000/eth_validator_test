@@ -25,6 +25,78 @@ class ClientProcessService:
             "lighthouse": "sigp/lighthouse:latest",
             "teku": "consensys/teku:latest"
         }
+        # 容器内路径到宿主机路径的映射
+        # docker-compose.yml 中：./validator-clients/configs:/app/configs:rw
+        self.container_to_host_path_map = {
+            "/app/configs": "validator-clients/configs",
+            "/app/validator-clients-data": "validator-clients/data"
+        }
+    
+    def _convert_container_path_to_host(self, container_path: str) -> str:
+        """
+        将容器内路径转换为宿主机路径
+        
+        Args:
+            container_path: 容器内路径（如 /app/configs/prysm/client1）
+            
+        Returns:
+            宿主机路径（如 validator-clients/configs/prysm/client1）
+        """
+        if not container_path:
+            return container_path
+        
+        # 如果是绝对路径且以 /app/configs 开头，转换为宿主机路径
+        if container_path.startswith("/app/configs"):
+            # 移除 /app/configs 前缀，添加 validator-clients/configs 前缀
+            relative_path = container_path[len("/app/configs"):]
+            # 移除开头的斜杠
+            if relative_path.startswith("/"):
+                relative_path = relative_path[1:]
+            host_path = os.path.join("validator-clients", "configs", relative_path)
+            logger.debug(f"路径转换: {container_path} -> {host_path}")
+            return host_path
+        
+        # 如果是绝对路径且以 /app/validator-clients-data 开头
+        if container_path.startswith("/app/validator-clients-data"):
+            relative_path = container_path[len("/app/validator-clients-data"):]
+            if relative_path.startswith("/"):
+                relative_path = relative_path[1:]
+            host_path = os.path.join("validator-clients", "data", relative_path)
+            logger.debug(f"路径转换: {container_path} -> {host_path}")
+            return host_path
+        
+        # 如果已经是相对路径或宿主机路径，直接返回
+        return container_path
+    
+    def _find_infra_directory(self) -> Optional[str]:
+        """
+        查找 infra 目录的路径
+        
+        Returns:
+            infra 目录的绝对路径，如果找不到则返回 None
+        """
+        # 尝试多个可能的路径
+        possible_paths = [
+            # 从 backend 容器内运行时
+            "/app/../infra",  # backend 在 /app，infra 在 /app/../infra
+            # 从 backend/app/services 向上查找
+            os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), "infra"),
+            # 从当前工作目录查找
+            os.path.join(os.getcwd(), "infra"),
+            os.path.join(os.getcwd(), "..", "infra"),
+            # 相对路径
+            "infra",
+            "../infra",
+        ]
+        
+        for path in possible_paths:
+            abs_path = os.path.abspath(path)
+            if os.path.exists(abs_path) and os.path.isdir(abs_path):
+                logger.debug(f"找到 infra 目录: {abs_path}")
+                return abs_path
+        
+        logger.warning("未找到 infra 目录")
+        return None
     
     def _find_network_name(self) -> Optional[str]:
         """
@@ -385,36 +457,72 @@ class ClientProcessService:
             
             # 配置文件挂载
             if config_dir:
-                # 确保使用绝对路径
-                # 如果 config_dir 是相对路径，需要转换为绝对路径
-                if not os.path.isabs(config_dir):
-                    # 相对于 backend 容器的工作目录
-                    config_dir_abs = os.path.abspath(config_dir)
+                # 将容器内路径转换为宿主机路径
+                config_dir_host = self._convert_container_path_to_host(config_dir)
+                logger.info(f"配置文件路径转换: {config_dir} -> {config_dir_host}")
+                
+                # 确保使用绝对路径（相对于 docker-compose.yml 所在目录）
+                # docker-compose.yml 在 system_v2/infra/ 目录
+                # 配置文件应该在 system_v2/infra/validator-clients/configs/...
+                if not os.path.isabs(config_dir_host):
+                    # 查找 infra 目录
+                    infra_dir = self._find_infra_directory()
+                    
+                    if infra_dir:
+                        # 使用 infra 目录作为基准路径
+                        config_dir_abs = os.path.join(infra_dir, config_dir_host)
+                        config_dir_abs = os.path.abspath(config_dir_abs)
+                        logger.info(f"使用 infra 目录作为基准: {infra_dir}, 配置文件目录: {config_dir_abs}")
+                    else:
+                        # 如果找不到 infra 目录，使用当前工作目录
+                        config_dir_abs = os.path.abspath(config_dir_host)
+                        logger.warning(f"未找到 infra 目录，使用当前工作目录: {config_dir_abs}")
                 else:
-                    config_dir_abs = config_dir
+                    config_dir_abs = config_dir_host
                 
                 # 确保目录存在
                 if not os.path.exists(config_dir_abs):
                     logger.warning(f"配置文件目录不存在，将创建: {config_dir_abs}")
-                    os.makedirs(config_dir_abs, exist_ok=True)
+                    try:
+                        os.makedirs(config_dir_abs, exist_ok=True)
+                    except Exception as e:
+                        logger.error(f"创建配置文件目录失败: {config_dir_abs}, 错误: {e}")
+                        return {
+                            "success": False,
+                            "message": f"无法创建配置文件目录: {config_dir_abs}",
+                            "error": str(e)
+                        }
                 
                 # 验证配置文件是否存在（如果指定了配置文件）
                 if config_file:
-                    # config_file 是容器内路径（如 config.yaml），需要检查宿主机路径
+                    # config_file 是文件名（如 config.yaml），需要检查宿主机路径
                     config_file_host = os.path.join(config_dir_abs, config_file)
                     if not os.path.exists(config_file_host):
-                        error_msg = f"配置文件不存在: {config_file_host} (容器内路径: /config/{config_file})"
+                        error_msg = (
+                            f"配置文件不存在: {config_file_host} "
+                            f"(容器内路径: /config/{config_file}, "
+                            f"原始路径: {config_dir})"
+                        )
                         logger.error(error_msg)
+                        # 列出目录内容用于调试
+                        try:
+                            if os.path.exists(config_dir_abs):
+                                files = os.listdir(config_dir_abs)
+                                logger.error(f"配置文件目录内容: {files}")
+                        except Exception as e:
+                            logger.warning(f"无法列出目录内容: {e}")
+                        
                         return {
                             "success": False,
                             "message": error_msg,
                             "config_file_path": config_file_host,
-                            "config_dir": config_dir_abs
+                            "config_dir": config_dir_abs,
+                            "container_path": f"/config/{config_file}"
                         }
-                    logger.info(f"验证配置文件存在: {config_file_host}")
+                    logger.info(f"验证配置文件存在: {config_file_host} (容器内: /config/{config_file})")
                 
                 cmd.extend(["-v", f"{config_dir_abs}:/config:ro"])
-                logger.debug(f"挂载配置目录: {config_dir_abs} -> /config")
+                logger.info(f"挂载配置目录: {config_dir_abs} -> /config (原始路径: {config_dir})")
             
             # 数据目录挂载（持久化）
             # 在容器内使用 /app/validator-clients-data（挂载到宿主机）
