@@ -136,8 +136,9 @@ class ClientManagementService:
                 logger.debug(f"客户端类型 {client_instance.client_type} 可能不需要 auth token")
                 return None
             
-            # 从容器中读取 auth token 文件
+            # 方法1：从容器中读取 auth token 文件
             import subprocess
+            import re
             result = subprocess.run(
                 ['docker', 'exec', container_name, 'cat', auth_token_path],
                 capture_output=True,
@@ -159,7 +160,30 @@ class ClientManagementService:
                     logger.warning(f"容器 {container_name} 的 auth token 文件行数不足（期望至少2行，实际{len(lines)}行）")
                     logger.debug(f"文件内容: {result.stdout[:200]}")  # 只记录前200个字符
             else:
-                logger.warning(f"无法从容器 {container_name} 读取 auth token: {result.stderr}")
+                logger.warning(f"无法从容器 {container_name} 读取 auth token 文件: {result.stderr}")
+                logger.info(f"尝试从容器日志中提取 token...")
+            
+            # 方法2：从容器日志中提取 token（备用方案）
+            # Prysm 会在日志中打印: http://127.0.0.1:7500/initialize?token=...
+            try:
+                log_result = subprocess.run(
+                    ['docker', 'logs', container_name],
+                    capture_output=True,
+                    text=True,
+                    timeout=5
+                )
+                if log_result.returncode == 0:
+                    # 查找 token URL 模式: /initialize?token=...
+                    token_pattern = r'/initialize\?token=([a-zA-Z0-9._-]+)'
+                    matches = re.findall(token_pattern, log_result.stdout)
+                    if matches:
+                        token = matches[-1]  # 使用最后一个匹配（最新的）
+                        logger.info(f"从容器 {container_name} 日志中提取到 auth token")
+                        return token
+                    else:
+                        logger.debug(f"容器 {container_name} 日志中未找到 token URL")
+            except Exception as e:
+                logger.debug(f"从容器日志提取 token 失败: {e}")
                 
         except Exception as e:
             logger.warning(f"读取 auth token 失败: {e}", exc_info=True)

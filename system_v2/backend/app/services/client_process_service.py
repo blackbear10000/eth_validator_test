@@ -781,6 +781,19 @@ class ClientProcessService:
             cmd.extend(["-v", f"{data_dir_abs}:/data:rw"])
             logger.debug(f"挂载数据目录: {data_dir_abs} -> /data")
             
+            # Wallet 目录挂载（用于 auth-token，Prysm 需要）
+            # 在容器内使用 /app/validator-clients-wallet（挂载到宿主机）
+            if os.path.exists("/app"):
+                # 在容器内
+                wallet_dir = f"/app/validator-clients-wallet/{client_id}"
+            else:
+                # 在宿主机上
+                wallet_dir = f"validator-clients-wallet/{client_id}"
+            wallet_dir_abs = os.path.abspath(wallet_dir)
+            os.makedirs(wallet_dir_abs, exist_ok=True)
+            cmd.extend(["-v", f"{wallet_dir_abs}:/wallet:rw"])
+            logger.debug(f"挂载 Wallet 目录: {wallet_dir_abs} -> /wallet (用于 auth-token)")
+            
             # 镜像
             cmd.append(docker_image)
             
