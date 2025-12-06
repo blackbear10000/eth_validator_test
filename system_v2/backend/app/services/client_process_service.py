@@ -1349,6 +1349,8 @@ class ClientProcessService:
             
             # Wallet 目录（用于 auth-token，即使不使用本地钱包）
             cmd.extend(['--wallet-dir', '/wallet'])
+            # 显式指定 auth-token 文件路径（覆盖默认路径）
+            cmd.extend(['--keymanager-token-file', '/wallet/auth-token'])
             
             logger.info(f"[Prysm 启动] 最终启动命令参数: {' '.join(cmd)}")
             return cmd
