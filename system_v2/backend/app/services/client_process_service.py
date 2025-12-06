@@ -130,6 +130,41 @@ class ClientProcessService:
         logger.warning("未找到 infra 目录（包含 docker-compose.yml）")
         return None
     
+    def _find_network_config_file(self) -> Optional[str]:
+        """
+        查找 network-config.yaml 文件路径
+        
+        Returns:
+            network-config.yaml 文件的绝对路径，如果找不到则返回 None
+        """
+        # 尝试多个可能的路径
+        possible_paths = [
+            # 从 infra 目录查找
+            os.path.join(self._find_infra_directory() or "", "kurtosis", "network-config.yaml"),
+            # 从项目根目录查找
+            os.path.join(os.getcwd(), "infra", "kurtosis", "network-config.yaml"),
+            os.path.join(os.getcwd(), "..", "infra", "kurtosis", "network-config.yaml"),
+            # 相对路径
+            "infra/kurtosis/network-config.yaml",
+            "../infra/kurtosis/network-config.yaml",
+            "../../infra/kurtosis/network-config.yaml",
+        ]
+        
+        for path in possible_paths:
+            if not path:
+                continue
+            try:
+                abs_path = os.path.abspath(path)
+                if os.path.exists(abs_path) and os.path.isfile(abs_path):
+                    logger.info(f"找到 network-config.yaml: {abs_path}")
+                    return abs_path
+            except Exception as e:
+                logger.debug(f"检查路径失败 {path}: {e}")
+                continue
+        
+        logger.warning("未找到 network-config.yaml 文件")
+        return None
+    
     def _find_network_name(self) -> Optional[str]:
         """
         查找实际的网络名称
@@ -676,6 +711,14 @@ class ClientProcessService:
                 cmd.extend(["-v", f"{config_dir_abs}:/config:rw"])
                 logger.info(f"挂载配置目录: {config_dir_abs} -> /config (原始路径: {config_dir}, 读写模式)")
             
+            # 挂载网络配置文件（用于 Prysm 等客户端）
+            network_config_path = self._find_network_config_file()
+            if network_config_path:
+                cmd.extend(["-v", f"{network_config_path}:/network-config.yaml:ro"])
+                logger.info(f"挂载网络配置文件: {network_config_path} -> /network-config.yaml")
+            else:
+                logger.warning("未找到 network-config.yaml 文件，Prysm 可能无法正确配置网络参数")
+            
             # 数据目录挂载（持久化）
             # 在容器内使用 /app/validator-clients-data（挂载到宿主机）
             if os.path.exists("/app"):
@@ -1127,6 +1170,11 @@ class ClientProcessService:
             
             # 接受使用条款（非交互式环境必需）
             cmd.append('--accept-terms-of-use')
+            
+            # 网络配置文件（关键！用于配置 fork version、genesis time 等网络参数）
+            # 这个文件必须与 dev net 的网络配置匹配，否则会出现 slot 不匹配错误
+            cmd.extend(['--chain-config-file', '/network-config.yaml'])
+            logger.info(f"[Prysm 启动] 使用网络配置文件: /network-config.yaml")
             
             # gRPC 端点配置（优先通过命令行参数传递，更可靠）
             # 根据 Prysm 文档，--beacon-rpc-provider 参数支持在 validator 命令中使用
