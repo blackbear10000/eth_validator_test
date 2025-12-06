@@ -731,8 +731,8 @@ class ClientProcessService:
             return {
                 "success": False,
                 "message": "销毁容器超时"
-                    }
-                except Exception as e:
+            }
+        except Exception as e:
             logger.error(f"销毁客户端 {client_id} 失败: {e}", exc_info=True)
             return {
                 "success": False,
@@ -804,13 +804,13 @@ class ClientProcessService:
             return {
                 "success": False,
                 "message": "停止容器超时"
-                    }
-            except Exception as e:
+            }
+        except Exception as e:
             logger.error(f"停止客户端 {client_id} 失败: {e}", exc_info=True)
-                return {
-                    "success": False,
-                    "message": f"停止失败: {str(e)}"
-                }
+            return {
+                "success": False,
+                "message": f"停止失败: {str(e)}"
+            }
         
     def _build_container_command(
         self,
@@ -915,9 +915,9 @@ class ClientProcessService:
             }
         except Exception as e:
             logger.error(f"获取日志失败: {e}")
-        return {
-            "client_id": client_id,
-            "logs": [],
+            return {
+                "client_id": client_id,
+                "logs": [],
                 "error": str(e)
-        }
+            }
 
