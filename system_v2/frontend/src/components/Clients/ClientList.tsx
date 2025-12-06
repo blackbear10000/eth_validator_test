@@ -21,11 +21,9 @@ import {
   PlusOutlined,
   PlayCircleOutlined,
   StopOutlined,
-  ReloadOutlined,
   KeyOutlined,
   EditOutlined,
   DeleteOutlined,
-  EyeOutlined,
   PauseCircleOutlined,
   CaretRightOutlined,
   CloseCircleOutlined,
@@ -34,6 +32,7 @@ import {
 import { clientsApi, ClientInstance } from '../../api/clients'
 import { keysApi } from '../../api/keys'
 import { networkApi } from '../../api/network'
+import ClientKeyManagementModal from './ClientKeyManagementModal'
 
 const { Title } = Typography
 const { Option } = Select
@@ -44,11 +43,8 @@ const ClientList: React.FC = () => {
   const [activeTab, setActiveTab] = useState<string>('active')
   const [createModalVisible, setCreateModalVisible] = useState(false)
   const [editModalVisible, setEditModalVisible] = useState(false)
-  const [assignKeysModalVisible, setAssignKeysModalVisible] = useState(false)
-  const [viewKeysModalVisible, setViewKeysModalVisible] = useState(false)
+  const [keyManagementModalVisible, setKeyManagementModalVisible] = useState(false)
   const [selectedClient, setSelectedClient] = useState<ClientInstance | null>(null)
-  const [availableKeys, setAvailableKeys] = useState<any[]>([])
-  const [clientKeys, setClientKeys] = useState<any[]>([])
   const [clientStatuses, setClientStatuses] = useState<Record<number, any>>({})
   const [startingClients, setStartingClients] = useState<Set<number>>(new Set())
   const [logsModalVisible, setLogsModalVisible] = useState(false)
@@ -57,7 +53,6 @@ const ClientList: React.FC = () => {
   const [loadingLogs, setLoadingLogs] = useState(false)
   const [form] = Form.useForm()
   const [editForm] = Form.useForm()
-  const [assignForm] = Form.useForm()
 
   const loadClients = async () => {
     setLoading(true)
@@ -189,15 +184,9 @@ const ClientList: React.FC = () => {
     }
   }
 
-  const handleViewKeys = async (clientId: number) => {
+  const handleManageKeys = (clientId: number) => {
     setSelectedClient(clients.find((c) => c.id === clientId) || null)
-    try {
-      const keys = await clientsApi.getKeys(clientId) as any
-      setClientKeys(keys || [])
-      setViewKeysModalVisible(true)
-    } catch (error: any) {
-      message.error(`加载密钥列表失败: ${error.message}`)
-    }
+    setKeyManagementModalVisible(true)
   }
 
   const handleStart = async (clientId: number) => {
@@ -364,54 +353,6 @@ const ClientList: React.FC = () => {
     }
   }
 
-  const handleAssignKeys = async (clientId: number) => {
-    setSelectedClient(clients.find((c) => c.id === clientId) || null)
-    
-    // 加载可用密钥（包括已激活、已生成存款数据、已提交到链上的密钥）
-    try {
-      const [activeResponse, depositDataResponse, pendingResponse, depositedResponse, activeOnChainResponse] = await Promise.all([
-        keysApi.list({ status: 'active' }) as any,
-        keysApi.list({ status: 'deposit_data_generated' }) as any,
-        keysApi.list({ status: 'pending' }) as any,
-        keysApi.list({ status: 'deposited' }) as any,
-        keysApi.list({ status: 'active_on_chain' }) as any,
-      ])
-      const allKeys = [
-        ...(activeResponse.items || []),
-        ...(depositDataResponse.items || []),
-        ...(pendingResponse.items || []),
-        ...(depositedResponse.items || []),
-        ...(activeOnChainResponse.items || []),
-      ]
-      setAvailableKeys(allKeys)
-      setAssignKeysModalVisible(true)
-    } catch (error: any) {
-      message.error(`加载可用密钥失败: ${error.message}`)
-    }
-  }
-
-  const handleSubmitAssignKeys = async (values: { pubkeys: string[] }) => {
-    if (!selectedClient) return
-
-    try {
-      await clientsApi.assignKeys(selectedClient.id, values.pubkeys)
-      message.success(`成功分配 ${values.pubkeys.length} 个密钥`)
-      setAssignKeysModalVisible(false)
-      assignForm.resetFields()
-      loadClients()
-    } catch (error: any) {
-      message.error(`分配密钥失败: ${error.message}`)
-    }
-  }
-
-  const handleReloadKeys = async (clientId: number) => {
-    try {
-      await clientsApi.reloadKeys(clientId)
-      message.success('密钥重新加载成功')
-    } catch (error: any) {
-      message.error(`重新加载密钥失败: ${error.message}`)
-    }
-  }
 
   const getStatusTag = (clientId: number) => {
     const status = clientStatuses[clientId]
@@ -569,26 +510,12 @@ const ClientList: React.FC = () => {
             </Popconfirm>
             {activeTab === 'active' && (
               <>
-            <Button
-              size="small"
-              icon={<KeyOutlined />}
-              onClick={() => handleAssignKeys(record.id)}
-            >
-              分配密钥
-            </Button>
-            <Button
-              size="small"
-              icon={<ReloadOutlined />}
-              onClick={() => handleReloadKeys(record.id)}
-            >
-              重载密钥
-            </Button>
                 <Button
                   size="small"
-                  icon={<EyeOutlined />}
-                  onClick={() => handleViewKeys(record.id)}
+                  icon={<KeyOutlined />}
+                  onClick={() => handleManageKeys(record.id)}
                 >
-                  查看密钥
+                  管理密钥
                 </Button>
                 <Button
                   size="small"
@@ -605,15 +532,6 @@ const ClientList: React.FC = () => {
                   编辑
                 </Button>
               </>
-            )}
-            {activeTab === 'deleted' && (
-              <Button
-                size="small"
-                icon={<EyeOutlined />}
-                onClick={() => handleViewKeys(record.id)}
-              >
-                查看密钥
-              </Button>
             )}
             {activeTab === 'active' ? (
               <Popconfirm
@@ -817,122 +735,16 @@ const ClientList: React.FC = () => {
         </Form>
       </Modal>
 
-      {/* 查看密钥列表模态框 */}
-      <Modal
-        title={`客户端密钥列表 - ${selectedClient?.name}`}
-        open={viewKeysModalVisible}
-        onCancel={() => {
-          setViewKeysModalVisible(false)
-          setClientKeys([])
+      {/* 密钥管理对话框 */}
+      <ClientKeyManagementModal
+        visible={keyManagementModalVisible}
+        client={selectedClient}
+        onClose={() => {
+          setKeyManagementModalVisible(false)
           setSelectedClient(null)
         }}
-        footer={[
-          <Button key="close" onClick={() => {
-            setViewKeysModalVisible(false)
-            setClientKeys([])
-            setSelectedClient(null)
-          }}>
-            关闭
-          </Button>,
-        ]}
-        width={800}
-      >
-        <Table
-          columns={[
-            {
-              title: '公钥',
-              dataIndex: 'pubkey',
-              key: 'pubkey',
-              render: (text: string) => (
-                <Typography.Text copyable={{ text }} style={{ fontFamily: 'monospace', fontSize: '12px' }}>
-                  {text.slice(0, 20)}...
-                </Typography.Text>
-              ),
-            },
-            {
-              title: '状态',
-              dataIndex: 'status',
-              key: 'status',
-              render: (status: string) => <Tag>{status}</Tag>,
-            },
-            {
-              title: '激活时间',
-              dataIndex: 'activated_at',
-              key: 'activated_at',
-              render: (time: string | null) => (time ? new Date(time).toLocaleString() : '-'),
-            },
-            {
-              title: '存款时间',
-              dataIndex: 'deposited_at',
-              key: 'deposited_at',
-              render: (time: string | null) => (time ? new Date(time).toLocaleString() : '-'),
-            },
-            {
-              title: '操作',
-              key: 'action',
-              width: 100,
-              render: (_: any, record: any) => (
-                selectedClient && activeTab === 'active' ? (
-                  <Popconfirm
-                    title="确定要移除这个密钥吗？"
-                    description="移除后需要重新分配才能使用"
-                    onConfirm={() => handleRemoveKey(selectedClient.id, record.pubkey)}
-                  >
-                    <Button size="small" danger icon={<DeleteOutlined />}>
-                      移除
-                    </Button>
-                  </Popconfirm>
-                ) : null
-              ),
-            },
-            {
-              title: '批次ID',
-              dataIndex: 'batch_id',
-              key: 'batch_id',
-              render: (batchId: string | null) => batchId || '-',
-            },
-          ]}
-          dataSource={clientKeys}
-          rowKey="pubkey"
-          pagination={{ pageSize: 10 }}
-        />
-      </Modal>
-
-      {/* 分配密钥模态框 */}
-      <Modal
-        title={`分配密钥 - ${selectedClient?.name}`}
-        open={assignKeysModalVisible}
-        onCancel={() => {
-          setAssignKeysModalVisible(false)
-          assignForm.resetFields()
-        }}
-        onOk={() => assignForm.submit()}
-        width={600}
-      >
-        <Form form={assignForm} layout="vertical" onFinish={handleSubmitAssignKeys}>
-          <Form.Item
-            name="pubkeys"
-            label="选择密钥"
-            rules={[{ required: true, message: '请至少选择一个密钥' }]}
-          >
-            <Select
-              mode="multiple"
-              placeholder="请选择要分配的密钥"
-              showSearch
-              filterOption={(input, option) => {
-                const children = option?.children as string | undefined
-                return children ? children.toLowerCase().includes(input.toLowerCase()) : false
-              }}
-            >
-              {availableKeys.map((key) => (
-                <Option key={key.pubkey} value={key.pubkey}>
-                  {key.pubkey.slice(0, 20)}... ({key.status})
-                </Option>
-              ))}
-            </Select>
-          </Form.Item>
-        </Form>
-      </Modal>
+        onRefresh={loadClients}
+      />
 
       {/* 查看日志模态框 */}
       <Modal

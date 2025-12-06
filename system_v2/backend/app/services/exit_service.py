@@ -54,7 +54,10 @@ class ExitService:
     
     def get_validator_index(self, pubkey: str) -> Optional[int]:
         """
-        从 Beacon Chain 获取验证者索引
+        从数据库或 Beacon Chain 获取验证者索引
+        
+        优先从数据库的 DepositTransaction 表中获取（如果已激活），
+        否则从 Beacon Chain 查询。
         
         Args:
             pubkey: 验证者公钥
@@ -63,15 +66,45 @@ class ExitService:
             验证者索引或 None
         """
         try:
+            # 方法1：优先从数据库获取（如果验证者已激活）
+            from app.models.database import DepositTransaction
+            deposit_tx = self.db.query(DepositTransaction).filter(
+                DepositTransaction.pubkey == pubkey.lower()
+            ).order_by(DepositTransaction.submitted_at.desc()).first()
+            
+            if deposit_tx and deposit_tx.validator_index is not None:
+                logger.debug(f"从数据库获取验证者索引: {pubkey[:10]}... -> {deposit_tx.validator_index}")
+                return int(deposit_tx.validator_index)
+            
+            # 方法2：从 Beacon Chain 查询
             validator_data = self.beacon_api.get_validator(pubkey)
             if validator_data:
-                validator_info = validator_data.get('validator', {})
-                index = validator_info.get('index')
-                if index:
+                # Beacon API 返回格式: {'index': ..., 'status': '...', 'validator': {...}, 'balance': '...'}
+                # 或者 {'data': {'index': ..., ...}}
+                # 验证者索引在顶层，不在 validator 对象中
+                if isinstance(validator_data, dict) and 'data' in validator_data:
+                    validator_data = validator_data['data']
+                
+                # 从顶层获取 index（根据 validator_state_machine.py 的逻辑）
+                index = validator_data.get('index')
+                if index is not None:
+                    logger.debug(f"从 Beacon API 获取验证者索引: {pubkey[:10]}... -> {index}")
                     return int(index)
+                
+                # 如果顶层没有，尝试从 validator 对象中获取（非标准格式，兼容处理）
+                validator_info = validator_data.get('validator', {})
+                if not validator_info and validator_data.get('index') is not None:
+                    validator_info = validator_data
+                
+                index = validator_info.get('index')
+                if index is not None:
+                    logger.debug(f"从 validator 对象获取验证者索引: {pubkey[:10]}... -> {index}")
+                    return int(index)
+            
+            logger.warning(f"无法获取验证者索引: {pubkey[:10]}...")
             return None
         except Exception as e:
-            logger.error(f"获取验证者索引失败: {e}")
+            logger.error(f"获取验证者索引失败: {e}", exc_info=True)
             return None
     
     def generate_exit_signature(

@@ -98,5 +98,13 @@ export const clientsApi = {
   // 删除客户端密钥
   removeKeys: (clientId: number, pubkeys: string[]) =>
     apiClient.delete(`/clients/${clientId}/keys`, { data: { pubkeys } }),
+
+  // 获取 validator client 实际加载的密钥列表
+  getActualKeys: (clientId: number) =>
+    apiClient.get(`/clients/${clientId}/keys/actual`),
+
+  // 获取密钥对比信息（数据库 vs validator client）
+  getKeysCompare: (clientId: number) =>
+    apiClient.get(`/clients/${clientId}/keys/compare`),
 }
 

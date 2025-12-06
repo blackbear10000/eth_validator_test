@@ -312,6 +312,139 @@ async def sync_keys(
         raise HTTPException(status_code=500, detail=str(e))
 
 
+@router.get("/clients/{client_id}/keys/actual", response_model=dict)
+async def get_actual_keys(
+    client_id: int,
+    client_service: ClientManagementService = Depends(get_client_service)
+):
+    """获取 validator client 实际加载的密钥列表（通过 Remote Validator API）"""
+    try:
+        from app.models.database import ClientInstance
+        db = client_service.db
+        client = db.query(ClientInstance).filter(ClientInstance.id == client_id).first()
+        
+        if not client:
+            raise HTTPException(status_code=404, detail="客户端不存在")
+        
+        # 获取 Remote Validator API URL
+        remote_api_url = client_service._get_remote_validator_api_url(client)
+        if not remote_api_url:
+            raise HTTPException(
+                status_code=400,
+                detail=f"无法确定 Remote Validator API URL（客户端类型: {client.client_type}）"
+            )
+        
+        try:
+            from app.core.remote_validator_client import RemoteValidatorClient
+            remote_client = RemoteValidatorClient(remote_api_url)
+            
+            # 获取实际加载的密钥列表
+            pubkeys = remote_client.get_public_keys()
+            keystores = remote_client.get_keystores()
+            
+            return {
+                "client_id": client_id,
+                "pubkeys": pubkeys,
+                "keystores": keystores,
+                "count": len(pubkeys),
+                "remote_api_url": remote_api_url
+            }
+        except Exception as e:
+            logger.error(f"获取 validator client 实际密钥列表失败: {e}", exc_info=True)
+            raise HTTPException(
+                status_code=500,
+                detail=f"无法连接到 Remote Validator API: {str(e)}"
+            )
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"获取实际密钥列表失败: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/clients/{client_id}/keys/compare", response_model=dict)
+async def compare_keys(
+    client_id: int,
+    client_service: ClientManagementService = Depends(get_client_service)
+):
+    """对比数据库中的密钥列表和 validator client 实际加载的密钥列表"""
+    try:
+        from app.models.database import ClientInstance
+        db = client_service.db
+        client = db.query(ClientInstance).filter(ClientInstance.id == client_id).first()
+        
+        if not client:
+            raise HTTPException(status_code=404, detail="客户端不存在")
+        
+        # 获取数据库中的密钥列表
+        db_keys = client_service.get_client_keys(client)
+        db_pubkeys = set([key.pubkey.lower() for key in db_keys])
+        
+        # 获取 validator client 实际加载的密钥列表
+        remote_api_url = client_service._get_remote_validator_api_url(client)
+        actual_pubkeys = set()
+        keystores_info = []
+        
+        if remote_api_url:
+            try:
+                from app.core.remote_validator_client import RemoteValidatorClient
+                remote_client = RemoteValidatorClient(remote_api_url)
+                actual_pubkeys_list = remote_client.get_public_keys()
+                actual_pubkeys = set([pubkey.lower() for pubkey in actual_pubkeys_list])
+                keystores_info = remote_client.get_keystores()
+            except Exception as e:
+                logger.warning(f"无法获取 validator client 实际密钥列表: {e}")
+                # 继续执行，actual_pubkeys 保持为空集合
+        
+        # 计算差异
+        only_in_db = db_pubkeys - actual_pubkeys
+        only_in_validator = actual_pubkeys - db_pubkeys
+        in_both = db_pubkeys & actual_pubkeys
+        
+        # 构建详细的对比结果
+        comparison = []
+        all_pubkeys = db_pubkeys | actual_pubkeys
+        
+        for pubkey in all_pubkeys:
+            in_db = pubkey in db_pubkeys
+            in_validator = pubkey in actual_pubkeys
+            
+            # 获取数据库中的密钥详细信息
+            db_key_info = None
+            if in_db:
+                db_key = next((k for k in db_keys if k.pubkey.lower() == pubkey), None)
+                if db_key:
+                    db_key_info = {
+                        "status": db_key.status,
+                        "activated_at": db_key.activated_at.isoformat() if db_key.activated_at else None,
+                        "deposited_at": db_key.deposited_at.isoformat() if db_key.deposited_at else None,
+                    }
+            
+            comparison.append({
+                "pubkey": pubkey,
+                "in_database": in_db,
+                "in_validator_client": in_validator,
+                "status": "both" if (in_db and in_validator) else ("database_only" if in_db else "validator_only"),
+                "db_key_info": db_key_info
+            })
+        
+        return {
+            "client_id": client_id,
+            "database_count": len(db_pubkeys),
+            "validator_count": len(actual_pubkeys),
+            "only_in_database": list(only_in_db),
+            "only_in_validator": list(only_in_validator),
+            "in_both": list(in_both),
+            "comparison": comparison,
+            "remote_api_url": remote_api_url
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"对比密钥列表失败: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 @router.post("/clients/{client_id}/start", response_model=dict)
 async def start_client(
     client_id: int,
@@ -327,34 +460,13 @@ async def start_client(
         
         # 获取客户端配置（使用现有的密钥生成配置）
         client_service = ClientManagementService(db)
-        # 获取客户端关联的密钥
+        # 获取客户端关联的所有密钥（用于首次启动时的配置文件）
         keys = client_service.get_client_keys(client)
         pubkeys = [key.pubkey for key in keys] if keys else []
         
-        # 启动前，确保密钥已同步到 Validator Client（如果使用 Remote Validator API）
-        if pubkeys:
-            try:
-                # 同步分配给该客户端的密钥到 Remote Validator API
-                sync_result = client_service.sync_keys_to_validator_client(
-                    client,
-                    add_pubkeys=pubkeys
-                )
-                logger.info(f"启动前同步密钥到 Validator Client: 添加 {len(sync_result.get('added', []))} 个密钥")
-            except Exception as e:
-                logger.warning(f"启动前同步密钥失败: {e}，继续启动流程")
-        
-        # 确保 Web3Signer 已加载所有 ACTIVE 状态的密钥
-        try:
-            from app.models.enums import ValidatorKeyStatus
-            active_keys = [key for key in keys if key.status == ValidatorKeyStatus.ACTIVE.value]
-            if active_keys:
-                logger.info(f"检查 Web3Signer 是否已加载 {len(active_keys)} 个 ACTIVE 密钥...")
-                # Web3Signer 应该已经通过密钥激活流程加载了所有 ACTIVE 密钥
-                # 这里只做检查，不强制重新加载
-        except Exception as e:
-            logger.warning(f"检查 Web3Signer 密钥加载状态失败: {e}")
-        
-        # 生成配置文件
+        # 首次启动时生成包含所有密钥的配置文件
+        # 注意：首次启动使用配置文件，运行状态下的密钥变更才使用 Remote Validator API
+        logger.info(f"首次启动客户端 {client.name}，生成包含 {len(pubkeys)} 个密钥的配置文件")
         if pubkeys:
             config = client_service.generate_config_files(client, pubkeys)
         else:

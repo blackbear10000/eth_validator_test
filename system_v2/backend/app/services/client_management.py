@@ -52,6 +52,25 @@ class ClientManagementService:
             else:
                 self.config_base_path = os.path.join(os.getcwd(), "configs")
     
+    def _is_client_running(self, client_instance: ClientInstance) -> bool:
+        """
+        检查客户端容器是否正在运行
+        
+        Args:
+            client_instance: 客户端实例
+            
+        Returns:
+            True 如果容器正在运行，False 否则
+        """
+        try:
+            from app.services.client_process_service import ClientProcessService
+            process_service = ClientProcessService()
+            status = process_service.get_status(client_instance.id, client_instance.client_type)
+            return status.get('is_running', False)
+        except Exception as e:
+            logger.warning(f"检查客户端运行状态失败: {e}")
+            return False
+    
     def _get_remote_validator_api_url(self, client_instance: ClientInstance) -> Optional[str]:
         """
         获取 Remote Validator API URL
@@ -693,53 +712,33 @@ port = 5062
             
             self.db.commit()
             
-            # 生成配置文件
+            # 处理密钥分配后的操作
             if assigned_keys:
                 pubkey_list = [ck.pubkey for ck in assigned_keys]
-                self.generate_config_files(client_instance, pubkey_list)
+                is_running = self._is_client_running(client_instance)
                 
-                # 检查是否有非 UNUSED 状态的密钥需要加载到 Web3Signer
-                non_unused_pubkeys = [
-                    ck.pubkey for ck in assigned_keys
-                    if self.db.query(ValidatorKey).filter(
-                        ValidatorKey.pubkey == ck.pubkey,
-                        ValidatorKey.status != ValidatorKeyStatus.UNUSED.value
-                    ).first()
-                ]
-                
-                # 如果有非 UNUSED 状态的密钥，同步配置文件并触发 Web3Signer 轮转加载
-                if non_unused_pubkeys:
-                    try:
-                        from app.services.web3signer_key_config_service import Web3SignerKeyConfigService
-                        
-                        # 同步配置文件
-                        config_service = Web3SignerKeyConfigService(self.db)
-                        sync_result = config_service.sync_key_configs()
-                        logger.info(
-                            f"密钥配置文件同步完成: 创建 {sync_result['created']} 个，"
-                            f"删除 {sync_result['removed']} 个"
-                        )
-                        
-                        # 触发轮转加载
-                        logger.info(f"触发 Web3Signer 轮转加载密钥（分配了 {len(non_unused_pubkeys)} 个非 UNUSED 密钥）...")
-                        reload_result = self.web3signer_client.zero_downtime_reload(wait_for_health=True)
-                        if reload_result.get('success'):
-                            logger.info(f"Web3Signer 密钥轮转加载成功，已分配的非 UNUSED 密钥已自动加载")
-                        else:
-                            logger.warning(f"Web3Signer 密钥轮转加载可能失败: {reload_result.get('error')}")
-                    except Exception as e:
-                        logger.warning(f"自动加载密钥到 Web3Signer 失败: {e}，密钥已分配但需要手动触发 Web3Signer 重新加载", exc_info=True)
-                
-                # 如果使用 Remote Validator API，动态添加密钥到 Validator Client
-                if use_remote_keymanager:
-                    try:
-                        self.sync_keys_to_validator_client(
-                            client_instance,
-                            add_pubkeys=pubkey_list
-                        )
-                        logger.info(f"密钥已通过 Remote Validator API 添加到客户端: {client_instance.name}")
-                    except Exception as e:
-                        logger.warning(f"通过 Remote Validator API 添加密钥失败: {e}，但密钥已分配到客户端")
+                if is_running:
+                    # 客户端正在运行：只通过 Remote Validator API 添加密钥，不生成配置文件
+                    logger.info(f"客户端 {client_instance.name} 正在运行，通过 Remote Validator API 添加密钥")
+                    if use_remote_keymanager:
+                        try:
+                            self.sync_keys_to_validator_client(
+                                client_instance,
+                                add_pubkeys=pubkey_list
+                            )
+                            logger.info(f"密钥已通过 Remote Validator API 添加到客户端: {client_instance.name}")
+                        except Exception as e:
+                            logger.warning(f"通过 Remote Validator API 添加密钥失败: {e}，但密钥已分配到客户端")
+                    else:
+                        logger.warning("客户端正在运行但未启用 Remote Keymanager API，密钥已分配到数据库但未加载到客户端")
+                else:
+                    # 客户端未运行：生成配置文件（包含所有分配的密钥）
+                    logger.info(f"客户端 {client_instance.name} 未运行，生成配置文件")
+                    # 获取所有分配给客户端的密钥（包括新分配的）
+                    all_client_keys = self.get_client_keys(client_instance)
+                    all_pubkeys = [key.pubkey for key in all_client_keys]
+                    self.generate_config_files(client_instance, all_pubkeys)
+                    logger.info(f"配置文件已生成，包含 {len(all_pubkeys)} 个密钥")
             
             logger.info(f"成功分配 {len(assigned_keys)} 个密钥到客户端: {client_instance.name}")
             return assigned_keys
@@ -781,26 +780,37 @@ port = 5062
             
             self.db.commit()
             
-            # 重新生成配置文件（排除已移除的密钥）
-            active_keys = self.db.query(ValidatorClientKey).filter(
-                ValidatorClientKey.client_id == client_instance.id,
-                ValidatorClientKey.status == "active"
-            ).all()
-            
-            if active_keys:
-                pubkey_list = [ck.pubkey for ck in active_keys]
-                self.generate_config_files(client_instance, pubkey_list)
-            
-            # 通过 Remote Validator API 删除密钥
+            # 处理密钥删除后的操作
             if removed_count > 0:
-                try:
-                    self.sync_keys_to_validator_client(
-                        client_instance,
-                        remove_pubkeys=pubkeys
-                    )
-                    logger.info(f"密钥已通过 Remote Validator API 从客户端删除: {client_instance.name}")
-                except Exception as e:
-                    logger.warning(f"通过 Remote Validator API 删除密钥失败: {e}，但密钥已从客户端移除")
+                is_running = self._is_client_running(client_instance)
+                
+                if is_running:
+                    # 客户端正在运行：只通过 Remote Validator API 删除密钥，不生成配置文件
+                    logger.info(f"客户端 {client_instance.name} 正在运行，通过 Remote Validator API 删除密钥")
+                    try:
+                        self.sync_keys_to_validator_client(
+                            client_instance,
+                            remove_pubkeys=pubkeys
+                        )
+                        logger.info(f"密钥已通过 Remote Validator API 从客户端删除: {client_instance.name}")
+                    except Exception as e:
+                        logger.warning(f"通过 Remote Validator API 删除密钥失败: {e}，但密钥已从数据库移除")
+                else:
+                    # 客户端未运行：重新生成配置文件（排除已移除的密钥）
+                    logger.info(f"客户端 {client_instance.name} 未运行，重新生成配置文件")
+                    active_keys = self.db.query(ValidatorClientKey).filter(
+                        ValidatorClientKey.client_id == client_instance.id,
+                        ValidatorClientKey.status == "active"
+                    ).all()
+                    
+                    if active_keys:
+                        pubkey_list = [ck.pubkey for ck in active_keys]
+                        self.generate_config_files(client_instance, pubkey_list)
+                        logger.info(f"配置文件已重新生成，包含 {len(pubkey_list)} 个密钥")
+                    else:
+                        # 如果没有活跃密钥，生成空配置
+                        self.generate_config_files(client_instance, [])
+                        logger.info("配置文件已重新生成（无密钥）")
             
             logger.info(f"成功从客户端移除 {removed_count} 个密钥: {client_instance.name}")
             return removed_count
