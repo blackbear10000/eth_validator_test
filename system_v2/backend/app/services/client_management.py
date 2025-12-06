@@ -56,10 +56,7 @@ class ClientManagementService:
         """
         获取 Remote Validator API URL
         
-        根据客户端类型和配置推断 Remote Validator API URL：
-        - Prysm: 通常使用 Beacon API URL 的同一地址，但端口可能不同（如 7500）
-        - Lighthouse: 通常使用 5062 端口（HTTP API）
-        - Teku: 通常使用 5051 端口（REST API）
+        通过 validator client 容器名称构建 URL（容器在同一 Docker 网络中）
         
         Args:
             client_instance: 客户端实例
@@ -67,36 +64,28 @@ class ClientManagementService:
         Returns:
             Remote Validator API URL 或 None
         """
-        if not client_instance.beacon_api_url:
+        # 根据客户端类型确定端口
+        port_map = {
+            "prysm": 7500,
+            "lighthouse": 5062,
+            "teku": 5051
+        }
+        
+        client_type_lower = client_instance.client_type.lower()
+        port = port_map.get(client_type_lower)
+        
+        if not port:
+            logger.warning(f"未知的客户端类型: {client_instance.client_type}")
             return None
         
-        # 从 beacon_api_url 提取基础 URL（协议 + 主机 + 端口）
-        import re
-        match = re.match(r'(https?://[^:/]+)(?::(\d+))?', client_instance.beacon_api_url)
-        if not match:
-            return None
+        # 构建容器名称（与 ClientProcessService._get_container_name 保持一致）
+        container_name = f"validator-client-{client_instance.id}-{client_type_lower.replace(' ', '-')}"
         
-        base_url = match.group(1)
-        current_port = match.group(2)
+        # 构建 URL（通过容器名称访问，因为都在同一个 Docker 网络中）
+        remote_api_url = f"http://{container_name}:{port}"
+        logger.debug(f"构建 Remote Validator API URL: {remote_api_url} (客户端: {client_instance.name}, 类型: {client_instance.client_type})")
         
-        # 根据客户端类型确定 Remote Validator API 端口
-        if client_instance.client_type == "prysm":
-            # Prysm 通常使用 7500 端口（如果 Beacon API 是 3500）
-            # 或者使用 Beacon API 的同一端口
-            if current_port == "3500":
-                return f"{base_url}:7500"
-            else:
-                # 使用 Beacon API 的同一端口
-                return client_instance.beacon_api_url
-        elif client_instance.client_type == "lighthouse":
-            # Lighthouse 使用 5062 端口（HTTP API）
-            return f"{base_url}:5062"
-        elif client_instance.client_type == "teku":
-            # Teku 使用 5051 端口（REST API）
-            return f"{base_url}:5051"
-        else:
-            # 默认使用 Beacon API URL
-            return client_instance.beacon_api_url
+        return remote_api_url
     
     def _convert_url_for_container(self, url: Optional[str], url_type: str = "beacon_api") -> Optional[str]:
         """
@@ -899,12 +888,14 @@ port = 5062
         }
         
         try:
-            # 获取 Remote Validator API URL
+            # 获取 Remote Validator API URL（通过容器名称访问）
             remote_api_url = self._get_remote_validator_api_url(client_instance)
             if not remote_api_url:
                 raise ClientManagementError(
-                    f"无法确定 Remote Validator API URL（需要配置 beacon_api_url）"
+                    f"无法确定 Remote Validator API URL（客户端类型: {client_instance.client_type}）"
                 )
+            
+            logger.info(f"使用 Remote Validator API URL: {remote_api_url} (通过容器名称访问)")
             
             # 创建 Remote Validator API 客户端
             remote_client = RemoteValidatorClient(remote_api_url)
@@ -919,7 +910,7 @@ port = 5062
                     result['added'] = add_result.get('imported', [])
                     if add_result.get('error'):
                         result['errors'].extend(add_result['error'])
-                    logger.info(f"通过 Remote Validator API 添加了 {len(result['added'])} 个密钥")
+                    logger.info(f"通过 Remote Validator API 添加了 {len(result['added'])} 个密钥 (URL: {remote_api_url})")
                 except Exception as e:
                     error_msg = f"添加密钥失败: {e}"
                     logger.error(error_msg)
@@ -932,7 +923,7 @@ port = 5062
                     result['removed'] = remove_result.get('deleted', [])
                     if remove_result.get('error'):
                         result['errors'].extend(remove_result['error'])
-                    logger.info(f"通过 Remote Validator API 删除了 {len(result['removed'])} 个密钥")
+                    logger.info(f"通过 Remote Validator API 删除了 {len(result['removed'])} 个密钥 (URL: {remote_api_url})")
                 except Exception as e:
                     error_msg = f"删除密钥失败: {e}"
                     logger.error(error_msg)
@@ -992,12 +983,14 @@ port = 5062
                     'errors': []
                 }
             
-            # 获取 Remote Validator API URL
+            # 获取 Remote Validator API URL（通过容器名称访问）
             remote_api_url = self._get_remote_validator_api_url(client_instance)
             if not remote_api_url:
                 raise ClientManagementError(
-                    f"无法确定 Remote Validator API URL（需要配置 beacon_api_url）"
+                    f"无法确定 Remote Validator API URL（客户端类型: {client_instance.client_type}）"
                 )
+            
+            logger.info(f"使用 Remote Validator API URL: {remote_api_url} (通过容器名称访问)")
             
             # 创建 Remote Validator API 客户端
             remote_client = RemoteValidatorClient(remote_api_url)
