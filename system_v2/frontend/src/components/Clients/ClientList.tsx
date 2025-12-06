@@ -100,15 +100,8 @@ const ClientList: React.FC = () => {
       const rpcEndpoints = await networkApi.getRpcEndpoints()
       const recommendedValues: any = {}
       
-      // 推荐 Beacon API URL
-      if (networkInfo?.beacon_api_url) {
-        recommendedValues.beacon_api_url = networkInfo.beacon_api_url
-      } else if (rpcEndpoints?.beacon_api_url) {
-        recommendedValues.beacon_api_url = rpcEndpoints.beacon_api_url
-      }
-      
       // 推荐 Web3Signer URL（使用默认值，因为这是系统内部服务）
-      recommendedValues.web3signer_url = 'http://host.docker.internal:9002' // HAProxy
+      recommendedValues.web3signer_url = 'http://haproxy:9002' // HAProxy
       
       // 推荐 gRPC endpoint（从网络服务获取，特别是对于 Prysm）
       if (rpcEndpoints?.grpc_endpoint) {
@@ -141,9 +134,8 @@ const ClientList: React.FC = () => {
     setSelectedClient(client)
     editForm.setFieldsValue({
       name: client.name,
-      beacon_api_url: client.beacon_api_url,
       grpc_endpoint: client.grpc_endpoint,
-      web3signer_url: client.web3signer_url,
+      web3signer_url: client.web3signer_url || 'http://haproxy:9002',
       is_active: client.is_active,
     })
     setEditModalVisible(true)
@@ -502,20 +494,6 @@ const ClientList: React.FC = () => {
       width: 100,
     },
     {
-      title: 'Beacon API',
-      dataIndex: 'beacon_api_url',
-      key: 'beacon_api_url',
-      width: 200,
-      render: (url: string) => url || '-',
-    },
-    {
-      title: 'Web3Signer URL',
-      dataIndex: 'web3signer_url',
-      key: 'web3signer_url',
-      width: 200,
-      render: (url: string) => url || '-',
-    },
-    {
       title: '操作',
       key: 'action',
       width: 300,
@@ -783,13 +761,6 @@ const ClientList: React.FC = () => {
             </Select>
           </Form.Item>
           <Form.Item 
-            name="beacon_api_url" 
-            label="Beacon API URL"
-            tooltip="系统会自动推荐检测到的 Beacon API URL"
-          >
-            <Input placeholder="http://host.docker.internal:33790" />
-          </Form.Item>
-          <Form.Item 
             name="grpc_endpoint" 
             label="gRPC Endpoint"
             tooltip="系统会自动填充检测到的 gRPC 端点（Prysm 专用）。如果未检测到，Prysm 默认使用 4000 端口。"
@@ -799,10 +770,9 @@ const ClientList: React.FC = () => {
           <Form.Item
             name="web3signer_url"
             label="Web3Signer URL"
-            initialValue="http://host.docker.internal:9002"
-            tooltip="推荐使用 HAProxy URL (9002 端口)"
+            initialValue="http://haproxy:9002"
           >
-            <Input placeholder="http://host.docker.internal:9002" />
+            <Input placeholder="http://haproxy:9002" />
           </Form.Item>
           <Form.Item name="notes" label="备注">
             <Input.TextArea rows={3} placeholder="可选备注信息" />
@@ -829,9 +799,6 @@ const ClientList: React.FC = () => {
           >
             <Input placeholder="请输入客户端名称" />
           </Form.Item>
-          <Form.Item name="beacon_api_url" label="Beacon API URL">
-            <Input placeholder="http://localhost:5052" />
-          </Form.Item>
           <Form.Item name="grpc_endpoint" label="gRPC Endpoint">
             <Input placeholder="localhost:4000" />
           </Form.Item>
@@ -839,7 +806,7 @@ const ClientList: React.FC = () => {
             name="web3signer_url"
             label="Web3Signer URL"
           >
-            <Input placeholder="http://localhost:9002" />
+            <Input placeholder="http://haproxy:9002" />
           </Form.Item>
           <Form.Item name="is_active" label="是否激活" valuePropName="checked">
             <Switch />
@@ -1011,8 +978,8 @@ const ClientList: React.FC = () => {
           >
             {clientLogs.length > 0 ? (
               clientLogs.map((log, index) => (
-                <div key={index} style={{ marginBottom: 4 }}>
-                  {log}
+                <div key={index} style={{ marginBottom: 2, lineHeight: '1.5', whiteSpace: 'pre-wrap' }}>
+                  {log || '\u00A0'}
                 </div>
               ))
             ) : (

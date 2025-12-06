@@ -1354,7 +1354,7 @@ class ClientProcessService:
         container_name = self._get_container_name(client_id, client_type)
         
         try:
-            # 获取容器日志
+            # 获取容器日志（使用 --timestamps 获取时间戳，但前端可以忽略）
             result = subprocess.run(
                 ["docker", "logs", "--tail", str(lines), container_name],
                 capture_output=True,
@@ -1375,7 +1375,24 @@ class ClientProcessService:
                     "error": result.stderr.strip()
                 }
             
-            logs = result.stdout.strip().split('\n') if result.stdout.strip() else []
+            # 处理日志：去除 ANSI 转义码并分割为多行
+            import re
+            # ANSI 转义码正则表达式（更全面的匹配）
+            # 匹配所有 ANSI 转义序列，包括颜色代码、光标控制等
+            ansi_escape = re.compile(r'\x1B(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])')
+            
+            raw_logs = result.stdout if result.stdout else ""
+            # 先统一换行符：将 \r\n 和 \r 转换为 \n
+            raw_logs = raw_logs.replace('\r\n', '\n').replace('\r', '\n')
+            # 去除 ANSI 转义码
+            clean_logs = ansi_escape.sub('', raw_logs)
+            # 按行分割，保留空行
+            logs = clean_logs.split('\n')
+            # 去除每行首尾空白，但保留空行
+            logs = [line.rstrip() for line in logs]
+            # 过滤掉完全空白的行（但保留至少一个空行作为分隔）
+            # logs = [line for line in logs if line.strip() or line == '']
+            
             return {
                 "client_id": client_id,
                 "container_name": container_name,

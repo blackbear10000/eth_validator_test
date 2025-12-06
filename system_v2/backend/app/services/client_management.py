@@ -197,8 +197,9 @@ class ClientManagementService:
             
             # 转换 URL 为容器可访问的格式
             converted_beacon_api_url = self._convert_url_for_container(beacon_api_url, "beacon_api")
+            # 默认使用 haproxy:9002（因为都在同一个 Docker 网络中）
             converted_web3signer_url = self._convert_url_for_container(
-                web3signer_url or self.web3signer_client.haproxy_url,
+                web3signer_url or "http://haproxy:9002",
                 "web3signer"
             )
             
@@ -294,9 +295,9 @@ class ClientManagementService:
             if web3signer_url is not None:
                 client_instance.web3signer_url = self._convert_url_for_container(web3signer_url, "web3signer")
             elif web3signer_url is None and client_instance.web3signer_url is None:
-                # 如果没有提供且当前也没有，使用默认值
+                # 如果没有提供且当前也没有，使用默认值（haproxy:9002）
                 client_instance.web3signer_url = self._convert_url_for_container(
-                    self.web3signer_client.haproxy_url,
+                    "http://haproxy:9002",
                     "web3signer"
                 )
             
