@@ -1267,6 +1267,10 @@ class ClientProcessService:
             
             # 启用 Remote Keymanager API
             cmd.append('--web')
+            # 设置 HTTP 服务器监听所有接口（允许容器间访问）
+            cmd.extend(['--http-host', '0.0.0.0'])
+            # 显式指定 HTTP 端口（Remote Validator API 端口）
+            cmd.extend(['--http-port', '7500'])
             
             # Public Key Persistence 文件路径
             cmd.extend(['--validators-external-signer-key-file', '/config/pubkey_persistence.txt'])
