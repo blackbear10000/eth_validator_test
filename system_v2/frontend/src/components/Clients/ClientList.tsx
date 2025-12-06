@@ -28,9 +28,9 @@ import {
   CaretRightOutlined,
   CloseCircleOutlined,
   FileTextOutlined,
+  ReloadOutlined,
 } from '@ant-design/icons'
 import { clientsApi, ClientInstance } from '../../api/clients'
-import { keysApi } from '../../api/keys'
 import { networkApi } from '../../api/network'
 import ClientKeyManagementModal from './ClientKeyManagementModal'
 
@@ -91,7 +91,6 @@ const ClientList: React.FC = () => {
 
   const loadRecommendedUrls = async () => {
     try {
-      const networkInfo = await networkApi.getInfo() as any
       const rpcEndpoints = await networkApi.getRpcEndpoints()
       const recommendedValues: any = {}
       
@@ -171,18 +170,6 @@ const ClientList: React.FC = () => {
     }
   }
 
-  const handleRemoveKey = async (clientId: number, pubkey: string) => {
-    try {
-      await clientsApi.removeKeys(clientId, [pubkey])
-      message.success('密钥已移除')
-      // 重新加载密钥列表
-      const keys = await clientsApi.getKeys(clientId) as any
-      setClientKeys(keys || [])
-      loadClients() // 刷新客户端列表（更新密钥数量）
-    } catch (error: any) {
-      message.error(`移除密钥失败: ${error.message}`)
-    }
-  }
 
   const handleManageKeys = (clientId: number) => {
     setSelectedClient(clients.find((c) => c.id === clientId) || null)
