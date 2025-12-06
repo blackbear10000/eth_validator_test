@@ -385,12 +385,12 @@ class ClientProcessService:
                     }
             
             # 容器不存在
-                return {
-                    "client_id": client_id,
+            return {
+                "client_id": client_id,
                 "container_name": container_name,
-                    "status": "stopped",
-                    "is_running": False
-                }
+                "status": "stopped",
+                "is_running": False
+            }
         
         except subprocess.TimeoutExpired:
             logger.error(f"查询容器状态超时: {container_name}")
@@ -402,12 +402,12 @@ class ClientProcessService:
             }
         except Exception as e:
             logger.error(f"查询容器状态失败: {e}")
-        return {
-            "client_id": client_id,
+            return {
+                "client_id": client_id,
                 "status": "unknown",
                 "is_running": False,
                 "error": str(e)
-        }
+            }
     
     def start(
         self,
@@ -1250,9 +1250,9 @@ class ClientProcessService:
             }
         except Exception as e:
             logger.error(f"获取日志失败: {e}")
-        return {
-            "client_id": client_id,
-            "logs": [],
+            return {
+                "client_id": client_id,
+                "logs": [],
                 "error": str(e)
-        }
+            }
 
