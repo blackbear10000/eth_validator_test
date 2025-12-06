@@ -96,14 +96,32 @@ class RemoteValidatorClient:
         """
         try:
             response = self._request("GET", "/eth/v1/keystores")
-            data = response.get('data', {})
-            keystores = data.get('keystores', [])
             
-            return keystores
+            # 处理不同的响应格式
+            # 标准格式: {"data": {"keystores": [...]}}
+            # 某些实现可能直接返回列表: [...]
+            if isinstance(response, list):
+                # 如果响应直接是列表，直接返回
+                logger.debug(f"API 响应是列表格式，包含 {len(response)} 个密钥")
+                return response
+            elif isinstance(response, dict):
+                # 标准格式，从 data.keystores 获取
+                data = response.get('data', {})
+                if isinstance(data, list):
+                    # 某些实现可能 data 直接是列表
+                    logger.debug(f"API 响应 data 是列表格式，包含 {len(data)} 个密钥")
+                    return data
+                else:
+                    keystores = data.get('keystores', [])
+                    logger.debug(f"API 响应包含 {len(keystores)} 个密钥")
+                    return keystores
+            else:
+                logger.warning(f"意外的响应格式: {type(response)}")
+                return []
         except RemoteValidatorAPIError:
             raise
         except Exception as e:
-            logger.error(f"获取密钥列表失败: {e}")
+            logger.error(f"获取密钥列表失败: {e}", exc_info=True)
             raise RemoteValidatorAPIError(f"获取密钥列表失败: {e}")
     
     def get_public_keys(self) -> List[str]:
@@ -117,7 +135,18 @@ class RemoteValidatorClient:
         pubkeys = []
         
         for keystore in keystores:
-            pubkey = keystore.get('validating_pubkey', '')
+            # 处理不同的 keystore 格式
+            # 标准格式: {"validating_pubkey": "0x..."}
+            # 某些实现可能直接返回字符串列表: ["0x...", ...]
+            if isinstance(keystore, dict):
+                pubkey = keystore.get('validating_pubkey', '')
+            elif isinstance(keystore, str):
+                # 如果 keystore 直接是字符串（公钥），直接使用
+                pubkey = keystore
+            else:
+                logger.warning(f"意外的 keystore 格式: {type(keystore)}, 值: {keystore}")
+                continue
+            
             if pubkey:
                 # 确保有 0x 前缀
                 if not pubkey.startswith('0x'):
