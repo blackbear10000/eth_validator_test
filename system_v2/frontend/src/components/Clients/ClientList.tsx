@@ -97,22 +97,27 @@ const ClientList: React.FC = () => {
   const loadRecommendedUrls = async () => {
     try {
       const networkInfo = await networkApi.getInfo() as any
+      const rpcEndpoints = await networkApi.getRpcEndpoints()
       const recommendedValues: any = {}
       
       // 推荐 Beacon API URL
       if (networkInfo?.beacon_api_url) {
         recommendedValues.beacon_api_url = networkInfo.beacon_api_url
+      } else if (rpcEndpoints?.beacon_api_url) {
+        recommendedValues.beacon_api_url = rpcEndpoints.beacon_api_url
       }
       
       // 推荐 Web3Signer URL（使用默认值，因为这是系统内部服务）
       recommendedValues.web3signer_url = 'http://host.docker.internal:9002' // HAProxy
       
-      // gRPC endpoint 根据客户端类型不同而不同，这里先不自动填充
-      // 用户可以根据客户端类型手动填写
+      // 推荐 gRPC endpoint（从网络服务获取，特别是对于 Prysm）
+      if (rpcEndpoints?.grpc_endpoint) {
+        recommendedValues.grpc_endpoint = rpcEndpoints.grpc_endpoint
+      }
       
       if (Object.keys(recommendedValues).length > 0) {
         form.setFieldsValue(recommendedValues)
-        message.info('已自动填充推荐的 API URL')
+        message.info('已自动填充推荐的 API URL（包括 gRPC 端点）')
       }
     } catch (error) {
       // 忽略错误，不影响用户手动输入
@@ -787,9 +792,9 @@ const ClientList: React.FC = () => {
           <Form.Item 
             name="grpc_endpoint" 
             label="gRPC Endpoint"
-            tooltip="Prysm: 4000, Lighthouse: 5052, Teku: 9000"
+            tooltip="系统会自动填充检测到的 gRPC 端点（Prysm 专用）。如果未检测到，Prysm 默认使用 4000 端口。"
           >
-            <Input placeholder="host.docker.internal:4000" />
+            <Input placeholder="host.docker.internal:33838（自动检测）" />
           </Form.Item>
           <Form.Item
             name="web3signer_url"

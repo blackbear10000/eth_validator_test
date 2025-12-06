@@ -27,7 +27,12 @@ export interface RpcEndpoints {
   rpc_url?: string
   host_rpc_url?: string
   ws_url?: string
+  beacon_api_url?: string
+  host_beacon_api_url?: string
+  grpc_endpoint?: string
+  host_grpc_endpoint?: string
   service?: string
+  beacon_service?: string
   error?: string
   debug_info?: string
 }
