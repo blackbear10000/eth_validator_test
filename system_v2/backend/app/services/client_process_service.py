@@ -65,6 +65,15 @@ class ClientProcessService:
             logger.debug(f"路径转换: {container_path} -> {host_path}")
             return host_path
         
+        # 如果是绝对路径且以 /app/validator-clients-wallet 开头
+        if container_path.startswith("/app/validator-clients-wallet"):
+            relative_path = container_path[len("/app/validator-clients-wallet"):]
+            if relative_path.startswith("/"):
+                relative_path = relative_path[1:]
+            host_path = os.path.join("validator-clients", "wallet", relative_path)
+            logger.debug(f"路径转换: {container_path} -> {host_path}")
+            return host_path
+        
         # 如果已经是相对路径或宿主机路径，直接返回
         return container_path
     
@@ -769,30 +778,63 @@ class ClientProcessService:
                 # 不阻止容器启动，但记录严重警告
             
             # 数据目录挂载（持久化）
-            # 在容器内使用 /app/validator-clients-data（挂载到宿主机）
+            # 需要将容器内路径转换为宿主机路径
             if os.path.exists("/app"):
-                # 在容器内
-                data_dir = f"/app/validator-clients-data/{client_id}"
+                # 在容器内，需要转换为宿主机路径
+                container_data_dir = f"/app/validator-clients-data/{client_id}"
+                # 使用 _convert_container_path_to_host 转换
+                data_dir = self._convert_container_path_to_host(container_data_dir)
+                logger.info(f"数据目录路径转换: {container_data_dir} -> {data_dir}")
             else:
                 # 在宿主机上
                 data_dir = f"validator-clients-data/{client_id}"
-            data_dir_abs = os.path.abspath(data_dir)
+            
+            # 确保使用绝对路径（相对于 infra 目录）
+            infra_dir = self._find_infra_directory()
+            if infra_dir:
+                infra_dir_abs = os.path.abspath(infra_dir)
+                # data_dir 可能是相对路径，需要基于 infra 目录
+                if not os.path.isabs(data_dir):
+                    data_dir_abs = os.path.join(infra_dir_abs, data_dir)
+                else:
+                    data_dir_abs = data_dir
+                data_dir_abs = os.path.abspath(data_dir_abs)
+            else:
+                # 如果找不到 infra 目录，使用相对路径的绝对路径
+                data_dir_abs = os.path.abspath(data_dir)
+            
             os.makedirs(data_dir_abs, exist_ok=True)
             cmd.extend(["-v", f"{data_dir_abs}:/data:rw"])
-            logger.debug(f"挂载数据目录: {data_dir_abs} -> /data")
+            logger.info(f"挂载数据目录: {data_dir_abs} -> /data")
             
             # Wallet 目录挂载（用于 auth-token，Prysm 需要）
-            # 在容器内使用 /app/validator-clients-wallet（挂载到宿主机）
+            # 需要将容器内路径转换为宿主机路径
             if os.path.exists("/app"):
-                # 在容器内
-                wallet_dir = f"/app/validator-clients-wallet/{client_id}"
+                # 在容器内，需要转换为宿主机路径
+                container_wallet_dir = f"/app/validator-clients-wallet/{client_id}"
+                # 使用 _convert_container_path_to_host 转换
+                wallet_dir = self._convert_container_path_to_host(container_wallet_dir)
+                logger.info(f"Wallet 目录路径转换: {container_wallet_dir} -> {wallet_dir}")
             else:
                 # 在宿主机上
                 wallet_dir = f"validator-clients-wallet/{client_id}"
-            wallet_dir_abs = os.path.abspath(wallet_dir)
+            
+            # 确保使用绝对路径（相对于 infra 目录）
+            if infra_dir:
+                infra_dir_abs = os.path.abspath(infra_dir)
+                # wallet_dir 可能是相对路径，需要基于 infra 目录
+                if not os.path.isabs(wallet_dir):
+                    wallet_dir_abs = os.path.join(infra_dir_abs, wallet_dir)
+                else:
+                    wallet_dir_abs = wallet_dir
+                wallet_dir_abs = os.path.abspath(wallet_dir_abs)
+            else:
+                # 如果找不到 infra 目录，使用相对路径的绝对路径
+                wallet_dir_abs = os.path.abspath(wallet_dir)
+            
             os.makedirs(wallet_dir_abs, exist_ok=True)
             cmd.extend(["-v", f"{wallet_dir_abs}:/wallet:rw"])
-            logger.debug(f"挂载 Wallet 目录: {wallet_dir_abs} -> /wallet (用于 auth-token)")
+            logger.info(f"挂载 Wallet 目录: {wallet_dir_abs} -> /wallet (用于 auth-token)")
             
             # 镜像
             cmd.append(docker_image)
