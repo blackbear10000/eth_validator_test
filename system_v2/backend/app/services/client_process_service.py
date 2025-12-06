@@ -490,6 +490,12 @@ class ClientProcessService:
             # 网络配置
             cmd.extend(["--network", self.network_name])
             
+            # 添加 host.docker.internal 支持（Linux 系统需要）
+            # 在 macOS/Windows 上，Docker Desktop 自动提供 host.docker.internal
+            # 在 Linux 上，需要手动添加 --add-host 参数
+            cmd.extend(["--add-host", "host.docker.internal:host-gateway"])
+            logger.debug("已添加 host.docker.internal 主机映射（Linux 兼容性）")
+            
             # 配置文件挂载
             if config_dir:
                 # 将容器内路径转换为宿主机路径
