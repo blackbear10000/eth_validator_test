@@ -239,7 +239,9 @@ class NetworkService:
                 in_el_service = False
                 # 提取服务名称
                 beacon_service = cl_match.group(0)
-                logger.debug(f"找到共识层服务: {beacon_service}, 行 {i+1}: {line[:100]}")
+                # 检查是否是 Prysm 服务（用于 gRPC 端点解析）
+                is_prysm_service = 'prysm' in beacon_service.lower()
+                logger.debug(f"找到共识层服务: {beacon_service}, 行 {i+1}: {line[:100]}, 是否 Prysm: {is_prysm_service}")
                 # 注意：不 continue，继续检查同一行是否有端口信息
             
             # 如果在执行层服务块中，查找端口映射
@@ -303,24 +305,24 @@ class NetworkService:
                             beacon_api_url = f"http://{host_ip}:{host_port}"
                         logger.info(f"找到 Beacon API 端口映射 (Teku): {host_ip}:{host_port} -> {beacon_api_url}")
                 
-                # 查找 gRPC 端口（用于 Prysm）
-                # Prysm 的 gRPC 端口通常是 4000，在 Kurtosis 中可能标记为 "rpc" 或 "grpc"
-                # 格式：rpc: 4000/tcp -> 127.0.0.1:XXXXX 或 grpc: 4000/tcp -> 127.0.0.1:XXXXX
-                grpc_match = re.search(
-                    r'(?:rpc|grpc)\s*:\s*4000/tcp\s*->\s*([\d.]+):(\d+)',
-                    line
-                )
-                if grpc_match:
-                    host_ip = grpc_match.group(1)
-                    host_port = grpc_match.group(2)
-                    if host_ip == '127.0.0.1' or host_ip == '0.0.0.0':
-                        grpc_endpoint = f"host.docker.internal:{host_port}"
-                    else:
-                        grpc_endpoint = f"{host_ip}:{host_port}"
-                    logger.info(f"找到 gRPC 端口映射: {host_ip}:{host_port} -> {grpc_endpoint}")
-                # 如果没有找到专门的 gRPC 端口，但找到了 Prysm 的 Beacon API（3500），
-                # 可以尝试从 Beacon API 端口推导 gRPC 端口
-                # 但通常 gRPC 端口需要单独映射，所以这里不自动推导
+                # 查找 gRPC 端口（仅用于 Prysm）
+                # Prysm 的 gRPC 端口通常是 4000，在 Kurtosis 中标记为 "rpc"
+                # 格式：rpc: 4000/tcp -> 127.0.0.1:33838
+                # 只从包含 "prysm" 的共识层服务中查找
+                if 'prysm' in beacon_service.lower() if beacon_service else False:
+                    grpc_match = re.search(
+                        r'rpc\s*:\s*4000/tcp\s*->\s*([\d.]+):(\d+)',
+                        line
+                    )
+                    if grpc_match:
+                        host_ip = grpc_match.group(1)
+                        host_port = grpc_match.group(2)
+                        # 统一使用 host.docker.internal 格式（容器内访问）
+                        if host_ip == '127.0.0.1' or host_ip == '0.0.0.0':
+                            grpc_endpoint = f"host.docker.internal:{host_port}"
+                        else:
+                            grpc_endpoint = f"host.docker.internal:{host_port}"  # 统一使用 host.docker.internal
+                        logger.info(f"找到 Prysm gRPC 端口映射: {host_ip}:{host_port} -> {grpc_endpoint} (服务: {beacon_service})")
             
             # 如果遇到新的服务块，重置状态
             # 检查是否是新的容器/服务行（UUID 格式：通常是 12 个十六进制字符，或者包含其他服务名）

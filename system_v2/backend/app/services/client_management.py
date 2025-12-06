@@ -150,34 +150,21 @@ class ClientManagementService:
                 # 如果无法获取，将 localhost 转换为 host.docker.internal
                 return url.replace('localhost', 'host.docker.internal').replace('127.0.0.1', 'host.docker.internal')
             
-            # 对于 gRPC 端点，尝试从 NetworkService 获取
+            # 对于 gRPC 端点，如果用户提供了 localhost/127.0.0.1，直接转换为 host.docker.internal
+            # 注意：不要从网络服务覆盖用户手动配置的值
             elif url_type == "grpc":
-                try:
-                    from app.services.network_service import NetworkService
-                    network_service = NetworkService()
-                    endpoints = network_service.get_rpc_endpoints()
-                    if endpoints.get("grpc_endpoint"):
-                        logger.info(f"从网络服务获取 gRPC 端点: {endpoints['grpc_endpoint']}")
-                        return endpoints["grpc_endpoint"]
-                    # 如果没有找到 gRPC 端点，但找到了 Beacon API URL，尝试推导
-                    # 对于 Prysm，如果 Beacon API 是 3500，gRPC 通常是 4000
-                    # 但需要从端口映射中获取实际的宿主机端口
-                    elif endpoints.get("beacon_api_url"):
-                        beacon_url = endpoints["beacon_api_url"]
-                        # 从 Beacon API URL 提取端口，然后查找对应的 gRPC 端口映射
-                        # 这需要更复杂的逻辑，暂时先使用 host.docker.internal
-                        logger.warning(f"未找到 gRPC 端点，但找到了 Beacon API URL: {beacon_url}，尝试使用默认 gRPC 端口")
-                        # 如果 Beacon API 端口是 3500，gRPC 端口可能是不同的映射
-                        # 暂时使用 host.docker.internal:4000，但这可能不正确
-                        # 更好的方法是解析 Kurtosis 输出中的 gRPC 端口映射
-                except Exception as e:
-                    logger.warning(f"无法从网络服务获取 gRPC 端点: {e}")
-                
-                # 如果无法获取，将 localhost 转换为 host.docker.internal
+                # 如果用户提供了 localhost/127.0.0.1，直接转换，保留用户指定的端口
                 # 注意：gRPC 端点格式是 host:port，不是 URL
                 if '://' in url:
                     # 如果包含协议，移除协议
                     url = url.replace('http://', '').replace('https://', '')
+                # 提取端口号
+                if ':' in url:
+                    host, port = url.rsplit(':', 1)
+                    # 如果主机是 localhost 或 127.0.0.1，转换为 host.docker.internal，但保留端口
+                    if host in ['localhost', '127.0.0.1']:
+                        return f"host.docker.internal:{port}"
+                # 否则直接转换 localhost/127.0.0.1
                 return url.replace('localhost', 'host.docker.internal').replace('127.0.0.1', 'host.docker.internal')
             
             # 对于其他类型，使用 host.docker.internal
@@ -225,6 +212,19 @@ class ClientManagementService:
                 web3signer_url or self.web3signer_client.haproxy_url,
                 "web3signer"
             )
+            
+            # 如果没有提供 gRPC 端点，尝试从网络服务自动获取（特别是对于 Prysm）
+            if not grpc_endpoint and 'prysm' in client_type.value.lower():
+                try:
+                    from app.services.network_service import NetworkService
+                    network_service = NetworkService()
+                    endpoints = network_service.get_rpc_endpoints()
+                    if endpoints.get("grpc_endpoint"):
+                        grpc_endpoint = endpoints["grpc_endpoint"]
+                        logger.info(f"为 Prysm 客户端自动获取 gRPC 端点: {grpc_endpoint}")
+                except Exception as e:
+                    logger.warning(f"无法从网络服务获取 gRPC 端点: {e}")
+            
             converted_grpc_endpoint = self._convert_url_for_container(grpc_endpoint, "grpc")
             
             # 创建客户端实例
