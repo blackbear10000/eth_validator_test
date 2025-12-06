@@ -732,12 +732,11 @@ class ClientProcessService:
                         if inspect_result.returncode == 0 and inspect_result.stdout.strip():
                             mount_source = inspect_result.stdout.strip()
                             host_path = os.path.join(mount_source, "network-config.yaml")
-                            if os.path.exists(host_path):
-                                cmd.extend(["-v", f"{host_path}:/network-config.yaml:ro"])
-                                logger.info(f"✅ 挂载网络配置文件: {host_path} -> /network-config.yaml")
-                            else:
-                                logger.error(f"❌ 宿主机路径不存在: {host_path}")
-                                logger.error(f"   挂载源目录: {mount_source}")
+                            # 注意：在容器内无法使用 os.path.exists() 检查宿主机路径
+                            # 如果容器内文件存在（/kurtosis-config/network-config.yaml），就认为宿主机路径也是有效的
+                            cmd.extend(["-v", f"{host_path}:/network-config.yaml:ro"])
+                            logger.info(f"✅ 挂载网络配置文件: {host_path} -> /network-config.yaml")
+                            logger.info(f"   挂载源目录: {mount_source}")
                         else:
                             logger.error("❌ 无法从 Docker 挂载信息获取 kurtosis-config 的宿主机路径")
                             # 回退到使用 INFRA_DIR 推断
@@ -746,11 +745,9 @@ class ClientProcessService:
                                 project_root = os.path.dirname(os.path.dirname(os.path.abspath(infra_dir)))
                                 host_path = os.path.join(project_root, "infra", "kurtosis", "network-config.yaml")
                                 logger.warning(f"⚠️ 回退到使用 INFRA_DIR 推断路径: {host_path}")
-                                if os.path.exists(host_path):
-                                    cmd.extend(["-v", f"{host_path}:/network-config.yaml:ro"])
-                                    logger.info(f"✅ 挂载网络配置文件: {host_path} -> /network-config.yaml")
-                                else:
-                                    logger.error(f"❌ 推断的宿主机路径也不存在: {host_path}")
+                                # 不检查路径是否存在（容器内无法检查宿主机路径）
+                                cmd.extend(["-v", f"{host_path}:/network-config.yaml:ro"])
+                                logger.info(f"✅ 挂载网络配置文件: {host_path} -> /network-config.yaml")
                     except Exception as e:
                         logger.error(f"❌ 无法查找 kurtosis-config 挂载点: {e}")
                         # 回退到使用 INFRA_DIR 推断
@@ -759,11 +756,9 @@ class ClientProcessService:
                             project_root = os.path.dirname(os.path.dirname(os.path.abspath(infra_dir)))
                             host_path = os.path.join(project_root, "infra", "kurtosis", "network-config.yaml")
                             logger.warning(f"⚠️ 回退到使用 INFRA_DIR 推断路径: {host_path}")
-                            if os.path.exists(host_path):
-                                cmd.extend(["-v", f"{host_path}:/network-config.yaml:ro"])
-                                logger.info(f"✅ 挂载网络配置文件: {host_path} -> /network-config.yaml")
-                            else:
-                                logger.error(f"❌ 推断的宿主机路径也不存在: {host_path}")
+                            # 不检查路径是否存在（容器内无法检查宿主机路径）
+                            cmd.extend(["-v", f"{host_path}:/network-config.yaml:ro"])
+                            logger.info(f"✅ 挂载网络配置文件: {host_path} -> /network-config.yaml")
                 else:
                     # 宿主机路径，直接使用
                     cmd.extend(["-v", f"{network_config_path}:/network-config.yaml:ro"])
