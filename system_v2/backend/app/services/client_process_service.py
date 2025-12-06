@@ -558,8 +558,8 @@ class ClientProcessService:
                     "message": f"暂停容器失败: {error_msg}"
                 }
             
-                return {
-                    "success": True,
+            return {
+                "success": True,
                 "message": f"客户端 {client_id} 已暂停"
             }
             
@@ -568,8 +568,8 @@ class ClientProcessService:
             return {
                 "success": False,
                 "message": "暂停容器超时"
-                }
-            except Exception as e:
+            }
+        except Exception as e:
             logger.error(f"暂停客户端 {client_id} 失败: {e}", exc_info=True)
             return {
                 "success": False,
