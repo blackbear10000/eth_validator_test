@@ -380,21 +380,30 @@ async def compare_keys(
         db_keys = client_service.get_client_keys(client)
         db_pubkeys = set([key.pubkey.lower() for key in db_keys])
         
-        # 获取 validator client 实际加载的密钥列表
+        # 检查容器是否运行
+        is_running = client_service._is_client_running(client)
         remote_api_url = client_service._get_remote_validator_api_url(client)
         actual_pubkeys = set()
         keystores_info = []
+        api_error = None
         
-        if remote_api_url:
+        # 只有在容器运行时才尝试获取 validator client 实际密钥列表
+        if is_running and remote_api_url:
             try:
                 from app.core.remote_validator_client import RemoteValidatorClient
                 remote_client = RemoteValidatorClient(remote_api_url)
                 actual_pubkeys_list = remote_client.get_public_keys()
                 actual_pubkeys = set([pubkey.lower() for pubkey in actual_pubkeys_list])
                 keystores_info = remote_client.get_keystores()
+                logger.info(f"成功获取 validator client 实际密钥列表: {len(actual_pubkeys)} 个密钥 (URL: {remote_api_url})")
             except Exception as e:
+                api_error = str(e)
                 logger.warning(f"无法获取 validator client 实际密钥列表: {e}")
                 # 继续执行，actual_pubkeys 保持为空集合
+        elif not is_running:
+            logger.info(f"客户端容器未运行，跳过 Remote Validator API 查询 (客户端: {client.name})")
+        elif not remote_api_url:
+            logger.warning(f"无法确定 Remote Validator API URL (客户端类型: {client.client_type})")
         
         # 计算差异
         only_in_db = db_pubkeys - actual_pubkeys
@@ -428,7 +437,7 @@ async def compare_keys(
                 "db_key_info": db_key_info
             })
         
-        return {
+        result = {
             "client_id": client_id,
             "database_count": len(db_pubkeys),
             "validator_count": len(actual_pubkeys),
@@ -436,8 +445,18 @@ async def compare_keys(
             "only_in_validator": list(only_in_validator),
             "in_both": list(in_both),
             "comparison": comparison,
-            "remote_api_url": remote_api_url
+            "remote_api_url": remote_api_url,
+            "container_running": is_running
         }
+        
+        # 如果容器未运行或 API 调用失败，添加警告信息
+        if not is_running:
+            result["warning"] = "容器未运行，无法获取 validator client 实际密钥列表"
+        elif api_error:
+            result["warning"] = f"无法连接到 Remote Validator API: {api_error}"
+            result["api_error"] = api_error
+        
+        return result
     except HTTPException:
         raise
     except Exception as e:

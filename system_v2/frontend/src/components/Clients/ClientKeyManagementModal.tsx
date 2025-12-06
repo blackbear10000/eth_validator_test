@@ -58,6 +58,11 @@ const ClientKeyManagementModal: React.FC<ClientKeyManagementModalProps> = ({
   const [selectedKeys, setSelectedKeys] = useState<string[]>([])
   const [addingKeys, setAddingKeys] = useState(false)
   const [removingKeys, setRemovingKeys] = useState<string[]>([])
+  const [compareInfo, setCompareInfo] = useState<{
+    container_running?: boolean
+    warning?: string
+    api_error?: string
+  }>({})
 
   useEffect(() => {
     if (visible && client) {
@@ -72,15 +77,27 @@ const ClientKeyManagementModal: React.FC<ClientKeyManagementModalProps> = ({
     try {
       // 加载对比信息
       const compareResult = await clientsApi.getKeysCompare(client.id) as any
-      setComparison(compareResult.comparison || [])
+      // 确保 comparison 始终是数组
+      const comparisonArray = Array.isArray(compareResult?.comparison) 
+        ? compareResult.comparison 
+        : []
+      setComparison(comparisonArray)
+      
+      // 保存对比信息（容器运行状态、警告等）
+      setCompareInfo({
+        container_running: compareResult?.container_running,
+        warning: compareResult?.warning,
+        api_error: compareResult?.api_error
+      })
 
       // 加载可用密钥列表（用于添加）
       const keysResult = await keysApi.list() as any
-      const allKeys = keysResult || []
+      // keysApi.list() 返回格式是 {total: number, items: [...]}
+      const allKeys = keysResult?.items || []
       
       // 过滤出可以分配的密钥（不在当前客户端中的）
       const currentPubkeys = new Set(
-        comparison.filter(k => k.in_database).map(k => k.pubkey.toLowerCase())
+        comparisonArray.filter(k => k.in_database).map(k => k.pubkey.toLowerCase())
       )
       const available = allKeys.filter(
         (key: any) => !currentPubkeys.has(key.pubkey.toLowerCase())
@@ -88,6 +105,9 @@ const ClientKeyManagementModal: React.FC<ClientKeyManagementModalProps> = ({
       setAvailableKeys(available)
     } catch (error: any) {
       message.error(`加载数据失败: ${error.message}`)
+      // 确保即使出错也设置空数组
+      setComparison([])
+      setAvailableKeys([])
     } finally {
       setLoading(false)
     }
@@ -262,16 +282,25 @@ const ClientKeyManagementModal: React.FC<ClientKeyManagementModalProps> = ({
         </Space>
 
         {/* 警告信息 */}
-        {stats.onlyInDb > 0 && (
+        {compareInfo.warning && (
+          <Alert
+            message={compareInfo.container_running === false ? "容器未运行" : "无法获取 Validator Client 密钥列表"}
+            description={compareInfo.warning}
+            type={compareInfo.container_running === false ? "info" : "warning"}
+            showIcon
+            style={{ marginBottom: 16 }}
+          />
+        )}
+        {!compareInfo.warning && stats.onlyInDb > 0 && (
           <Alert
             message="部分密钥仅在数据库中"
-            description={`有 ${stats.onlyInDb} 个密钥已分配到数据库，但未加载到 Validator Client。如果客户端正在运行，请检查 Remote Validator API 是否正常工作。`}
+            description={`有 ${stats.onlyInDb} 个密钥已分配到数据库，但未加载到 Validator Client。请检查 Remote Validator API 是否正常工作。`}
             type="warning"
             showIcon
             style={{ marginBottom: 16 }}
           />
         )}
-        {stats.onlyInValidator > 0 && (
+        {!compareInfo.warning && stats.onlyInValidator > 0 && (
           <Alert
             message="部分密钥仅在 Validator Client 中"
             description={`有 ${stats.onlyInValidator} 个密钥已加载到 Validator Client，但未在数据库中记录。这可能是配置不一致导致的。`}

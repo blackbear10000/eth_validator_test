@@ -98,7 +98,9 @@ class ClientManagementService:
             return None
         
         # 构建容器名称（与 ClientProcessService._get_container_name 保持一致）
-        container_name = f"validator-client-{client_instance.id}-{client_type_lower.replace(' ', '-')}"
+        # ClientProcessService._get_container_name 使用: client_type.lower().replace(' ', '-')
+        client_type_clean = client_type_lower.replace(' ', '-')
+        container_name = f"validator-client-{client_instance.id}-{client_type_clean}"
         
         # 构建 URL（通过容器名称访问，因为都在同一个 Docker 网络中）
         remote_api_url = f"http://{container_name}:{port}"
