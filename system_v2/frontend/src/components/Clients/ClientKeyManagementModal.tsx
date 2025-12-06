@@ -97,7 +97,7 @@ const ClientKeyManagementModal: React.FC<ClientKeyManagementModalProps> = ({
       
       // 过滤出可以分配的密钥（不在当前客户端中的）
       const currentPubkeys = new Set(
-        comparisonArray.filter(k => k.in_database).map(k => k.pubkey.toLowerCase())
+        comparisonArray.filter((k: KeyComparison) => k.in_database).map((k: KeyComparison) => k.pubkey.toLowerCase())
       )
       const available = allKeys.filter(
         (key: any) => !currentPubkeys.has(key.pubkey.toLowerCase())
