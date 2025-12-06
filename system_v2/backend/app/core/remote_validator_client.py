@@ -20,13 +20,15 @@ class RemoteValidatorClient:
     封装标准 Remote Validator API 调用，支持动态密钥管理
     """
     
-    def __init__(self, base_url: str):
+    def __init__(self, base_url: str, auth_token: Optional[str] = None):
         """
         初始化 Remote Validator API 客户端
         
         Args:
             base_url: Validator Client 的 Remote Validator API 基础 URL
                       例如: http://localhost:7500 (Prysm), http://localhost:5062 (Lighthouse)
+            auth_token: 认证 token（Bearer token），如果提供则添加到请求头
+                       根据 Prysm 文档，JWT token 在 auth-token 文件的第二行
         """
         self.base_url = base_url.rstrip('/')
         
@@ -45,6 +47,13 @@ class RemoteValidatorClient:
             'Content-Type': 'application/json',
             'Accept': 'application/json'
         })
+        
+        # 如果提供了 auth_token，添加到请求头（根据 Prysm 文档格式）
+        if auth_token:
+            self.session.headers.update({
+                'Authorization': f'Bearer {auth_token}'
+            })
+            logger.debug("已添加 Authorization Bearer token 到请求头")
     
     def _request(
         self,

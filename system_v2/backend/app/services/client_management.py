@@ -108,6 +108,64 @@ class ClientManagementService:
         
         return remote_api_url
     
+    def _get_auth_token_from_container(self, client_instance: ClientInstance) -> Optional[str]:
+        """
+        从 validator client 容器读取 auth token
+        
+        根据 Prysm 文档，JWT token 在 auth-token 文件的第二行
+        文件路径：--wallet-dir 指定的目录下的 auth-token 文件（我们设置的是 /wallet）
+        
+        Args:
+            client_instance: 客户端实例
+            
+        Returns:
+            auth token 或 None
+        """
+        try:
+            from app.services.client_process_service import ClientProcessService
+            process_service = ClientProcessService()
+            container_name = process_service._get_container_name(client_instance.id, client_instance.client_type)
+            
+            # 根据客户端类型确定 auth token 文件路径
+            if 'prysm' in client_instance.client_type.lower():
+                # Prysm 的 auth-token 文件在 --wallet-dir 目录下
+                # 我们设置的是 /wallet，所以文件路径是 /wallet/auth-token
+                auth_token_path = '/wallet/auth-token'
+            else:
+                # Lighthouse 和 Teku 可能不需要 token 或使用不同的路径
+                logger.debug(f"客户端类型 {client_instance.client_type} 可能不需要 auth token")
+                return None
+            
+            # 从容器中读取 auth token 文件
+            import subprocess
+            result = subprocess.run(
+                ['docker', 'exec', container_name, 'cat', auth_token_path],
+                capture_output=True,
+                text=True,
+                timeout=5
+            )
+            
+            if result.returncode == 0:
+                lines = result.stdout.strip().split('\n')
+                # 根据 Prysm 文档，token 在文件的第二行
+                if len(lines) >= 2:
+                    token = lines[1].strip()  # 第二行（索引为 1）
+                    if token:
+                        logger.debug(f"成功从容器 {container_name} 读取 auth token（第二行）")
+                        return token
+                    else:
+                        logger.warning(f"容器 {container_name} 的 auth token 文件第二行为空")
+                else:
+                    logger.warning(f"容器 {container_name} 的 auth token 文件行数不足（期望至少2行，实际{len(lines)}行）")
+                    logger.debug(f"文件内容: {result.stdout[:200]}")  # 只记录前200个字符
+            else:
+                logger.warning(f"无法从容器 {container_name} 读取 auth token: {result.stderr}")
+                
+        except Exception as e:
+            logger.warning(f"读取 auth token 失败: {e}", exc_info=True)
+        
+        return None
+    
     def _convert_url_for_container(self, url: Optional[str], url_type: str = "beacon_api") -> Optional[str]:
         """
         将 URL 转换为容器可访问的格式
@@ -910,8 +968,11 @@ port = 5062
             
             logger.info(f"使用 Remote Validator API URL: {remote_api_url} (通过容器名称访问)")
             
+            # 获取 auth token（从容器中读取）
+            auth_token = self._get_auth_token_from_container(client_instance)
+            
             # 创建 Remote Validator API 客户端
-            remote_client = RemoteValidatorClient(remote_api_url)
+            remote_client = RemoteValidatorClient(remote_api_url, auth_token=auth_token)
             
             # 添加密钥
             if add_pubkeys:
@@ -1005,8 +1066,11 @@ port = 5062
             
             logger.info(f"使用 Remote Validator API URL: {remote_api_url} (通过容器名称访问)")
             
+            # 获取 auth token（从容器中读取）
+            auth_token = self._get_auth_token_from_container(client_instance)
+            
             # 创建 Remote Validator API 客户端
-            remote_client = RemoteValidatorClient(remote_api_url)
+            remote_client = RemoteValidatorClient(remote_api_url, auth_token=auth_token)
             
             # 获取当前已加载的密钥
             try:
@@ -1130,7 +1194,9 @@ port = 5062
                     logger.info(f"等待客户端实例健康检查: {client_instance.name}")
                     remote_api_url = self._get_remote_validator_api_url(client_instance)
                     if remote_api_url:
-                        remote_client = RemoteValidatorClient(remote_api_url)
+                        # 获取 auth token（从容器中读取）
+                        auth_token = self._get_auth_token_from_container(client_instance)
+                        remote_client = RemoteValidatorClient(remote_api_url, auth_token=auth_token)
                         start_time = time.time()
                         while time.time() - start_time < health_check_timeout:
                             if remote_client.health_check():

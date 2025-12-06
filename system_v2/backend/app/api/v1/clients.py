@@ -336,7 +336,9 @@ async def get_actual_keys(
         
         try:
             from app.core.remote_validator_client import RemoteValidatorClient
-            remote_client = RemoteValidatorClient(remote_api_url)
+            # 获取 auth token（从容器中读取）
+            auth_token = client_service._get_auth_token_from_container(client)
+            remote_client = RemoteValidatorClient(remote_api_url, auth_token=auth_token)
             
             # 获取实际加载的密钥列表
             pubkeys = remote_client.get_public_keys()
@@ -391,7 +393,9 @@ async def compare_keys(
         if is_running and remote_api_url:
             try:
                 from app.core.remote_validator_client import RemoteValidatorClient
-                remote_client = RemoteValidatorClient(remote_api_url)
+                # 获取 auth token（从容器中读取）
+                auth_token = client_service._get_auth_token_from_container(client)
+                remote_client = RemoteValidatorClient(remote_api_url, auth_token=auth_token)
                 actual_pubkeys_list = remote_client.get_public_keys()
                 actual_pubkeys = set([pubkey.lower() for pubkey in actual_pubkeys_list])
                 keystores_info = remote_client.get_keystores()
