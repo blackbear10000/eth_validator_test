@@ -147,37 +147,19 @@ class ClientManagementService:
             )
             
             if result.returncode == 0:
-                content = result.stdout  # 保留原始内容（不 strip，以便看到所有字符）
-                lines = content.split('\n') if content else []
+                content = result.stdout.strip()  # 去除首尾空白
                 
                 # 增强调试日志：输出完整文件信息
                 logger.info(f"✅ 成功读取 auth token 文件: {auth_token_path}")
                 logger.info(f"   文件大小: {len(content)} 字符")
-                logger.info(f"   行数: {len(lines)}")
-                logger.debug(f"   原始内容（repr，显示所有字符）: {repr(content[:500])}")  # 前500字符，使用repr显示特殊字符
+                logger.debug(f"   文件内容（repr）: {repr(content[:200])}")  # 前200字符，使用repr显示特殊字符
                 
-                # 尝试从每一行提取 token（跳过空行）
-                for line_idx, line in enumerate(lines):
-                    line_stripped = line.strip()
-                    
-                    # 跳过空行
-                    if not line_stripped:
-                        logger.debug(f"   第 {line_idx + 1} 行: 空行")
-                        continue
-                    
-                    logger.debug(f"   第 {line_idx + 1} 行内容: {repr(line_stripped[:100])}")  # 前100字符
-                    
-                    # 验证 JWT 格式（JWT token 通常包含点号分隔的三部分：header.payload.signature）
-                    if '.' in line_stripped and len(line_stripped) > 20:
-                        logger.info(f"✅ 成功从容器 {container_name} 读取 auth token（第 {line_idx + 1} 行）")
-                        return line_stripped
-                    else:
-                        logger.warning(f"   第 {line_idx + 1} 行不符合 JWT 格式: 长度={len(line_stripped)}, 包含点号={'.' in line_stripped}")
-                
-                # 如果所有行都不符合格式，记录完整内容用于调试
-                logger.warning(f"❌ 容器 {container_name} 的 auth token 文件内容不符合 JWT 格式")
-                logger.warning(f"   完整文件内容（repr）: {repr(content)}")
-                logger.warning(f"   完整文件内容（原始）: {content}")
+                # 直接使用文件内容作为 token，不进行格式验证
+                if content:
+                    logger.info(f"✅ 成功从容器 {container_name} 读取 auth token（{len(content)} 字符）")
+                    return content
+                else:
+                    logger.warning(f"❌ 容器 {container_name} 的 auth token 文件为空")
             else:
                 logger.warning(f"无法从容器 {container_name} 读取 auth token 文件: {result.stderr}")
                 logger.info(f"尝试从容器日志中提取 token...")
