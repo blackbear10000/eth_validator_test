@@ -252,13 +252,32 @@ class ClientProcessService:
                     state = parts[2]
                     
                     is_running = state == "running"
+                    
+                    # 获取退出代码（如果容器已退出）
+                    exit_code = None
+                    if not is_running:
+                        try:
+                            inspect_result = subprocess.run(
+                                ["docker", "inspect", "--format", "{{.State.ExitCode}}", container_name],
+                                capture_output=True,
+                                text=True,
+                                timeout=5
+                            )
+                            if inspect_result.returncode == 0:
+                                exit_code_str = inspect_result.stdout.strip()
+                                if exit_code_str and exit_code_str != "<no value>":
+                                    exit_code = int(exit_code_str)
+                        except Exception as e:
+                            logger.debug(f"获取退出代码失败: {e}")
+                    
                     return {
                         "client_id": client_id,
                         "container_name": container_name,
                         "status": "running" if is_running else "stopped",
                         "state": state,
                         "status_string": status_str,
-                        "is_running": is_running
+                        "is_running": is_running,
+                        "exit_code": exit_code
                     }
             
             # 容器不存在
@@ -379,6 +398,21 @@ class ClientProcessService:
                     logger.warning(f"配置文件目录不存在，将创建: {config_dir_abs}")
                     os.makedirs(config_dir_abs, exist_ok=True)
                 
+                # 验证配置文件是否存在（如果指定了配置文件）
+                if config_file:
+                    # config_file 是容器内路径（如 config.yaml），需要检查宿主机路径
+                    config_file_host = os.path.join(config_dir_abs, config_file)
+                    if not os.path.exists(config_file_host):
+                        error_msg = f"配置文件不存在: {config_file_host} (容器内路径: /config/{config_file})"
+                        logger.error(error_msg)
+                        return {
+                            "success": False,
+                            "message": error_msg,
+                            "config_file_path": config_file_host,
+                            "config_dir": config_dir_abs
+                        }
+                    logger.info(f"验证配置文件存在: {config_file_host}")
+                
                 cmd.extend(["-v", f"{config_dir_abs}:/config:ro"])
                 logger.debug(f"挂载配置目录: {config_dir_abs} -> /config")
             
@@ -422,15 +456,55 @@ class ClientProcessService:
             container_id = result.stdout.strip()
             logger.info(f"容器启动成功: {container_name} (ID: {container_id[:12]})")
             
-            # 等待容器启动
-            time.sleep(2)
+            # 等待容器启动并验证状态
+            time.sleep(3)
+            
+            # 检查容器实际状态
+            final_status = self.get_status(client_id, client_type)
+            is_running = final_status.get("is_running", False)
+            container_state = final_status.get("state", "unknown")
+            exit_code = final_status.get("exit_code")
+            
+            # 如果容器没有运行，获取错误日志
+            error_logs = None
+            if not is_running:
+                try:
+                    logs_result = subprocess.run(
+                        ["docker", "logs", "--tail", "50", container_name],
+                        capture_output=True,
+                        text=True,
+                        timeout=5
+                    )
+                    if logs_result.returncode == 0:
+                        error_logs = logs_result.stdout.strip() or logs_result.stderr.strip()
+                        logger.error(f"容器启动后退出，日志: {error_logs[:500]}")
+                except Exception as e:
+                    logger.warning(f"获取容器日志失败: {e}")
+            
+            # 如果容器退出，返回错误
+            if not is_running:
+                error_msg = f"容器启动后立即退出 (状态: {container_state}"
+                if exit_code is not None:
+                    error_msg += f", 退出代码: {exit_code}"
+                error_msg += ")"
+                
+                return {
+                    "success": False,
+                    "message": error_msg,
+                    "container_id": container_id,
+                    "container_name": container_name,
+                    "state": container_state,
+                    "exit_code": exit_code,
+                    "error_logs": error_logs,
+                    "status": final_status
+                }
             
             return {
                 "success": True,
                 "message": f"客户端 {client_id} 容器启动成功",
                 "container_id": container_id,
                 "container_name": container_name,
-                "status": self.get_status(client_id, client_type)
+                "status": final_status
             }
             
         except subprocess.TimeoutExpired:

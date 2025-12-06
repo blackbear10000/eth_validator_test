@@ -13,6 +13,7 @@ import {
   Typography,
   Popconfirm,
   Switch,
+  Alert,
 } from 'antd'
 import {
   PlusOutlined,
@@ -26,6 +27,7 @@ import {
   PauseCircleOutlined,
   CaretRightOutlined,
   CloseCircleOutlined,
+  FileTextOutlined,
 } from '@ant-design/icons'
 import { clientsApi, ClientInstance } from '../../api/clients'
 import { keysApi } from '../../api/keys'
@@ -45,6 +47,11 @@ const ClientList: React.FC = () => {
   const [availableKeys, setAvailableKeys] = useState<any[]>([])
   const [clientKeys, setClientKeys] = useState<any[]>([])
   const [clientStatuses, setClientStatuses] = useState<Record<number, any>>({})
+  const [startingClients, setStartingClients] = useState<Set<number>>(new Set())
+  const [logsModalVisible, setLogsModalVisible] = useState(false)
+  const [selectedClientForLogs, setSelectedClientForLogs] = useState<number | null>(null)
+  const [clientLogs, setClientLogs] = useState<string[]>([])
+  const [loadingLogs, setLoadingLogs] = useState(false)
   const [form] = Form.useForm()
   const [editForm] = Form.useForm()
   const [assignForm] = Form.useForm()
@@ -169,14 +176,118 @@ const ClientList: React.FC = () => {
   }
 
   const handleStart = async (clientId: number) => {
+    setStartingClients((prev) => new Set(prev).add(clientId))
     try {
-      await clientsApi.start(clientId)
-      message.success('客户端启动成功')
-      setTimeout(() => {
-        loadClientStatus(clientId)
-      }, 1000)
+      const result = await clientsApi.start(clientId) as any
+      
+      // 检查返回的状态
+      if (result.status && !result.status.is_running) {
+        // 容器启动失败
+        const errorMsg = result.message || '容器启动失败'
+        const errorLogs = result.error_logs || result.status.error
+        message.error(errorMsg, 10)
+        
+        // 如果有错误日志，显示详细信息
+        if (errorLogs) {
+          Modal.error({
+            title: '容器启动失败',
+            width: 800,
+            content: (
+              <div>
+                <p>{errorMsg}</p>
+                <p style={{ marginTop: 16, fontWeight: 'bold' }}>错误日志：</p>
+                <pre style={{ 
+                  background: '#f5f5f5', 
+                  padding: 12, 
+                  borderRadius: 4,
+                  maxHeight: '400px',
+                  overflow: 'auto',
+                  fontSize: '12px',
+                  whiteSpace: 'pre-wrap',
+                  wordBreak: 'break-word'
+                }}>
+                  {typeof errorLogs === 'string' ? errorLogs : JSON.stringify(errorLogs, null, 2)}
+                </pre>
+              </div>
+            ),
+          })
+        }
+      } else {
+        message.success('客户端启动成功')
+      }
+      
+      // 立即刷新一次状态
+      await loadClientStatus(clientId)
+      
+      // 启动后自动刷新状态（每2秒一次，持续10秒）
+      let refreshCount = 0
+      const maxRefreshes = 5
+      const refreshInterval = setInterval(async () => {
+        refreshCount++
+        await loadClientStatus(clientId)
+        
+        // 使用最新的状态检查
+        const currentStatus = await clientsApi.getStatus(clientId) as any
+        if (currentStatus?.is_running || refreshCount >= maxRefreshes) {
+          clearInterval(refreshInterval)
+          setStartingClients((prev) => {
+            const newSet = new Set(prev)
+            newSet.delete(clientId)
+            return newSet
+          })
+        }
+      }, 2000)
     } catch (error: any) {
-      message.error(`启动客户端失败: ${error.message}`)
+      setStartingClients((prev) => {
+        const newSet = new Set(prev)
+        newSet.delete(clientId)
+        return newSet
+      })
+      
+      // 解析错误详情
+      const errorDetail = error.response?.data?.detail
+      let errorMsg = error.message || '启动客户端失败'
+      
+      if (errorDetail) {
+        if (typeof errorDetail === 'string') {
+          errorMsg = errorDetail
+        } else if (errorDetail.error) {
+          errorMsg = errorDetail.error
+          // 如果有错误日志，显示详细信息
+          if (errorDetail.error_logs) {
+            Modal.error({
+              title: '容器启动失败',
+              width: 800,
+              content: (
+                <div>
+                  <p>{errorDetail.error}</p>
+                  {errorDetail.config_file_path && (
+                    <p style={{ marginTop: 8, fontSize: '12px', color: '#666' }}>
+                      配置文件路径: {errorDetail.config_file_path}
+                    </p>
+                  )}
+                  <p style={{ marginTop: 16, fontWeight: 'bold' }}>错误日志：</p>
+                  <pre style={{ 
+                    background: '#f5f5f5', 
+                    padding: 12, 
+                    borderRadius: 4,
+                    maxHeight: '400px',
+                    overflow: 'auto',
+                    fontSize: '12px',
+                    whiteSpace: 'pre-wrap',
+                    wordBreak: 'break-word'
+                  }}>
+                    {errorDetail.error_logs}
+                  </pre>
+                </div>
+              ),
+            })
+            return
+          }
+        }
+      }
+      
+      message.error(`启动客户端失败: ${errorMsg}`, 10)
     }
   }
 
@@ -279,14 +390,50 @@ const ClientList: React.FC = () => {
 
   const getStatusTag = (clientId: number) => {
     const status = clientStatuses[clientId]
-    if (!status) return <Tag>未知</Tag>
+    if (!status) {
+      if (startingClients.has(clientId)) {
+        return <Tag color="processing">启动中...</Tag>
+      }
+      return <Tag>未知</Tag>
+    }
     if (status.is_running) {
       return <Tag color="success">运行中</Tag>
     }
     if (status.state === 'paused') {
       return <Tag color="warning">已暂停</Tag>
     }
+    if (status.exit_code !== null && status.exit_code !== undefined) {
+      return <Tag color="error">已退出 ({status.exit_code})</Tag>
+    }
+    if (status.error) {
+      return <Tag color="error">错误</Tag>
+    }
     return <Tag>已停止</Tag>
+  }
+
+  const handleViewLogs = async (clientId: number) => {
+    setSelectedClientForLogs(clientId)
+    setLogsModalVisible(true)
+    await loadClientLogs(clientId)
+  }
+
+  const loadClientLogs = async (clientId: number) => {
+    setLoadingLogs(true)
+    try {
+      const result = await clientsApi.getLogs(clientId, 100) as any
+      if (result.logs) {
+        setClientLogs(result.logs)
+      } else if (result.error) {
+        setClientLogs([`错误: ${result.error}`])
+      } else {
+        setClientLogs(['暂无日志'])
+      }
+    } catch (error: any) {
+      message.error(`加载日志失败: ${error.message}`)
+      setClientLogs([`加载日志失败: ${error.message}`])
+    } finally {
+      setLoadingLogs(false)
+    }
   }
 
   const columns = [
@@ -391,6 +538,7 @@ const ClientList: React.FC = () => {
                 type="primary"
                 icon={<PlayCircleOutlined />}
                 onClick={() => handleStart(record.id)}
+                loading={startingClients.has(record.id)}
               >
                 启动
               </Button>
@@ -428,6 +576,13 @@ const ClientList: React.FC = () => {
               onClick={() => handleViewKeys(record.id)}
             >
               查看密钥
+            </Button>
+            <Button
+              size="small"
+              icon={<FileTextOutlined />}
+              onClick={() => handleViewLogs(record.id)}
+            >
+              查看日志
             </Button>
             <Button
               size="small"
@@ -471,6 +626,45 @@ const ClientList: React.FC = () => {
           </Button>
         }
       >
+        {/* 显示有错误的客户端 */}
+        {clients.some((client) => {
+          const status = clientStatuses[client.id]
+          return status && (status.error || (status.exit_code !== null && status.exit_code !== undefined))
+        }) && (
+          <Alert
+            message="部分客户端容器异常"
+            description={
+              <div>
+                {clients
+                  .filter((client) => {
+                    const status = clientStatuses[client.id]
+                    return status && (status.error || (status.exit_code !== null && status.exit_code !== undefined))
+                  })
+                  .map((client) => {
+                    const status = clientStatuses[client.id]
+                    return (
+                      <div key={client.id} style={{ marginTop: 8 }}>
+                        <strong>{client.name}</strong>: {status.error || `退出代码 ${status.exit_code}`}
+                        {' '}
+                        <Button
+                          type="link"
+                          size="small"
+                          icon={<FileTextOutlined />}
+                          onClick={() => handleViewLogs(client.id)}
+                        >
+                          查看日志
+                        </Button>
+                      </div>
+                    )
+                  })}
+              </div>
+            }
+            type="error"
+            showIcon
+            closable
+            style={{ marginBottom: 16 }}
+          />
+        )}
         <Table
           columns={columns}
           dataSource={clients}
@@ -682,6 +876,61 @@ const ClientList: React.FC = () => {
             </Select>
           </Form.Item>
         </Form>
+      </Modal>
+
+      {/* 查看日志模态框 */}
+      <Modal
+        title={`容器日志 - ${clients.find((c) => c.id === selectedClientForLogs)?.name || `客户端 ${selectedClientForLogs}`}`}
+        open={logsModalVisible}
+        onCancel={() => {
+          setLogsModalVisible(false)
+          setSelectedClientForLogs(null)
+          setClientLogs([])
+        }}
+        footer={[
+          <Button
+            key="refresh"
+            icon={<ReloadOutlined />}
+            onClick={() => selectedClientForLogs && loadClientLogs(selectedClientForLogs)}
+            loading={loadingLogs}
+          >
+            刷新
+          </Button>,
+          <Button key="close" onClick={() => {
+            setLogsModalVisible(false)
+            setSelectedClientForLogs(null)
+            setClientLogs([])
+          }}>
+            关闭
+          </Button>,
+        ]}
+        width={900}
+      >
+        <Spin spinning={loadingLogs}>
+          <div
+            style={{
+              background: '#1e1e1e',
+              color: '#d4d4d4',
+              padding: 16,
+              borderRadius: 4,
+              maxHeight: '600px',
+              overflow: 'auto',
+              fontFamily: 'monospace',
+              fontSize: '12px',
+              lineHeight: '1.5',
+            }}
+          >
+            {clientLogs.length > 0 ? (
+              clientLogs.map((log, index) => (
+                <div key={index} style={{ marginBottom: 4 }}>
+                  {log}
+                </div>
+              ))
+            ) : (
+              <div style={{ color: '#888' }}>暂无日志</div>
+            )}
+          </div>
+        </Spin>
       </Modal>
     </div>
   )

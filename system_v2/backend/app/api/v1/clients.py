@@ -334,6 +334,22 @@ async def start_client(
         config_file = config.get('config_file')
         config_dir = client.config_path  # 配置文件目录（用于 Docker 挂载）
         
+        # 验证配置文件是否存在
+        if config_file:
+            import os
+            if not os.path.exists(config_file):
+                error_msg = f"配置文件不存在: {config_file}"
+                logger.error(error_msg)
+                raise HTTPException(
+                    status_code=400,
+                    detail={
+                        "error": error_msg,
+                        "config_file": config_file,
+                        "config_dir": config_dir
+                    }
+                )
+            logger.info(f"验证配置文件存在: {config_file}")
+        
         # 如果 config_file 是相对路径，提取文件名
         if config_file and config_dir:
             import os
@@ -351,7 +367,17 @@ async def start_client(
         )
         
         if not result.get("success"):
-            raise HTTPException(status_code=500, detail=result.get("message", "启动失败"))
+            # 返回详细的错误信息
+            error_detail = {
+                "error": result.get("message", "启动失败"),
+                "container_name": result.get("container_name"),
+                "state": result.get("state"),
+                "exit_code": result.get("exit_code"),
+                "error_logs": result.get("error_logs"),
+                "config_file_path": result.get("config_file_path"),
+                "config_dir": result.get("config_dir")
+            }
+            raise HTTPException(status_code=500, detail=error_detail)
         
         return result
     except HTTPException:
