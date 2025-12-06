@@ -138,31 +138,103 @@ class ClientProcessService:
             network-config.yaml 文件的绝对路径，如果找不到则返回 None
         """
         # 尝试多个可能的路径
-        possible_paths = [
-            # 从 infra 目录查找
-            os.path.join(self._find_infra_directory() or "", "kurtosis", "network-config.yaml"),
-            # 从项目根目录查找
-            os.path.join(os.getcwd(), "infra", "kurtosis", "network-config.yaml"),
-            os.path.join(os.getcwd(), "..", "infra", "kurtosis", "network-config.yaml"),
-            # 相对路径
+        possible_paths = []
+        
+        # 方法1: 使用 INFRA_DIR 环境变量，然后向上查找项目根目录
+        infra_dir_env = os.getenv("INFRA_DIR")
+        if infra_dir_env:
+            # INFRA_DIR 通常是 system_v2/infra，需要向上找到项目根目录
+            # 项目根目录的 infra/kurtosis/network-config.yaml
+            infra_dir_abs = os.path.abspath(infra_dir_env)
+            # 从 system_v2/infra 向上到项目根目录
+            project_root = os.path.dirname(os.path.dirname(infra_dir_abs))
+            possible_paths.append(os.path.join(project_root, "infra", "kurtosis", "network-config.yaml"))
+            logger.debug(f"尝试从 INFRA_DIR 推断项目根目录: {possible_paths[-1]}")
+            # 也尝试直接在 INFRA_DIR 下查找（如果文件在那里）
+            possible_paths.append(os.path.join(infra_dir_abs, "kurtosis", "network-config.yaml"))
+            logger.debug(f"尝试从 INFRA_DIR 直接查找: {possible_paths[-1]}")
+        
+        # 方法2: 从 infra 目录查找，然后向上查找项目根目录
+        infra_dir = self._find_infra_directory()
+        if infra_dir:
+            infra_dir_abs = os.path.abspath(infra_dir)
+            # 从 system_v2/infra 向上到项目根目录
+            project_root = os.path.dirname(os.path.dirname(infra_dir_abs))
+            possible_paths.append(os.path.join(project_root, "infra", "kurtosis", "network-config.yaml"))
+            logger.debug(f"尝试从 infra 目录推断项目根目录: {possible_paths[-1]}")
+            # 也尝试直接在 infra 目录下查找
+            possible_paths.append(os.path.join(infra_dir_abs, "kurtosis", "network-config.yaml"))
+            logger.debug(f"尝试从 infra 目录直接查找: {possible_paths[-1]}")
+        
+        # 方法3: 从项目根目录查找（相对于 backend 容器）
+        # backend 在 /app，但需要找到项目根目录
+        if os.path.exists("/app"):
+            # 在容器内，尝试从 /app 向上查找
+            # /app 是 backend 目录，需要找到项目根目录
+            # 由于 docker-compose 挂载 ../backend:/app，项目根目录应该在 /app/..
+            # 但 os.path.abspath 会解析为 /，所以需要特殊处理
+            # 尝试通过环境变量或挂载点推断
+            pass  # 暂时跳过，优先使用 INFRA_DIR
+        
+        # 方法4: 从当前工作目录查找
+        cwd = os.getcwd()
+        possible_paths.extend([
+            os.path.join(cwd, "infra", "kurtosis", "network-config.yaml"),
+            os.path.join(cwd, "..", "infra", "kurtosis", "network-config.yaml"),
+            os.path.join(cwd, "../infra", "kurtosis", "network-config.yaml"),
+        ])
+        
+        # 方法5: 相对路径（从 backend 容器内）
+        if os.path.exists("/app"):
+            # 在容器内，尝试通过 docker inspect 查找 backend 容器的挂载点
+            # 找到 backend 挂载的 ../backend 路径，然后推断 infra 目录
+            try:
+                inspect_result = subprocess.run(
+                    ["docker", "inspect", "--format", "{{range .Mounts}}{{.Source}} {{.Destination}}\n{{end}}", "backend"],
+                    capture_output=True,
+                    text=True,
+                    timeout=5
+                )
+                if inspect_result.returncode == 0:
+                    mounts = inspect_result.stdout.strip().split('\n')
+                    for mount in mounts:
+                        if mount and '/app' in mount:
+                            parts = mount.split()
+                            if len(parts) >= 2:
+                                host_backend_path = parts[0]  # 宿主机 backend 路径
+                                # backend 路径通常是 .../system_v2/backend
+                                # infra 路径应该是 .../system_v2/infra
+                                if host_backend_path.endswith('/backend') or host_backend_path.endswith('\\backend'):
+                                    infra_dir_from_mount = os.path.join(os.path.dirname(host_backend_path), "infra")
+                                    network_config_path = os.path.join(infra_dir_from_mount, "kurtosis", "network-config.yaml")
+                                    possible_paths.append(network_config_path)
+                                    logger.debug(f"从 Docker 挂载推断路径: {network_config_path}")
+                                    break
+            except Exception as e:
+                logger.debug(f"无法从 Docker 挂载推断路径: {e}")
+        
+        # 方法6: 相对路径（从项目根目录）
+        possible_paths.extend([
             "infra/kurtosis/network-config.yaml",
             "../infra/kurtosis/network-config.yaml",
             "../../infra/kurtosis/network-config.yaml",
-        ]
+        ])
         
+        # 尝试所有路径
         for path in possible_paths:
             if not path:
                 continue
             try:
                 abs_path = os.path.abspath(path)
                 if os.path.exists(abs_path) and os.path.isfile(abs_path):
-                    logger.info(f"找到 network-config.yaml: {abs_path}")
+                    logger.info(f"✅ 找到 network-config.yaml: {abs_path}")
                     return abs_path
             except Exception as e:
                 logger.debug(f"检查路径失败 {path}: {e}")
                 continue
         
-        logger.warning("未找到 network-config.yaml 文件")
+        logger.error("❌ 未找到 network-config.yaml 文件，Prysm 将无法正确配置网络参数")
+        logger.error("   请确保文件存在于 infra/kurtosis/network-config.yaml")
         return None
     
     def _find_network_name(self) -> Optional[str]:
@@ -714,10 +786,16 @@ class ClientProcessService:
             # 挂载网络配置文件（用于 Prysm 等客户端）
             network_config_path = self._find_network_config_file()
             if network_config_path:
-                cmd.extend(["-v", f"{network_config_path}:/network-config.yaml:ro"])
-                logger.info(f"挂载网络配置文件: {network_config_path} -> /network-config.yaml")
+                # 验证文件确实存在
+                if not os.path.exists(network_config_path):
+                    logger.error(f"❌ network-config.yaml 路径存在但文件不存在: {network_config_path}")
+                else:
+                    cmd.extend(["-v", f"{network_config_path}:/network-config.yaml:ro"])
+                    logger.info(f"✅ 挂载网络配置文件: {network_config_path} -> /network-config.yaml")
             else:
-                logger.warning("未找到 network-config.yaml 文件，Prysm 可能无法正确配置网络参数")
+                logger.error("❌ 未找到 network-config.yaml 文件，Prysm 将无法正确配置网络参数")
+                logger.error("   这可能导致 'start slot is smaller than minimum valid start slot' 错误")
+                # 不阻止容器启动，但记录严重警告
             
             # 数据目录挂载（持久化）
             # 在容器内使用 /app/validator-clients-data（挂载到宿主机）
@@ -1173,6 +1251,7 @@ class ClientProcessService:
             
             # 网络配置文件（关键！用于配置 fork version、genesis time 等网络参数）
             # 这个文件必须与 dev net 的网络配置匹配，否则会出现 slot 不匹配错误
+            # 注意：如果文件未挂载，Prysm 会报错，但我们已经在上面的挂载逻辑中处理了
             cmd.extend(['--chain-config-file', '/network-config.yaml'])
             logger.info(f"[Prysm 启动] 使用网络配置文件: /network-config.yaml")
             
