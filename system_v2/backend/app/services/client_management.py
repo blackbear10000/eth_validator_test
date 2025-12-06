@@ -150,6 +150,36 @@ class ClientManagementService:
                 # 如果无法获取，将 localhost 转换为 host.docker.internal
                 return url.replace('localhost', 'host.docker.internal').replace('127.0.0.1', 'host.docker.internal')
             
+            # 对于 gRPC 端点，尝试从 NetworkService 获取
+            elif url_type == "grpc":
+                try:
+                    from app.services.network_service import NetworkService
+                    network_service = NetworkService()
+                    endpoints = network_service.get_rpc_endpoints()
+                    if endpoints.get("grpc_endpoint"):
+                        logger.info(f"从网络服务获取 gRPC 端点: {endpoints['grpc_endpoint']}")
+                        return endpoints["grpc_endpoint"]
+                    # 如果没有找到 gRPC 端点，但找到了 Beacon API URL，尝试推导
+                    # 对于 Prysm，如果 Beacon API 是 3500，gRPC 通常是 4000
+                    # 但需要从端口映射中获取实际的宿主机端口
+                    elif endpoints.get("beacon_api_url"):
+                        beacon_url = endpoints["beacon_api_url"]
+                        # 从 Beacon API URL 提取端口，然后查找对应的 gRPC 端口映射
+                        # 这需要更复杂的逻辑，暂时先使用 host.docker.internal
+                        logger.warning(f"未找到 gRPC 端点，但找到了 Beacon API URL: {beacon_url}，尝试使用默认 gRPC 端口")
+                        # 如果 Beacon API 端口是 3500，gRPC 端口可能是不同的映射
+                        # 暂时使用 host.docker.internal:4000，但这可能不正确
+                        # 更好的方法是解析 Kurtosis 输出中的 gRPC 端口映射
+                except Exception as e:
+                    logger.warning(f"无法从网络服务获取 gRPC 端点: {e}")
+                
+                # 如果无法获取，将 localhost 转换为 host.docker.internal
+                # 注意：gRPC 端点格式是 host:port，不是 URL
+                if '://' in url:
+                    # 如果包含协议，移除协议
+                    url = url.replace('http://', '').replace('https://', '')
+                return url.replace('localhost', 'host.docker.internal').replace('127.0.0.1', 'host.docker.internal')
+            
             # 对于其他类型，使用 host.docker.internal
             else:
                 return url.replace('localhost', 'host.docker.internal').replace('127.0.0.1', 'host.docker.internal')
@@ -435,6 +465,32 @@ class ClientManagementService:
         # 主配置文件（YAML 格式，Prysm 使用）
         # 注意：web3signer-url 将通过命令行参数传递，不放在配置文件中
         config_file = config_dir / "config.yaml"
+        
+        # 获取 gRPC 端点，如果没有提供，尝试从网络服务获取
+        grpc_endpoint = client_instance.grpc_endpoint
+        if not grpc_endpoint:
+            try:
+                from app.services.network_service import NetworkService
+                network_service = NetworkService()
+                endpoints = network_service.get_rpc_endpoints()
+                if endpoints.get("grpc_endpoint"):
+                    grpc_endpoint = endpoints["grpc_endpoint"]
+                    logger.info(f"从网络服务获取 gRPC 端点: {grpc_endpoint}")
+                else:
+                    # 如果没有找到 gRPC 端点，使用默认值（但会转换为 host.docker.internal）
+                    grpc_endpoint = "host.docker.internal:4000"
+                    logger.warning(f"未找到 gRPC 端点，使用默认值: {grpc_endpoint}")
+            except Exception as e:
+                logger.warning(f"无法从网络服务获取 gRPC 端点: {e}，使用默认值")
+                grpc_endpoint = "host.docker.internal:4000"
+        else:
+            # 如果提供了 gRPC 端点，确保格式正确（转换为容器可访问的格式）
+            grpc_endpoint = self._convert_url_for_container(grpc_endpoint, "grpc")
+        
+        # 确保 gRPC 端点格式正确（host:port，不是 URL）
+        if grpc_endpoint and '://' in grpc_endpoint:
+            grpc_endpoint = grpc_endpoint.replace('http://', '').replace('https://', '')
+        
         config = {
             "validator": {
                 "wallet-dir": "/wallet",
@@ -442,7 +498,7 @@ class ClientManagementService:
                 "graffiti": f"prysm-{client_instance.name}"
             },
             "beacon-chain": {
-                "rpc-host": client_instance.grpc_endpoint or "localhost:4000",
+                "rpc-host": grpc_endpoint or "host.docker.internal:4000",
                 "web3-provider": client_instance.beacon_api_url or "http://localhost:5052"
             },
             "slashing-protection-db-url": "postgresql://postgres:password@localhost:5432/web3signer"

@@ -178,7 +178,8 @@ class NetworkService:
                 "error": "网络未运行",
                 "rpc_url": None,
                 "ws_url": None,
-                "beacon_api_url": None
+                "beacon_api_url": None,
+                "grpc_endpoint": None
             }
         
         # 获取 enclave 详细信息
@@ -189,7 +190,8 @@ class NetworkService:
                 "error": "无法获取 enclave 详细信息",
                 "rpc_url": None,
                 "ws_url": None,
-                "beacon_api_url": None
+                "beacon_api_url": None,
+                "grpc_endpoint": None
             }
         
         # 解析输出，查找执行层服务的 RPC 端口和共识层服务的 Beacon API 端口
@@ -206,6 +208,7 @@ class NetworkService:
         rpc_url = None
         ws_url = None
         beacon_api_url = None
+        grpc_endpoint = None  # gRPC 端点（用于 Prysm）
         current_service = None
         beacon_service = None
         
@@ -266,7 +269,7 @@ class NetworkService:
                         ws_url = f"ws://{host_ip}:{host_port}"
                     logger.info(f"找到 WS 端口映射: {host_ip}:{host_port} -> {ws_url}")
                 
-            # 如果在共识层服务块中，查找 Beacon API 端口
+            # 如果在共识层服务块中，查找 Beacon API 端口和 gRPC 端口
             if in_cl_service:
                 # 查找 Beacon API 端口
                 # Prysm: http: 3500/tcp -> http://127.0.0.1:33785
@@ -299,6 +302,25 @@ class NetworkService:
                         else:
                             beacon_api_url = f"http://{host_ip}:{host_port}"
                         logger.info(f"找到 Beacon API 端口映射 (Teku): {host_ip}:{host_port} -> {beacon_api_url}")
+                
+                # 查找 gRPC 端口（用于 Prysm）
+                # Prysm 的 gRPC 端口通常是 4000，在 Kurtosis 中可能标记为 "rpc" 或 "grpc"
+                # 格式：rpc: 4000/tcp -> 127.0.0.1:XXXXX 或 grpc: 4000/tcp -> 127.0.0.1:XXXXX
+                grpc_match = re.search(
+                    r'(?:rpc|grpc)\s*:\s*4000/tcp\s*->\s*([\d.]+):(\d+)',
+                    line
+                )
+                if grpc_match:
+                    host_ip = grpc_match.group(1)
+                    host_port = grpc_match.group(2)
+                    if host_ip == '127.0.0.1' or host_ip == '0.0.0.0':
+                        grpc_endpoint = f"host.docker.internal:{host_port}"
+                    else:
+                        grpc_endpoint = f"{host_ip}:{host_port}"
+                    logger.info(f"找到 gRPC 端口映射: {host_ip}:{host_port} -> {grpc_endpoint}")
+                # 如果没有找到专门的 gRPC 端口，但找到了 Prysm 的 Beacon API（3500），
+                # 可以尝试从 Beacon API 端口推导 gRPC 端口
+                # 但通常 gRPC 端口需要单独映射，所以这里不自动推导
             
             # 如果遇到新的服务块，重置状态
             # 检查是否是新的容器/服务行（UUID 格式：通常是 12 个十六进制字符，或者包含其他服务名）
@@ -324,9 +346,12 @@ class NetworkService:
             host_ws_url = ws_url if ws_url else None
             host_beacon_api_url = beacon_api_url if beacon_api_url else None
             
+            host_grpc_endpoint = grpc_endpoint if grpc_endpoint else None
+            
             logger.info(
                 f"成功提取端点: RPC={rpc_url}, WS={ws_url}, "
-                f"Beacon API={beacon_api_url}, 执行层服务={current_service}, 共识层服务={beacon_service}"
+                f"Beacon API={beacon_api_url}, gRPC={grpc_endpoint}, "
+                f"执行层服务={current_service}, 共识层服务={beacon_service}"
             )
             return {
                 "rpc_url": rpc_url,  # 返回容器可访问的 URL（默认使用 host.docker.internal）
@@ -335,6 +360,8 @@ class NetworkService:
                 "host_ws_url": host_ws_url,
                 "beacon_api_url": beacon_api_url,  # 新增：Beacon API URL（容器内访问）
                 "host_beacon_api_url": host_beacon_api_url,  # 新增：Beacon API URL（主机访问）
+                "grpc_endpoint": grpc_endpoint,  # 新增：gRPC 端点（容器内访问，格式：host:port）
+                "host_grpc_endpoint": host_grpc_endpoint,  # 新增：gRPC 端点（主机访问）
                 "service": current_service,
                 "beacon_service": beacon_service  # 新增：共识层服务名称
             }
@@ -347,6 +374,8 @@ class NetworkService:
                 "ws_url": None,
                 "beacon_api_url": None,
                 "host_beacon_api_url": None,
+                "grpc_endpoint": None,
+                "host_grpc_endpoint": None,
                 "debug_info": raw_output[:500]  # 返回部分原始输出用于调试
             }
     

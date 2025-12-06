@@ -241,7 +241,7 @@ const ClientList: React.FC = () => {
           })
         }
       } else {
-        message.success('客户端启动成功')
+      message.success('客户端启动成功')
       }
       
       // 立即刷新一次状态
@@ -551,14 +551,14 @@ const ClientList: React.FC = () => {
                 >
                   恢复
                 </Button>
-                <Popconfirm
-                  title="确定要停止客户端吗？"
-                  onConfirm={() => handleStop(record.id)}
-                >
-                  <Button size="small" danger icon={<StopOutlined />}>
-                    停止
-                  </Button>
-                </Popconfirm>
+              <Popconfirm
+                title="确定要停止客户端吗？"
+                onConfirm={() => handleStop(record.id)}
+              >
+                <Button size="small" danger icon={<StopOutlined />}>
+                  停止
+                </Button>
+              </Popconfirm>
               </>
             ) : (
               <Button
@@ -586,20 +586,20 @@ const ClientList: React.FC = () => {
             </Popconfirm>
             {activeTab === 'active' && (
               <>
-                <Button
-                  size="small"
-                  icon={<KeyOutlined />}
-                  onClick={() => handleAssignKeys(record.id)}
-                >
-                  分配密钥
-                </Button>
-                <Button
-                  size="small"
-                  icon={<ReloadOutlined />}
-                  onClick={() => handleReloadKeys(record.id)}
-                >
-                  重载密钥
-                </Button>
+            <Button
+              size="small"
+              icon={<KeyOutlined />}
+              onClick={() => handleAssignKeys(record.id)}
+            >
+              分配密钥
+            </Button>
+            <Button
+              size="small"
+              icon={<ReloadOutlined />}
+              onClick={() => handleReloadKeys(record.id)}
+            >
+              重载密钥
+            </Button>
                 <Button
                   size="small"
                   icon={<EyeOutlined />}
