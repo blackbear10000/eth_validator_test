@@ -416,7 +416,8 @@ class ClientProcessService:
         config_file: Optional[str] = None,
         config_dir: Optional[str] = None,
         web3signer_url: Optional[str] = None,
-        pubkeys: Optional[List[str]] = None
+        pubkeys: Optional[List[str]] = None,
+        grpc_endpoint: Optional[str] = None
     ) -> Dict[str, any]:
         """
         启动客户端 Docker 容器
@@ -685,11 +686,28 @@ class ClientProcessService:
             cmd.append(docker_image)
             
             # 构建容器内启动命令
+            # 对于 Prysm，如果 grpc_endpoint 未提供，尝试从配置文件读取
+            grpc_endpoint_for_cmd = grpc_endpoint
+            if not grpc_endpoint_for_cmd and 'prysm' in client_type.lower() and config_file and config_dir:
+                try:
+                    import yaml
+                    config_file_basename = os.path.basename(config_file) if '/' in config_file else config_file
+                    config_path = os.path.join(config_dir, config_file_basename)
+                    if os.path.exists(config_path):
+                        with open(config_path, 'r') as f:
+                            config_data = yaml.safe_load(f)
+                            if config_data and 'beacon-chain' in config_data:
+                                grpc_endpoint_for_cmd = config_data['beacon-chain'].get('rpc-host')
+                                logger.info(f"[Prysm 启动] 从配置文件读取 gRPC 端点: {grpc_endpoint_for_cmd}")
+                except Exception as e:
+                    logger.debug(f"[Prysm 启动] 无法从配置文件读取 gRPC 端点: {e}")
+            
             container_cmd = self._build_container_command(
                 client_type, 
                 config_file,
                 web3signer_url=web3signer_url,
-                pubkeys=pubkeys or []
+                pubkeys=pubkeys or [],
+                grpc_endpoint=grpc_endpoint_for_cmd
             )
             cmd.extend(container_cmd)
             
@@ -1074,7 +1092,8 @@ class ClientProcessService:
         client_type: str,
         config_file: Optional[str] = None,
         web3signer_url: Optional[str] = None,
-        pubkeys: Optional[List[str]] = None
+        pubkeys: Optional[List[str]] = None,
+        grpc_endpoint: Optional[str] = None
     ) -> List[str]:
         """
         构建容器内启动命令
@@ -1102,16 +1121,31 @@ class ClientProcessService:
             # 接受使用条款（非交互式环境必需）
             cmd.append('--accept-terms-of-use')
             
+            # gRPC 端点配置（优先通过命令行参数传递，更可靠）
+            # 根据 Prysm 文档，--beacon-rpc-provider 参数支持在 validator 命令中使用
+            # 默认值是 127.0.0.1:4000，所以必须显式传递正确的值
+            if grpc_endpoint:
+                # 确保格式正确（host:port，不是 URL）
+                grpc_endpoint_clean = grpc_endpoint
+                if '://' in grpc_endpoint_clean:
+                    grpc_endpoint_clean = grpc_endpoint_clean.replace('http://', '').replace('https://', '')
+                cmd.extend(['--beacon-rpc-provider', grpc_endpoint_clean])
+                logger.info(f"[Prysm 启动] 通过命令行参数设置 gRPC 端点: {grpc_endpoint_clean}")
+            else:
+                logger.warning(f"[Prysm 启动] ⚠️  未提供 gRPC 端点，Prysm 将使用默认值 127.0.0.1:4000")
+            
             # 配置文件（如果提供）
             if config_file:
                 # 如果传入的是相对路径，转换为容器内绝对路径
                 if not config_file.startswith('/'):
                     config_file = f"/config/{config_file}"
                 cmd.extend(['--config-file', config_file])
+                logger.info(f"[Prysm 启动] 使用配置文件: {config_file}")
             
             # Web3Signer 配置
             if web3signer_url:
                 cmd.extend(['--validators-external-signer-url', web3signer_url])
+                logger.info(f"[Prysm 启动] Web3Signer URL: {web3signer_url}")
             
             # 公钥列表（可选）
             if pubkeys:
@@ -1124,6 +1158,7 @@ class ClientProcessService:
                     pubkeys_clean.append(pubkey_clean)
                 pubkeys_str = ','.join(pubkeys_clean)
                 cmd.extend(['--validators-external-signer-public-keys', pubkeys_str])
+                logger.info(f"[Prysm 启动] 公钥数量: {len(pubkeys_clean)}")
             
             # 启用 Remote Keymanager API
             cmd.append('--web')
@@ -1134,6 +1169,7 @@ class ClientProcessService:
             # Wallet 目录（用于 auth-token，即使不使用本地钱包）
             cmd.extend(['--wallet-dir', '/wallet'])
             
+            logger.info(f"[Prysm 启动] 最终启动命令参数: {' '.join(cmd)}")
             return cmd
         
         elif 'lighthouse' in client_type_lower:

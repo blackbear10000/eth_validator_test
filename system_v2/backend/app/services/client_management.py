@@ -468,6 +468,8 @@ class ClientManagementService:
         
         # 获取 gRPC 端点，如果没有提供，尝试从网络服务获取
         grpc_endpoint = client_instance.grpc_endpoint
+        logger.info(f"[Prysm 配置] 从数据库获取 gRPC 端点: {grpc_endpoint}")
+        
         if not grpc_endpoint:
             try:
                 from app.services.network_service import NetworkService
@@ -475,21 +477,25 @@ class ClientManagementService:
                 endpoints = network_service.get_rpc_endpoints()
                 if endpoints.get("grpc_endpoint"):
                     grpc_endpoint = endpoints["grpc_endpoint"]
-                    logger.info(f"从网络服务获取 gRPC 端点: {grpc_endpoint}")
+                    logger.info(f"[Prysm 配置] 从网络服务获取 gRPC 端点: {grpc_endpoint}")
                 else:
                     # 如果没有找到 gRPC 端点，使用默认值（但会转换为 host.docker.internal）
                     grpc_endpoint = "host.docker.internal:4000"
-                    logger.warning(f"未找到 gRPC 端点，使用默认值: {grpc_endpoint}")
+                    logger.warning(f"[Prysm 配置] 未找到 gRPC 端点，使用默认值: {grpc_endpoint}")
             except Exception as e:
-                logger.warning(f"无法从网络服务获取 gRPC 端点: {e}，使用默认值")
+                logger.warning(f"[Prysm 配置] 无法从网络服务获取 gRPC 端点: {e}，使用默认值")
                 grpc_endpoint = "host.docker.internal:4000"
         else:
             # 如果提供了 gRPC 端点，确保格式正确（转换为容器可访问的格式）
+            original_grpc = grpc_endpoint
             grpc_endpoint = self._convert_url_for_container(grpc_endpoint, "grpc")
+            logger.info(f"[Prysm 配置] gRPC 端点转换: {original_grpc} -> {grpc_endpoint}")
         
         # 确保 gRPC 端点格式正确（host:port，不是 URL）
         if grpc_endpoint and '://' in grpc_endpoint:
             grpc_endpoint = grpc_endpoint.replace('http://', '').replace('https://', '')
+        
+        logger.info(f"[Prysm 配置] 最终使用的 gRPC 端点: {grpc_endpoint}")
         
         config = {
             "validator": {
@@ -505,9 +511,25 @@ class ClientManagementService:
             # web3signer-url 已移除，将通过命令行参数传递
         }
         
+        logger.info(f"[Prysm 配置] 生成配置文件: {config_file}")
+        logger.info(f"[Prysm 配置] 配置文件内容 - rpc-host: {config['beacon-chain']['rpc-host']}")
+        
         import yaml
         with open(config_file, 'w') as f:
             yaml.dump(config, f, default_flow_style=False)
+        
+        # 验证配置文件是否正确写入
+        if os.path.exists(config_file):
+            with open(config_file, 'r') as f:
+                config_content = f.read()
+                logger.debug(f"[Prysm 配置] 配置文件内容:\n{config_content}")
+                # 检查 rpc-host 是否正确写入
+                if f"rpc-host: {grpc_endpoint}" in config_content or f'rpc-host: "{grpc_endpoint}"' in config_content:
+                    logger.info(f"[Prysm 配置] ✅ 配置文件中的 rpc-host 已正确设置: {grpc_endpoint}")
+                else:
+                    logger.error(f"[Prysm 配置] ❌ 配置文件中的 rpc-host 可能未正确设置，期望: {grpc_endpoint}")
+        else:
+            logger.error(f"[Prysm 配置] ❌ 配置文件不存在: {config_file}")
         
         return {
             'config_file': str(config_file),

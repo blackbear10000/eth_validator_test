@@ -396,7 +396,8 @@ async def start_client(
             config_file=config_file_name,  # 容器内路径（相对于 /config）
             config_dir=config_dir,  # 宿主机路径（用于挂载）
             web3signer_url=client.web3signer_url,  # Web3Signer URL
-            pubkeys=pubkeys  # 公钥列表
+            pubkeys=pubkeys,  # 公钥列表
+            grpc_endpoint=client.grpc_endpoint  # gRPC 端点（用于调试和可能的命令行参数）
         )
         
         if not result.get("success"):
