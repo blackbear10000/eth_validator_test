@@ -112,8 +112,8 @@ class ClientManagementService:
         """
         从 validator client 容器读取 auth token
         
-        根据 Prysm 文档，JWT token 在 auth-token 文件的第二行
-        文件路径：--wallet-dir 指定的目录下的 auth-token 文件（我们设置的是 /wallet）
+        根据实际观察，JWT token 在 auth-token 文件的第一行
+        文件路径：--keymanager-token-file 指定的路径（我们设置的是 /wallet/auth-token）
         
         Args:
             client_instance: 客户端实例
@@ -128,8 +128,8 @@ class ClientManagementService:
             
             # 根据客户端类型确定 auth token 文件路径
             if 'prysm' in client_instance.client_type.lower():
-                # Prysm 的 auth-token 文件在 --wallet-dir 目录下
-                # 我们设置的是 /wallet，所以文件路径是 /wallet/auth-token
+                # Prysm 的 auth-token 文件在 --keymanager-token-file 指定的路径
+                # 我们设置的是 /wallet/auth-token
                 auth_token_path = '/wallet/auth-token'
             else:
                 # Lighthouse 和 Teku 可能不需要 token 或使用不同的路径
@@ -143,22 +143,23 @@ class ClientManagementService:
                 ['docker', 'exec', container_name, 'cat', auth_token_path],
                 capture_output=True,
                 text=True,
-                timeout=5
+                timeout=10  # 增加超时时间
             )
             
             if result.returncode == 0:
                 lines = result.stdout.strip().split('\n')
-                # 根据 Prysm 文档，token 在文件的第二行
-                if len(lines) >= 2:
-                    token = lines[1].strip()  # 第二行（索引为 1）
-                    if token:
-                        logger.debug(f"成功从容器 {container_name} 读取 auth token（第二行）")
+                # 根据实际观察，token 在文件的第一行
+                if len(lines) >= 1:
+                    token = lines[0].strip()  # 第一行（索引为 0）
+                    if token and '.' in token and len(token) > 20:  # 验证 JWT 格式
+                        logger.info(f"成功从容器 {container_name} 读取 auth token（第一行）")
                         return token
                     else:
-                        logger.warning(f"容器 {container_name} 的 auth token 文件第二行为空")
+                        logger.warning(f"容器 {container_name} 的 auth token 文件第一行为空或格式不正确")
+                        logger.debug(f"文件内容: {result.stdout[:200]}")  # 记录前200个字符用于调试
                 else:
-                    logger.warning(f"容器 {container_name} 的 auth token 文件行数不足（期望至少2行，实际{len(lines)}行）")
-                    logger.debug(f"文件内容: {result.stdout[:200]}")  # 只记录前200个字符
+                    logger.warning(f"容器 {container_name} 的 auth token 文件为空")
+                    logger.debug(f"文件内容: {result.stdout[:200]}")  # 记录前200个字符用于调试
             else:
                 logger.warning(f"无法从容器 {container_name} 读取 auth token 文件: {result.stderr}")
                 logger.info(f"尝试从容器日志中提取 token...")
@@ -168,10 +169,10 @@ class ClientManagementService:
             # 或者: INFO rpc: http://127.0.0.1:7500/initialize?token=...
             try:
                 log_result = subprocess.run(
-                    ['docker', 'logs', container_name],
+                    ['docker', 'logs', container_name], # 移除 2>&1，docker logs 默认输出到 stdout
                     capture_output=True,
                     text=True,
-                    timeout=10
+                    timeout=10  # 增加超时时间
                 )
                 if log_result.returncode == 0:
                     # 查找 token URL 模式: /initialize?token=... 或 initialize?token=...
