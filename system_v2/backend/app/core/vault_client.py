@@ -214,22 +214,22 @@ class VaultClient:
         
         for key_path in possible_paths:
             try:
-                response = self.client.secrets.kv.v2.read_secret_version(
-                    path=key_path,
-                    mount_point=self.mount_point
-                )
+            response = self.client.secrets.kv.v2.read_secret_version(
+                path=key_path,
+                mount_point=self.mount_point
+            )
+            
+            if response and 'data' in response and 'data' in response['data']:
+                secret_data = response['data']['data']
+                signing_key = secret_data.get('value')
                 
-                if response and 'data' in response and 'data' in response['data']:
-                    secret_data = response['data']['data']
-                    signing_key = secret_data.get('value')
-                    
-                    if signing_key:
+                if signing_key:
                         logger.debug(f"私钥已读取: {pubkey[:10]}... (路径: {key_path})")
-                        return signing_key
-                        
-            except VaultError as e:
+                    return signing_key
+            
+        except VaultError as e:
                 # 如果是 404 错误，尝试下一个路径
-                if 'not found' in str(e).lower() or '404' in str(e):
+            if 'not found' in str(e).lower() or '404' in str(e):
                     logger.debug(f"路径不存在，尝试下一个: {key_path}")
                     continue
                 # 其他错误，记录并继续尝试
@@ -238,7 +238,7 @@ class VaultClient:
         
         # 所有路径都失败
         logger.warning(f"私钥不存在: {pubkey[:10]}... (已尝试所有可能的路径)")
-        return None
+                return None
     
     def delete_signing_key(self, pubkey: str) -> bool:
         """

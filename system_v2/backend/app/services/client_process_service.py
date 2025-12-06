@@ -423,8 +423,8 @@ class ClientProcessService:
                         except Exception as e:
                             logger.debug(f"获取退出代码失败: {e}")
                     
-                    return {
-                        "client_id": client_id,
+                return {
+                    "client_id": client_id,
                         "container_name": container_name,
                         "status": "running" if is_running else "stopped",
                         "state": state,
@@ -437,9 +437,9 @@ class ClientProcessService:
             return {
                 "client_id": client_id,
                 "container_name": container_name,
-                "status": "stopped",
-                "is_running": False
-            }
+                    "status": "stopped",
+                    "is_running": False
+                }
         
         except subprocess.TimeoutExpired:
             logger.error(f"查询容器状态超时: {container_name}")
@@ -451,12 +451,12 @@ class ClientProcessService:
             }
         except Exception as e:
             logger.error(f"查询容器状态失败: {e}")
-            return {
-                "client_id": client_id,
+        return {
+            "client_id": client_id,
                 "status": "unknown",
                 "is_running": False,
                 "error": str(e)
-            }
+        }
     
     def start(
         self,
@@ -800,8 +800,16 @@ class ClientProcessService:
                     data_dir_abs = data_dir
                 data_dir_abs = os.path.abspath(data_dir_abs)
             else:
-                # 如果找不到 infra 目录，使用相对路径的绝对路径
-                data_dir_abs = os.path.abspath(data_dir)
+                # 如果找不到 infra 目录，使用 INFRA_DIR 环境变量（与配置目录逻辑一致）
+                infra_path_env = os.getenv("INFRA_DIR")
+                if infra_path_env:
+                    data_dir_abs = os.path.join(infra_path_env, data_dir)
+                    data_dir_abs = os.path.abspath(data_dir_abs)
+                    logger.info(f"从环境变量 INFRA_DIR 获取: {infra_path_env}, 数据目录: {data_dir_abs}")
+                else:
+                    # 如果 INFRA_DIR 也不存在，使用相对路径的绝对路径（会失败，但至少不会使用容器内路径）
+                    logger.warning(f"无法找到 infra 目录，使用相对路径: {data_dir}")
+                    data_dir_abs = os.path.abspath(data_dir)
             
             os.makedirs(data_dir_abs, exist_ok=True)
             cmd.extend(["-v", f"{data_dir_abs}:/data:rw"])
@@ -820,6 +828,7 @@ class ClientProcessService:
                 wallet_dir = f"validator-clients-wallet/{client_id}"
             
             # 确保使用绝对路径（相对于 infra 目录）
+            infra_dir = self._find_infra_directory()
             if infra_dir:
                 infra_dir_abs = os.path.abspath(infra_dir)
                 # wallet_dir 可能是相对路径，需要基于 infra 目录
@@ -829,8 +838,16 @@ class ClientProcessService:
                     wallet_dir_abs = wallet_dir
                 wallet_dir_abs = os.path.abspath(wallet_dir_abs)
             else:
-                # 如果找不到 infra 目录，使用相对路径的绝对路径
-                wallet_dir_abs = os.path.abspath(wallet_dir)
+                # 如果找不到 infra 目录，使用 INFRA_DIR 环境变量（与配置目录逻辑一致）
+                infra_path_env = os.getenv("INFRA_DIR")
+                if infra_path_env:
+                    wallet_dir_abs = os.path.join(infra_path_env, wallet_dir)
+                    wallet_dir_abs = os.path.abspath(wallet_dir_abs)
+                    logger.info(f"从环境变量 INFRA_DIR 获取: {infra_path_env}, Wallet 目录: {wallet_dir_abs}")
+                else:
+                    # 如果 INFRA_DIR 也不存在，使用相对路径的绝对路径（会失败，但至少不会使用容器内路径）
+                    logger.warning(f"无法找到 infra 目录，使用相对路径: {wallet_dir}")
+                    wallet_dir_abs = os.path.abspath(wallet_dir)
             
             os.makedirs(wallet_dir_abs, exist_ok=True)
             cmd.extend(["-v", f"{wallet_dir_abs}:/wallet:rw"])
@@ -1004,7 +1021,7 @@ class ClientProcessService:
                 "success": False,
                 "message": f"暂停失败: {str(e)}"
             }
-    
+        
     def unpause(self, client_id: int, client_type: str) -> Dict[str, any]:
         """
         恢复（取消暂停）客户端 Docker 容器
@@ -1154,7 +1171,7 @@ class ClientProcessService:
                     "container_state": final_status.get("state"),
                     "suggestion": "请手动检查容器状态: docker ps -a | grep " + container_name
                 }
-            
+        
         except subprocess.TimeoutExpired:
             logger.error(f"销毁容器超时: {container_name}")
             return {
@@ -1167,7 +1184,7 @@ class ClientProcessService:
                 "success": False,
                 "message": f"销毁失败: {str(e)}"
             }
-    
+        
     def stop(self, client_id: int, client_type: str, remove: bool = False) -> Dict[str, any]:
         """
         停止客户端 Docker 容器
@@ -1189,7 +1206,7 @@ class ClientProcessService:
                 "success": True,
                 "message": f"客户端 {client_id} 容器不存在"
             }
-        
+    
         try:
             # 停止容器
             logger.info(f"停止容器: {container_name}")
@@ -1460,6 +1477,7 @@ class ClientProcessService:
             }
             
         except subprocess.TimeoutExpired:
+            logger.error(f"获取日志超时: {container_name}")
             return {
                 "client_id": client_id,
                 "logs": [],
@@ -1471,5 +1489,5 @@ class ClientProcessService:
                 "client_id": client_id,
                 "logs": [],
                 "error": str(e)
-            }
+        }
 
