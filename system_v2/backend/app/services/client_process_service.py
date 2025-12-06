@@ -672,8 +672,9 @@ class ClientProcessService:
                     
                     logger.info(f"验证配置文件存在: {config_file_host} (容器内: /config/{config_file})")
                 
-                cmd.extend(["-v", f"{config_dir_abs}:/config:ro"])
-                logger.info(f"挂载配置目录: {config_dir_abs} -> /config (原始路径: {config_dir})")
+                # 挂载为读写模式，因为 Prysm 等客户端需要写入 pubkey_persistence.txt
+                cmd.extend(["-v", f"{config_dir_abs}:/config:rw"])
+                logger.info(f"挂载配置目录: {config_dir_abs} -> /config (原始路径: {config_dir}, 读写模式)")
             
             # 数据目录挂载（持久化）
             # 在容器内使用 /app/validator-clients-data（挂载到宿主机）
