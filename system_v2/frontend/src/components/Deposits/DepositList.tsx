@@ -25,6 +25,7 @@ import {
 } from '@ant-design/icons'
 import { depositsApi, DepositTransaction, DepositData, BatchDepositContract } from '../../api/deposits'
 import { keysApi } from '../../api/keys'
+import { networkApi, NetworkInfo } from '../../api/network'
 import { useMetaMaskStore } from '../../stores/metamaskStore'
 import { DepositSubmitterService } from '../../services/depositSubmitter'
 
@@ -45,11 +46,22 @@ const DepositList: React.FC = () => {
   const [syncing, setSyncing] = useState(false)
   const [statusFilter, setStatusFilter] = useState<string | undefined>(undefined)
   const [showBalance, setShowBalance] = useState(true) // 默认显示余额
+  const [networkInfo, setNetworkInfo] = useState<NetworkInfo | null>(null)
   const [form] = Form.useForm()
   const [submitForm] = Form.useForm()
   
   // MetaMask 状态
   const { isConnected, account } = useMetaMaskStore()
+
+  // 加载网络信息
+  const loadNetworkInfo = async () => {
+    try {
+      const response = await networkApi.getInfo() as any
+      setNetworkInfo(response.data || response)
+    } catch (error) {
+      console.warn('无法获取网络信息:', error)
+    }
+  }
 
   const loadBatchContracts = async () => {
     try {
@@ -65,6 +77,7 @@ const DepositList: React.FC = () => {
   useEffect(() => {
     loadDeposits()
     loadBatchContracts()
+    loadNetworkInfo()
   }, [])
 
   const loadDeposits = async () => {
@@ -226,15 +239,20 @@ const DepositList: React.FC = () => {
         }
       } else {
         // 官方存款（逐个发送）
-        if (!values.official_deposit_contract_address) {
-          message.error('请提供官方 Deposit 合约地址')
-          return
+        // 如果没有提供地址，尝试从网络信息获取
+        let officialContractAddress = values.official_deposit_contract_address
+        if (!officialContractAddress && networkInfo?.deposit_contract_address) {
+          officialContractAddress = networkInfo.deposit_contract_address
+        }
+        if (!officialContractAddress) {
+          // 使用默认地址
+          officialContractAddress = "0x4242424242424242424242424242424242424242"
         }
 
         message.info(`开始提交 ${generatedDepositData.length} 个存款交易，请在 MetaMask 中逐个确认...`)
         
         const txHashes = await DepositSubmitterService.submitMultipleDeposits(
-          values.official_deposit_contract_address,
+          officialContractAddress,
           generatedDepositData
         )
         message.success(`所有存款交易已发送: ${txHashes.length} 个交易`)
@@ -247,7 +265,7 @@ const DepositList: React.FC = () => {
             values.deposit_type,
             generatedDepositData,
             values.batch_contract_address,
-            values.official_deposit_contract_address
+            officialContractAddress
           ) as any
           
           const results = response.data || response || []
@@ -735,10 +753,19 @@ const DepositList: React.FC = () => {
                 return (
                   <Form.Item
                     name="official_deposit_contract_address"
-                    label="官方 Deposit 合约地址（可选，留空则自动获取）"
-                    help="如果留空，系统将尝试从网络信息中获取"
+                    label="官方 Deposit 合约地址（可选，留空则自动从网络配置获取）"
+                    help={
+                      networkInfo?.deposit_contract_address ? (
+                        <span style={{ color: '#52c41a' }}>
+                          已自动检测到合约地址: {networkInfo.deposit_contract_address}
+                        </span>
+                      ) : (
+                        '如果留空，将使用默认地址 0x4242424242424242424242424242424242424242'
+                      )
+                    }
+                    initialValue={networkInfo?.deposit_contract_address || undefined}
                   >
-                    <Input placeholder="0x...（留空则自动获取）" />
+                    <Input placeholder={networkInfo?.deposit_contract_address || "0x4242424242424242424242424242424242424242"} />
                   </Form.Item>
                 )
               }

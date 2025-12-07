@@ -82,8 +82,12 @@ export class DepositSubmitterService {
       }
       signatures.push(signatureBytes)
 
-      // deposit_data_root (32 字节，已经是 hex string)
-      deposit_data_roots.push(data.deposit_data_root)
+      // deposit_data_root (32 字节，确保有 0x 前缀)
+      let depositDataRoot = data.deposit_data_root
+      if (!depositDataRoot.startsWith('0x')) {
+        depositDataRoot = '0x' + depositDataRoot
+      }
+      deposit_data_roots.push(depositDataRoot)
 
       // amount (gwei 转 wei)
       const amountGwei = BigInt(data.amount)
@@ -180,7 +184,11 @@ export class DepositSubmitterService {
     const pubkeyBytes = this.hexToBytes(depositData.pubkey)
     const withdrawalBytes = this.hexToBytes(depositData.withdrawal_credentials)
     const signatureBytes = this.hexToBytes(depositData.signature)
-    const depositDataRoot = depositData.deposit_data_root
+    // 确保 deposit_data_root 有 0x 前缀
+    let depositDataRoot = depositData.deposit_data_root
+    if (!depositDataRoot.startsWith('0x')) {
+      depositDataRoot = '0x' + depositDataRoot
+    }
 
     // 计算金额（gwei 转 wei）
     const amountGwei = BigInt(depositData.amount)

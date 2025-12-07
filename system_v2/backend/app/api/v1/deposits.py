@@ -114,6 +114,12 @@ async def submit_deposits_by_tx_hashes(
         if request.deposit_data_list:
             deposit_data_list = [dd.model_dump() if hasattr(dd, 'model_dump') else dd for dd in request.deposit_data_list]
         
+        # 处理官方合约地址默认值
+        official_contract_address = request.official_deposit_contract_address
+        if not official_contract_address:
+            official_contract_address = "0x4242424242424242424242424242424242424242"
+            logger.info(f"使用默认官方合约地址: {official_contract_address}")
+        
         # 创建交易服务
         tx_service = TransactionService(db, web3)
         
@@ -123,7 +129,7 @@ async def submit_deposits_by_tx_hashes(
             from_address=request.from_address,
             deposit_type=request.deposit_type,
             batch_contract_address=request.batch_contract_address,
-            official_contract_address=request.official_deposit_contract_address,
+            official_contract_address=official_contract_address,
             deposit_data_list=deposit_data_list
         )
         
@@ -236,12 +242,10 @@ async def submit_deposits(
                 if official_contract_address:
                     logger.info(f"使用配置的官方合约地址: {official_contract_address}")
             
-            # 如果还是没有，返回错误
+            # 如果还是没有，使用默认地址（Kurtosis devnet 标准地址）
             if not official_contract_address:
-                raise HTTPException(
-                    status_code=400,
-                    detail="需要提供 official_deposit_contract_address 或配置官方合约地址"
-                )
+                official_contract_address = "0x4242424242424242424242424242424242424242"
+                logger.info(f"使用默认官方合约地址: {official_contract_address}")
             
             # 创建官方 Deposit Client
             official_client = OfficialDepositClient(
@@ -601,6 +605,44 @@ async def get_deposit_status(
         raise HTTPException(status_code=500, detail=str(e))
 
 
+@router.get("/deposits/batch-contract/bytecode")
+async def get_batch_contract_bytecode():
+    """获取 Batch Deposit 合约的 bytecode 和 ABI（用于前端 MetaMask 部署）"""
+    try:
+        from app.core.batch_deposit_deployer import BatchDepositDeployer
+        from web3 import Web3
+        
+        # 创建一个临时 Web3 实例（不需要实际连接，只需要用于编译）
+        web3 = Web3()
+        
+        # 创建部署器实例（不需要私钥，只需要用于编译）
+        # 使用一个临时私钥（不会用于签名）
+        temp_private_key = "0x" + "0" * 64
+        deployer = BatchDepositDeployer(web3, temp_private_key)
+        
+        # 获取合约源代码并编译
+        source_code, temp_dir = deployer._get_contract_source()
+        contract_interface = deployer._compile_contract(source_code, temp_dir)
+        
+        # 获取 bytecode 和 ABI
+        bytecode = contract_interface.get('bin') or contract_interface.get('bytecode')
+        abi = contract_interface.get('abi', [])
+        
+        if not bytecode:
+            raise HTTPException(
+                status_code=500,
+                detail="无法获取合约 bytecode"
+            )
+        
+        return {
+            "bytecode": bytecode,
+            "abi": abi
+        }
+    except Exception as e:
+        logger.error(f"获取合约 bytecode 失败: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"获取合约 bytecode 失败: {str(e)}")
+
+
 @router.post("/deposits/batch-contract/deploy", response_model=BatchDepositContractResponse)
 async def deploy_batch_contract(
     request: BatchDepositDeployRequest,
@@ -657,11 +699,10 @@ async def deploy_batch_contract(
             except Exception as e:
                 logger.warning(f"无法从 Kurtosis 网络配置获取 Deposit 合约地址: {e}")
         
+        # 如果还是没有，使用默认地址（Kurtosis devnet 标准地址）
         if not deposit_contract_address:
-            raise HTTPException(
-                status_code=400,
-                detail="无法获取官方 Deposit 合约地址。请提供 deposit_contract_address 参数，或确保 Kurtosis 网络配置中包含该地址"
-            )
+            deposit_contract_address = "0x4242424242424242424242424242424242424242"
+            logger.info(f"使用默认官方合约地址: {deposit_contract_address}")
         
         # 验证 deposit_contract_address 格式
         if not web3.is_address(deposit_contract_address):
@@ -670,42 +711,89 @@ async def deploy_batch_contract(
                 detail=f"无效的 Deposit 合约地址格式: {deposit_contract_address}"
             )
         
-        # 创建部署器
-        deployer = BatchDepositDeployer(
-            web3=web3,
-            deployer_private_key=request.deployer_private_key
-        )
+        # 如果提供了部署交易哈希（MetaMask 部署），直接从交易获取合约地址
+        if request.deployment_tx_hash and request.deployer_address:
+            # 等待交易确认
+            try:
+                receipt = web3.eth.wait_for_transaction_receipt(request.deployment_tx_hash, timeout=120)
+                if not receipt or not receipt.contractAddress:
+                    raise HTTPException(
+                        status_code=400,
+                        detail="无法从交易获取合约地址，请检查交易哈希是否正确"
+                    )
+                
+                contract_address = receipt.contractAddress
+                block_number = receipt.blockNumber
+                gas_used = receipt.gasUsed
+                
+                # 保存到数据库
+                batch_contract = BatchDepositContract(
+                    contract_address=contract_address,
+                    network_name=request.network_name,
+                    rpc_url=rpc_url,
+                    deployer_address=request.deployer_address,
+                    deployment_tx_hash=request.deployment_tx_hash,
+                    block_number=block_number,
+                    gas_used=gas_used
+                )
+                
+                db.add(batch_contract)
+                db.commit()
+                db.refresh(batch_contract)
+                
+                logger.info(f"Batch Deposit 合约已通过 MetaMask 部署并保存: {batch_contract.contract_address}")
+                
+                return BatchDepositContractResponse.model_validate(batch_contract)
+            except Exception as e:
+                logger.error(f"从交易哈希获取合约地址失败: {e}", exc_info=True)
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"无法从交易获取合约地址: {str(e)}"
+                )
         
-        # 部署合约
-        # initial_fee 默认 0，必须是 gwei 的倍数
-        initial_fee = request.initial_fee or 0
-        deployment_result = deployer.deploy(
-            rpc_url=rpc_url,
-            network_name=request.network_name,
-            deposit_contract_address=deposit_contract_address,
-            initial_fee=initial_fee,
-            gas_price=request.gas_price,
-            gas_limit=request.gas_limit
-        )
-        
-        # 保存到数据库
-        batch_contract = BatchDepositContract(
-            contract_address=deployment_result['contract_address'],
-            network_name=request.network_name,
-            rpc_url=rpc_url,
-            deployer_address=deployment_result['deployer_address'],
-            deployment_tx_hash=deployment_result['deployment_tx_hash'],
-            block_number=deployment_result.get('block_number'),
-            gas_used=deployment_result.get('gas_used')
-        )
-        
-        db.add(batch_contract)
-        db.commit()
-        db.refresh(batch_contract)
-        
-        logger.info(f"Batch Deposit 合约已部署并保存: {batch_contract.contract_address}")
-        
-        return BatchDepositContractResponse.model_validate(batch_contract)
+        # 向后兼容：如果提供了私钥，使用旧方式部署
+        if request.deployer_private_key:
+            # 创建部署器
+            deployer = BatchDepositDeployer(
+                web3=web3,
+                deployer_private_key=request.deployer_private_key
+            )
+            
+            # 部署合约
+            # initial_fee 默认 0，必须是 gwei 的倍数
+            initial_fee = request.initial_fee or 0
+            deployment_result = deployer.deploy(
+                rpc_url=rpc_url,
+                network_name=request.network_name,
+                deposit_contract_address=deposit_contract_address,
+                initial_fee=initial_fee,
+                gas_price=request.gas_price,
+                gas_limit=request.gas_limit
+            )
+            
+            # 保存到数据库
+            batch_contract = BatchDepositContract(
+                contract_address=deployment_result['contract_address'],
+                network_name=request.network_name,
+                rpc_url=rpc_url,
+                deployer_address=deployment_result['deployer_address'],
+                deployment_tx_hash=deployment_result['deployment_tx_hash'],
+                block_number=deployment_result.get('block_number'),
+                gas_used=deployment_result.get('gas_used')
+            )
+            
+            db.add(batch_contract)
+            db.commit()
+            db.refresh(batch_contract)
+            
+            logger.info(f"Batch Deposit 合约已部署并保存: {batch_contract.contract_address}")
+            
+            return BatchDepositContractResponse.model_validate(batch_contract)
+        else:
+            raise HTTPException(
+                status_code=400,
+                detail="需要提供 deployment_tx_hash 和 deployer_address（MetaMask 部署）或 deployer_private_key（向后兼容）"
+            )
         
     except HTTPException:
         raise

@@ -56,12 +56,16 @@ const BATCH_DEPOSIT_ABI = [
  */
 export class ContractDeployerService {
   /**
-   * 从后端获取合约 bytecode
+   * 从后端获取合约 bytecode 和 ABI
    */
-  static async getContractBytecode(): Promise<string> {
-    // TODO: 调用后端 API 获取 bytecode
-    // 临时返回空，实际应该从后端获取
-    throw new Error('需要从后端获取合约 bytecode，请先实现后端 API')
+  static async getContractBytecode(): Promise<{ bytecode: string; abi: any[] }> {
+    const { depositsApi } = await import('../api/deposits')
+    const response = await depositsApi.getBatchContractBytecode() as any
+    const data = response.data || response
+    return {
+      bytecode: data.bytecode,
+      abi: data.abi || []
+    }
   }
 
   /**
@@ -83,14 +87,17 @@ export class ContractDeployerService {
       throw new Error('MetaMask 未连接，请先连接 MetaMask')
     }
 
-    // 获取 bytecode（从后端或使用预编译的）
-    const bytecode = await this.getContractBytecode()
+    // 获取 bytecode 和 ABI（从后端）
+    const { bytecode, abi } = await this.getContractBytecode()
     if (!bytecode || bytecode === '0x') {
       throw new Error('无法获取合约 bytecode，请确保后端 API 可用')
     }
 
+    // 使用后端返回的 ABI（如果可用），否则使用默认 ABI
+    const contractABI = abi && abi.length > 0 ? abi : BATCH_DEPOSIT_ABI
+
     // 创建合约工厂
-    const factory = new ContractFactory(BATCH_DEPOSIT_ABI, bytecode, signer)
+    const factory = new ContractFactory(contractABI, bytecode, signer)
 
     // 估算 gas
     let estimatedGas = gasLimit

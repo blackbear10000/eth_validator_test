@@ -25,6 +25,8 @@ import {
 } from '@ant-design/icons'
 import { depositsApi, BatchDepositContract, BatchContractStatistics } from '../../api/deposits'
 import { networkApi, NetworkInfo } from '../../api/network'
+import { useMetaMaskStore } from '../../stores/metamaskStore'
+import { ContractDeployerService } from '../../services/contractDeployer'
 import dayjs from 'dayjs'
 
 const { Title } = Typography
@@ -40,6 +42,9 @@ const BatchContractManager: React.FC = () => {
   const [statisticsLoading, setStatisticsLoading] = useState(false)
   const [rpcEndpoints, setRpcEndpoints] = useState<any>(null)
   const [networkInfo, setNetworkInfo] = useState<NetworkInfo | null>(null)
+  
+  // MetaMask 状态
+  const { isConnected, account, signer, provider } = useMetaMaskStore()
   
   const [deployForm] = Form.useForm()
 
@@ -115,35 +120,84 @@ const BatchContractManager: React.FC = () => {
     loadNetworkInfo()
   }, [])
 
-  // 部署合约
+  // 部署合约（使用 MetaMask）
   const handleDeployContract = async (values: any) => {
+    if (!isConnected || !account || !signer || !provider) {
+      message.error('请先连接 MetaMask')
+      return
+    }
+
     setDeploying(true)
     try {
       // 如果没有提供 deposit_contract_address，尝试从网络信息获取
-      if (!values.deposit_contract_address) {
+      let depositContractAddress = values.deposit_contract_address
+      if (!depositContractAddress) {
         if (networkInfo?.deposit_contract_address) {
-          values.deposit_contract_address = networkInfo.deposit_contract_address
+          depositContractAddress = networkInfo.deposit_contract_address
+        } else {
+          // 使用默认地址
+          depositContractAddress = "0x4242424242424242424242424242424242424242"
         }
       }
 
-      // 替换 RPC URL 中的 localhost 为 host.docker.internal
-      if (values.rpc_url) {
-        values.rpc_url = replaceLocalhostWithDockerHost(values.rpc_url)
+      // 获取 RPC URL（用于后端保存）
+      let rpcUrl = values.rpc_url
+      if (!rpcUrl && rpcEndpoints?.host_rpc_url) {
+        rpcUrl = rpcEndpoints.host_rpc_url
       }
 
-      const result = await depositsApi.deployBatchContract(values) as any
-      // apiClient 的响应拦截器已经返回了 response.data
-      const contractAddress = result?.contract_address || result?.data?.contract_address
-      message.success(`Batch Deposit 合约部署成功: ${contractAddress}`)
-      setDeployModalVisible(false)
-      deployForm.resetFields()
-      loadContracts()
+      // 使用 MetaMask 部署合约
+      message.info('正在部署合约，请在 MetaMask 中确认交易...')
+      
+      const initialFee = BigInt(values.initial_fee || 0)
+      const gasLimit = values.gas_limit ? BigInt(values.gas_limit) : undefined
+
+      const { txHash } = await ContractDeployerService.deployBatchDepositContract(
+        depositContractAddress,
+        initialFee,
+        gasLimit
+      )
+
+      message.success(`合约部署交易已发送: ${txHash}`)
+
+      // 等待交易确认（至少 1 个确认）
+      message.info('等待交易确认...')
+      const receipt = await provider.waitForTransaction(txHash, 1)
+
+      if (!receipt || !receipt.contractAddress) {
+        throw new Error('无法从交易获取合约地址')
+      }
+
+      const finalContractAddress = receipt.contractAddress
+
+      // 调用后端 API 保存合约信息
+      try {
+        await depositsApi.deployBatchContract({
+          network_name: values.network_name || 'kurtosis-devnet',
+          rpc_url: rpcUrl,
+          deposit_contract_address: depositContractAddress,
+          initial_fee: values.initial_fee || 0,
+          deployer_address: account,
+          deployment_tx_hash: txHash,
+        })
+
+        message.success(`Batch Deposit 合约部署成功: ${finalContractAddress}`)
+        setDeployModalVisible(false)
+        deployForm.resetFields()
+        loadContracts()
+      } catch (apiError: any) {
+        console.warn('保存合约信息失败:', apiError)
+        message.warning(`合约已部署 (${finalContractAddress})，但保存合约信息失败，请手动同步`)
+        loadContracts()
+      }
     } catch (error: any) {
       let errorMessage = '部署合约失败'
       if (error?.message) {
         errorMessage = error.message
-      } else if (error?.response?.data?.detail) {
-        errorMessage = error.response.data.detail
+      } else if (error?.code === 4001) {
+        errorMessage = '用户拒绝了交易'
+      } else if (error?.code === -32603) {
+        errorMessage = '交易执行失败，请检查余额和参数'
       }
       message.error(`部署合约失败: ${errorMessage}`)
       console.error('部署合约错误详情:', error)
@@ -326,21 +380,47 @@ const BatchContractManager: React.FC = () => {
             />
           </Form.Item>
           <Form.Item
-            name="deployer_private_key"
-            label="部署者私钥"
-            rules={[
-              { required: true, message: '请输入部署者私钥' },
-              { pattern: /^0x[a-fA-F0-9]{64}$/, message: '请输入有效的私钥（64 个十六进制字符，0x开头）' },
-            ]}
+            label="部署者地址"
+            help={
+              <div>
+                {isConnected && account ? (
+                  <div>
+                    <span style={{ color: '#52c41a' }}>✓ 已连接 MetaMask: </span>
+                    <span style={{ fontFamily: 'monospace' }}>{account.slice(0, 6)}...{account.slice(-4)}</span>
+                    <br />
+                    <span style={{ fontSize: '12px', color: '#666' }}>
+                      将使用此地址部署合约，请确保有足够的 ETH 支付 gas 费用
+                    </span>
+                  </div>
+                ) : (
+                  <div>
+                    <span style={{ color: '#faad14' }}>⚠ 请先连接 MetaMask</span>
+                    <br />
+                    <span style={{ fontSize: '12px', color: '#666' }}>
+                      需要连接 MetaMask 才能部署合约
+                    </span>
+                  </div>
+                )}
+              </div>
+            }
           >
-            <Input.Password placeholder="0x..." />
+            <Input disabled value={account || '未连接 MetaMask'} />
           </Form.Item>
           <Form.Item
             name="deposit_contract_address"
             label="官方 Deposit 合约地址（可选，留空则自动从网络配置获取）"
-            help="如果不提供，系统会尝试从 Kurtosis 网络配置中自动获取"
+            help={
+              networkInfo?.deposit_contract_address ? (
+                <span style={{ color: '#52c41a' }}>
+                  已自动检测到合约地址: {networkInfo.deposit_contract_address}
+                </span>
+              ) : (
+                '如果留空，将使用默认地址 0x4242424242424242424242424242424242424242'
+              )
+            }
+            initialValue={networkInfo?.deposit_contract_address || undefined}
           >
-            <Input placeholder={networkInfo?.deposit_contract_address || "0x4242424242424242424242424242424242424242（留空则自动获取）"} />
+            <Input placeholder={networkInfo?.deposit_contract_address || "0x4242424242424242424242424242424242424242"} />
           </Form.Item>
           <Form.Item
             name="initial_fee"

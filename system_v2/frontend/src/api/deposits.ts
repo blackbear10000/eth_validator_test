@@ -121,15 +121,20 @@ export const depositsApi = {
   // 获取存款交易详细状态
   getStatus: (txHash: string) => apiClient.get(`/deposits/${txHash}/status`),
 
-  // 部署 Batch Deposit 合约
+  // 获取 Batch Deposit 合约 bytecode 和 ABI
+  getBatchContractBytecode: () => apiClient.get('/deposits/batch-contract/bytecode'),
+
+  // 部署 Batch Deposit 合约（MetaMask 方式）
   deployBatchContract: (params: {
     rpc_url?: string
-    deployer_private_key: string
+    deployer_private_key?: string // 已废弃，保留用于向后兼容
     network_name: string
     deposit_contract_address?: string
     initial_fee?: number
     gas_price?: number
     gas_limit?: number
+    deployer_address?: string // MetaMask 部署时使用
+    deployment_tx_hash?: string // MetaMask 部署时使用
   }) => apiClient.post('/deposits/batch-contract/deploy', params),
 
   // 列出 Batch Deposit 合约
