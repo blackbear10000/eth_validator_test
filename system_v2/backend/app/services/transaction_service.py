@@ -120,6 +120,21 @@ class TransactionService:
                     'error': f'合约地址不匹配: 期望 {contract_address}, 实际 {receipt["to"]}'
                 }
         
+        # 生成批次ID（基于交易提交时间，确保同一交易的所有验证者使用相同的批次ID）
+        # 使用交易的 block timestamp 或当前时间
+        try:
+            # 尝试从区块获取时间戳
+            block = self.web3.eth.get_block(receipt['blockNumber'])
+            if block and 'timestamp' in block:
+                batch_timestamp = datetime.fromtimestamp(block['timestamp'])
+            else:
+                batch_timestamp = datetime.utcnow()
+        except Exception as e:
+            logger.warning(f"无法获取区块时间戳，使用当前时间: {e}")
+            batch_timestamp = datetime.utcnow()
+        
+        batch_id = f"batch-{batch_timestamp.strftime('%Y%m%d-%H%M%S')}"
+        
         # 从交易日志中解析存款信息
         # Batch Deposit 合约会触发多个 DepositEvent
         # 我们需要从 deposit_data_list 中匹配 pubkey
@@ -131,7 +146,7 @@ class TransactionService:
             return {
                 'tx_hash': tx_hash,
                 'status': 'submitted',
-                'batch_id': tx_hash,  # 使用交易哈希作为批次ID
+                'batch_id': batch_id,  # 使用时间戳格式的批次ID
                 'validator_count': 0,  # 未知
                 'note': '需要手动验证交易内容'
             }
@@ -164,12 +179,12 @@ class TransactionService:
                         deposit_tx = DepositTransaction(
                             pubkey=validator_key.pubkey,
                             tx_hash=tx_hash,
-                            batch_id=tx_hash,
+                            batch_id=batch_id,  # 使用时间戳格式的批次ID，确保同一交易的所有验证者使用相同的批次ID
                             status=DepositStatus.SUBMITTED.value,
                             amount_wei=amount_wei,
                             amount_eth=amount_eth,
                             block_number=receipt['blockNumber'],
-                            submitted_at=datetime.utcnow()
+                            submitted_at=batch_timestamp  # 使用批次时间戳作为提交时间
                         )
                         self.db.add(deposit_tx)
                         
@@ -193,7 +208,7 @@ class TransactionService:
         return {
             'tx_hash': tx_hash,
             'status': 'submitted',
-            'batch_id': tx_hash,
+            'batch_id': batch_id,  # 返回时间戳格式的批次ID
             'validator_count': saved_count,
             'pubkeys': [dd.get('pubkey', '') for dd in deposit_data_list]
         }
