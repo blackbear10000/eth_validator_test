@@ -58,7 +58,20 @@ class DepositManagementService:
         network_name: Optional[str] = None
     ) -> List[Dict[str, Any]]:
         """
-        为激活的密钥生成 Deposit Data
+        为未激活上链的密钥生成 Deposit Data
+        
+        允许重新生成的状态：
+        - ACTIVE: 已激活，准备用于存款
+        - DEPOSIT_DATA_GENERATED: 已生成 Deposit Data，等待提交（可重新生成）
+        - PENDING: 已提交存款，等待链上确认（如果交易失败或未确认，可重新生成）
+        - DEPOSITED: 存款已确认，在 deposit queue 中（如果未激活，可重新生成）
+        - UNKNOWN: 交易在内存池中（可重新生成）
+        
+        不允许的状态（已激活上链或已退出）：
+        - ACTIVE_ON_CHAIN: 链上激活，正在验证
+        - EXITED: 已退出验证
+        - SLASHED: 被惩罚
+        - PENDING_EXIT: 退出中
         
         Args:
             count: 生成数量（如果不提供 pubkeys）
@@ -141,23 +154,35 @@ class DepositManagementService:
             logger.debug(f"未提供 fork_version，使用 chain_setting.GENESIS_FORK_VERSION: {chain_fork_version_hex}")
         
         # 获取要生成 Deposit Data 的密钥
+        # 允许重新生成的状态：ACTIVE, DEPOSIT_DATA_GENERATED, PENDING, DEPOSITED
+        # 不允许的状态：ACTIVE_ON_CHAIN, EXITED, SLASHED, PENDING_EXIT（已激活上链或已退出）
+        allowed_statuses = [
+            ValidatorKeyStatus.ACTIVE.value,
+            ValidatorKeyStatus.DEPOSIT_DATA_GENERATED.value,
+            ValidatorKeyStatus.PENDING.value,
+            ValidatorKeyStatus.DEPOSITED.value,
+            ValidatorKeyStatus.UNKNOWN.value,  # 交易在内存池中，也可以重新生成
+        ]
+        
         if pubkeys:
             # 查询指定的密钥
             validator_keys = self.db.query(ValidatorKey).filter(
                 ValidatorKey.pubkey.in_([pk.lower() for pk in pubkeys]),
-                ValidatorKey.status == ValidatorKeyStatus.ACTIVE.value
+                ValidatorKey.status.in_(allowed_statuses)
             ).all()
             
             if len(validator_keys) != len(pubkeys):
-                raise ValueError(f"部分密钥不存在或未激活")
+                found_pubkeys = [vk.pubkey for vk in validator_keys]
+                missing_pubkeys = [pk for pk in pubkeys if pk.lower() not in found_pubkeys]
+                raise ValueError(f"部分密钥不存在或状态不允许重新生成: {missing_pubkeys}")
         elif count:
-            # 查询激活的密钥
+            # 查询允许重新生成的密钥
             validator_keys = self.db.query(ValidatorKey).filter(
-                ValidatorKey.status == ValidatorKeyStatus.ACTIVE.value
+                ValidatorKey.status.in_(allowed_statuses)
             ).order_by(ValidatorKey.created_at).limit(count).all()
             
             if len(validator_keys) < count:
-                raise ValueError(f"激活的密钥不足: 需要 {count} 个，只有 {len(validator_keys)} 个")
+                raise ValueError(f"可用的密钥不足: 需要 {count} 个，只有 {len(validator_keys)} 个（仅统计未激活上链的密钥）")
         else:
             raise ValueError("必须提供 count 或 pubkeys 参数")
         
@@ -176,15 +201,26 @@ class DepositManagementService:
                 if self.deposit_generator.validate_deposit_data(deposit_data):
                     deposit_data_list.append(deposit_data)
                     
-                    # 更新密钥状态为 DEPOSIT_DATA_GENERATED（如果当前是 ACTIVE）
-                    # 这样密钥仍然可以加载到客户端，但标记为已生成 Deposit Data
-                    if validator_key.status == ValidatorKeyStatus.ACTIVE.value:
-                        self.state_machine.transition(
-                            validator_key,
-                            ValidatorKeyStatus.DEPOSIT_DATA_GENERATED,
-                            reason='deposit_data_generated',
-                            metadata={'withdrawal_address': withdrawal_address, 'amount_eth': amount_eth}
-                        )
+                    # 更新密钥状态为 DEPOSIT_DATA_GENERATED
+                    # 如果当前状态允许转换到 DEPOSIT_DATA_GENERATED，则更新状态
+                    # 允许从以下状态转换：ACTIVE, PENDING, DEPOSITED, UNKNOWN
+                    if validator_key.status in [
+                        ValidatorKeyStatus.ACTIVE.value,
+                        ValidatorKeyStatus.PENDING.value,
+                        ValidatorKeyStatus.DEPOSITED.value,
+                        ValidatorKeyStatus.UNKNOWN.value
+                    ]:
+                        try:
+                            self.state_machine.transition(
+                                validator_key,
+                                ValidatorKeyStatus.DEPOSIT_DATA_GENERATED,
+                                reason='deposit_data_regenerated',
+                                metadata={'withdrawal_address': withdrawal_address, 'amount_eth': amount_eth}
+                            )
+                        except Exception as e:
+                            # 如果状态转换失败，记录警告但不阻止生成
+                            logger.warning(f"状态转换失败 ({validator_key.pubkey[:10]}...): {e}，继续生成 Deposit Data")
+                    # 如果已经是 DEPOSIT_DATA_GENERATED 状态，保持该状态
                     
                     logger.debug(f"Deposit Data 生成成功: {validator_key.pubkey[:10]}...")
                 else:

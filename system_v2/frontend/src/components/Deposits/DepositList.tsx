@@ -81,8 +81,18 @@ const DepositList: React.FC = () => {
 
   const loadAvailableKeys = async () => {
     try {
-      const response = await keysApi.list({ status: 'active' }) as any
-      setAvailableKeys(response.items || [])
+      // 加载所有未激活上链的密钥（允许重新生成 deposit data）
+      // 包括：active, deposit_data_generated, pending, deposited, unknown
+      const response = await keysApi.list() as any
+      const allKeys = response.items || []
+      
+      // 过滤出允许重新生成 deposit data 的密钥
+      const allowedStatuses = ['active', 'deposit_data_generated', 'pending', 'deposited', 'unknown']
+      const available = allKeys.filter((key: any) => 
+        allowedStatuses.includes(key.status?.toLowerCase())
+      )
+      
+      setAvailableKeys(available)
     } catch (error: any) {
       message.error(`加载可用密钥失败: ${error.message}`)
     }
@@ -583,22 +593,38 @@ const DepositList: React.FC = () => {
         <Form form={form} layout="vertical" onFinish={handleGenerate}>
           <Form.Item
             name="pubkeys"
-            label="选择密钥（可选，不选则使用所有激活的密钥）"
+            label="选择密钥（可选，不选则使用所有可用的密钥）"
+            help="可以选择已生成存款数据但未提交或未激活上链的密钥，系统将重新生成 Deposit Data"
           >
             <Select
               mode="multiple"
-              placeholder="请选择密钥，留空则使用所有激活的密钥"
+              placeholder="请选择密钥，留空则使用所有可用的密钥（未激活上链的密钥）"
               showSearch
               filterOption={(input, option) => {
                 const children = option?.children as string | undefined
                 return children ? children.toLowerCase().includes(input.toLowerCase()) : false
               }}
             >
-              {availableKeys.map((key) => (
-                <Option key={key.pubkey} value={key.pubkey}>
-                  {key.pubkey.slice(0, 20)}... ({key.status})
-                </Option>
-              ))}
+              {availableKeys.map((key) => {
+                const statusText: Record<string, string> = {
+                  'active': '已激活',
+                  'deposit_data_generated': '已生成存款数据',
+                  'pending': '等待确认',
+                  'deposited': '已确认存款',
+                  'unknown': '未知状态',
+                }
+                const statusLabel = statusText[key.status?.toLowerCase()] || key.status
+                const canRegenerate = ['deposit_data_generated', 'pending', 'deposited', 'unknown'].includes(key.status?.toLowerCase())
+                
+                return (
+                  <Option key={key.pubkey} value={key.pubkey}>
+                    <span>
+                      {key.pubkey.slice(0, 20)}... ({statusLabel}
+                      {canRegenerate && <span style={{ color: '#faad14', marginLeft: 4 }}>可重新生成</span>})
+                    </span>
+                  </Option>
+                )
+              })}
             </Select>
           </Form.Item>
           <Form.Item
