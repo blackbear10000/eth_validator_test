@@ -154,6 +154,93 @@ class ExitService:
             logger.error(f"生成退出签名失败: {e}")
             raise DepositGenerationError(f"生成退出签名失败: {e}")
     
+    def check_exit_eligibility(self, pubkey: str) -> Dict[str, Any]:
+        """
+        检查验证者是否满足退出条件
+        
+        Args:
+            pubkey: 验证者公钥
+            
+        Returns:
+            包含退出资格信息的字典
+        """
+        try:
+            # 获取验证者信息
+            validator_data = self.beacon_api.get_validator(pubkey)
+            if not validator_data:
+                raise ValueError(f"无法获取验证者信息: {pubkey}")
+            
+            # 处理不同的响应格式
+            if isinstance(validator_data, dict) and 'data' in validator_data:
+                validator_data = validator_data['data']
+            
+            validator_info = validator_data.get('validator', {})
+            if not validator_info:
+                validator_info = validator_data
+            
+            # 获取当前 epoch（从 finalized checkpoint）
+            try:
+                state_data = self.beacon_api._get("/eth/v1/beacon/states/finalized/finality_checkpoints")
+                if isinstance(state_data, dict) and 'data' in state_data:
+                    state_data = state_data['data']
+                current_epoch = state_data.get('finalized', {}).get('epoch')
+                if current_epoch:
+                    current_epoch = int(current_epoch)
+                else:
+                    current_epoch = None
+            except Exception as e:
+                logger.warning(f"无法获取当前 epoch: {e}")
+                current_epoch = None
+            
+            # 获取验证者的 activation_epoch 和 exit_epoch
+            activation_epoch = validator_info.get('activation_epoch')
+            exit_epoch = validator_info.get('exit_epoch')
+            
+            # 计算 earliest_exit_epoch
+            # 根据 Ethereum 规范，验证者必须激活至少 256 epochs 后才能退出
+            # earliest_exit_epoch = activation_epoch + 256 (如果已激活)
+            # 如果还未激活，则不能退出
+            FAR_FUTURE_EPOCH = 18446744073709551615
+            
+            if activation_epoch and activation_epoch != FAR_FUTURE_EPOCH:
+                activation_epoch = int(activation_epoch)
+                earliest_exit_epoch = activation_epoch + 256
+            else:
+                earliest_exit_epoch = None
+            
+            # 检查是否可以退出
+            can_exit = False
+            reason = None
+            
+            if exit_epoch and exit_epoch != FAR_FUTURE_EPOCH:
+                can_exit = False
+                reason = f"验证者已退出或正在退出 (exit_epoch: {exit_epoch})"
+            elif not activation_epoch or activation_epoch == FAR_FUTURE_EPOCH:
+                can_exit = False
+                reason = "验证者尚未激活"
+            elif current_epoch is None:
+                can_exit = True  # 无法确定当前 epoch，允许尝试
+                reason = "无法确定当前 epoch，将尝试提交"
+            elif current_epoch < earliest_exit_epoch:
+                can_exit = False
+                reason = f"验证者太年轻，还不能退出 (当前 epoch: {current_epoch}, 最早退出 epoch: {earliest_exit_epoch})"
+            else:
+                can_exit = True
+                reason = f"验证者满足退出条件 (当前 epoch: {current_epoch}, 最早退出 epoch: {earliest_exit_epoch})"
+            
+            return {
+                'can_exit': can_exit,
+                'reason': reason,
+                'current_epoch': current_epoch,
+                'activation_epoch': activation_epoch,
+                'earliest_exit_epoch': earliest_exit_epoch,
+                'exit_epoch': exit_epoch if exit_epoch and exit_epoch != FAR_FUTURE_EPOCH else None
+            }
+            
+        except Exception as e:
+            logger.error(f"检查退出资格失败: {e}", exc_info=True)
+            raise DepositGenerationError(f"检查退出资格失败: {e}")
+    
     def submit_exit(
         self,
         pubkey: str,
@@ -172,6 +259,33 @@ class ExitService:
             提交结果
         """
         try:
+            # 检查验证者是否满足退出条件
+            eligibility = self.check_exit_eligibility(pubkey)
+            if not eligibility['can_exit']:
+                error_msg = f"验证者不满足退出条件: {eligibility['reason']}"
+                logger.warning(f"{error_msg} (pubkey: {pubkey[:10]}...)")
+                raise ValueError(error_msg)
+            
+            logger.info(f"验证者满足退出条件: {eligibility['reason']} (pubkey: {pubkey[:10]}...)")
+            
+            # 如果未提供 epoch，使用 earliest_exit_epoch 或当前 epoch
+            if epoch is None:
+                if eligibility['earliest_exit_epoch']:
+                    epoch = eligibility['earliest_exit_epoch']
+                elif eligibility['current_epoch']:
+                    epoch = eligibility['current_epoch']
+                else:
+                    # 如果无法确定，使用当前 epoch（从 Beacon API 查询）
+                    try:
+                        state_data = self.beacon_api._get("/eth/v1/beacon/states/finalized/finality_checkpoints")
+                        if isinstance(state_data, dict) and 'data' in state_data:
+                            state_data = state_data['data']
+                        epoch = int(state_data.get('finalized', {}).get('epoch', 0))
+                        logger.info(f"从 Beacon API 获取当前 epoch: {epoch}")
+                    except Exception as e:
+                        logger.warning(f"无法从 Beacon API 获取当前 epoch: {e}，使用 earliest_exit_epoch")
+                        epoch = eligibility['earliest_exit_epoch'] or 0
+            
             # 生成退出签名（如果未提供）
             if exit_data is None:
                 exit_data = self.generate_exit_signature(pubkey, epoch)
@@ -199,11 +313,24 @@ class ExitService:
                 return {
                     'pubkey': pubkey,
                     'status': 'submitted',
-                    'exit_data': exit_data
+                    'exit_data': exit_data,
+                    'eligibility': eligibility
                 }
             else:
-                raise Exception(f"Beacon API 返回错误: {response.status_code}, {response.text}")
+                error_text = response.text
+                # 尝试解析错误信息
+                try:
+                    import json
+                    error_json = json.loads(error_text)
+                    error_message = error_json.get('message', error_text)
+                except:
+                    error_message = error_text
                 
+                raise Exception(f"Beacon API 返回错误: {response.status_code}, {error_message}")
+                
+        except ValueError:
+            # 重新抛出验证错误
+            raise
         except Exception as e:
             logger.error(f"提交退出失败: {e}")
             raise DepositGenerationError(f"提交退出失败: {e}")

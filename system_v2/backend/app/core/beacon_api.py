@@ -41,6 +41,22 @@ class BeaconAPIClient:
     封装标准 Beacon Chain API 调用
     """
     
+    # Ethereum 2.0 常量
+    SLOTS_PER_EPOCH = 32  # 大多数网络的默认值
+    
+    @staticmethod
+    def slot_to_epoch(slot: int) -> int:
+        """
+        将 slot 转换为 epoch
+        
+        Args:
+            slot: Slot 编号
+            
+        Returns:
+            Epoch 编号
+        """
+        return slot // BeaconAPIClient.SLOTS_PER_EPOCH
+    
     def __init__(self, base_url: Optional[str] = None):
         """
         初始化 Beacon API 客户端

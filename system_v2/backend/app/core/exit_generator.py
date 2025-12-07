@@ -100,15 +100,19 @@ class ExitGenerator:
             # 转换为整数
             signing_private_key_int = int(signing_private_key_hex, 16)
             
-            # 如果未提供 epoch，使用当前 epoch（简化处理，实际应该从 Beacon API 查询）
+            # 如果未提供 epoch，从 Beacon API 查询当前 epoch
             if epoch is None:
                 from app.core.beacon_api import BeaconAPIClient
                 beacon_api = BeaconAPIClient()
                 try:
-                    # 获取当前 epoch（简化处理）
-                    epoch = 0  # 默认值，实际应该查询 Beacon API
-                    logger.warning(f"使用默认 epoch 0，建议从 Beacon API 查询当前 epoch")
-                except:
+                    # 获取当前 epoch（从 finalized checkpoint）
+                    state_data = beacon_api._get("/eth/v1/beacon/states/finalized/finality_checkpoints")
+                    if isinstance(state_data, dict) and 'data' in state_data:
+                        state_data = state_data['data']
+                    epoch = int(state_data.get('finalized', {}).get('epoch', 0))
+                    logger.info(f"从 Beacon API 获取当前 epoch: {epoch}")
+                except Exception as e:
+                    logger.warning(f"无法从 Beacon API 获取当前 epoch: {e}，使用默认值 0")
                     epoch = 0
             
             # 生成退出签名
