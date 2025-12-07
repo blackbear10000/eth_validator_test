@@ -196,12 +196,13 @@ class ExitService:
             activation_epoch_raw = validator_info.get('activation_epoch')
             exit_epoch_raw = validator_info.get('exit_epoch')
             
-            # 获取 MIN_VALIDATOR_WITHDRAWABILITY_DELAY 参数（动态获取，支持自定义网络配置）
+            # 获取 MIN_VALIDATOR_WITHDRAWABILITY_DELAY 参数
+            # 注意：固定为 256，因为 Beacon Chain 节点在验证退出时使用此值
             min_withdrawability_delay = self.beacon_api.get_min_validator_withdrawability_delay()
             
             # 计算 earliest_exit_epoch
-            # 根据 Ethereum 规范，验证者必须激活至少 MIN_VALIDATOR_WITHDRAWABILITY_DELAY epochs 后才能退出
-            # earliest_exit_epoch = activation_epoch + min_withdrawability_delay (如果已激活)
+            # 根据 Ethereum 规范，验证者必须激活至少 256 epochs 后才能退出
+            # earliest_exit_epoch = activation_epoch + 256 (如果已激活)
             # 如果还未激活，则不能退出
             FAR_FUTURE_EPOCH = 18446744073709551615
             

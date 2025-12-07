@@ -173,75 +173,16 @@ class BeaconAPIClient:
         """
         获取 MIN_VALIDATOR_WITHDRAWABILITY_DELAY 参数
         
-        尝试从以下来源获取（按优先级）：
-        1. Beacon API /eth/v1/config/spec 端点
-        2. Kurtosis 配置文件
-        3. 默认值 256（向后兼容）
+        注意：虽然某些网络配置可能设置了较小的值（如 2），但 Beacon Chain 节点
+        在验证退出时可能仍使用 Ethereum 规范的默认值 256。为了确保退出验证
+        的一致性，这里固定返回 256。
         
         Returns:
-            MIN_VALIDATOR_WITHDRAWABILITY_DELAY 值（epochs）
+            MIN_VALIDATOR_WITHDRAWABILITY_DELAY 值（epochs），固定为 256
         """
-        # 方法1：从 Beacon API 获取
-        try:
-            spec = self.get_spec()
-            if spec:
-                data = spec.get('data', spec)
-                # Beacon API 可能使用不同的键名
-                delay = (
-                    data.get('MIN_VALIDATOR_WITHDRAWABILITY_DELAY') or
-                    data.get('min_validator_withdrawability_delay') or
-                    data.get('MIN_VALIDATOR_WITHDRAWABILITY_DELAY_EPOCHS')
-                )
-                if delay is not None:
-                    try:
-                        delay_int = int(delay)
-                        logger.info(f"从 Beacon API 获取 MIN_VALIDATOR_WITHDRAWABILITY_DELAY: {delay_int}")
-                        return delay_int
-                    except (ValueError, TypeError):
-                        pass
-        except Exception as e:
-            logger.debug(f"无法从 Beacon API 获取 MIN_VALIDATOR_WITHDRAWABILITY_DELAY: {e}")
-        
-        # 方法2：从 Kurtosis 配置文件读取
-        try:
-            import yaml
-            import os
-            # 尝试多个可能的配置文件路径
-            # 获取项目根目录（假设 backend 目录在项目根目录下）
-            import pathlib
-            current_file = pathlib.Path(__file__).resolve()
-            # backend/app/core/beacon_api.py -> 项目根目录
-            project_root = current_file.parent.parent.parent.parent
-            config_files = [
-                os.getenv("KURTOSIS_CONFIG_FILE", "/kurtosis-config/kurtosis-config.yaml"),
-                "/app/kurtosis-config/kurtosis-config.yaml",
-                str(project_root / "infra" / "kurtosis" / "kurtosis-config.yaml"),
-                str(project_root.parent / "infra" / "kurtosis" / "kurtosis-config.yaml"),
-                "../infra/kurtosis/kurtosis-config.yaml",
-                "infra/kurtosis/kurtosis-config.yaml"
-            ]
-            
-            for config_file in config_files:
-                if os.path.exists(config_file):
-                    with open(config_file, 'r') as f:
-                        config = yaml.safe_load(f)
-                        if config and 'network_params' in config:
-                            delay = config['network_params'].get('min_validator_withdrawability_delay')
-                            if delay is not None:
-                                try:
-                                    delay_int = int(delay)
-                                    logger.info(f"从 Kurtosis 配置文件获取 MIN_VALIDATOR_WITHDRAWABILITY_DELAY: {delay_int} (文件: {config_file})")
-                                    return delay_int
-                                except (ValueError, TypeError):
-                                    pass
-                    break  # 找到文件后不再尝试其他路径
-        except Exception as e:
-            logger.debug(f"无法从 Kurtosis 配置文件读取 MIN_VALIDATOR_WITHDRAWABILITY_DELAY: {e}")
-        
-        # 方法3：使用默认值（向后兼容）
-        default_delay = 256
-        logger.info(f"使用默认值 MIN_VALIDATOR_WITHDRAWABILITY_DELAY: {default_delay}")
-        return default_delay
+        # 固定返回 256，因为 Beacon Chain 节点在验证退出时使用此值
+        # 即使配置文件或 Beacon API 返回了其他值，链上验证仍会使用 256
+        return 256
     
     def get_validator(self, pubkey: str, state_id: str = "head") -> Optional[Dict[str, Any]]:
         """
