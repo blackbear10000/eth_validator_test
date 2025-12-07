@@ -16,6 +16,7 @@ from app.models.schemas import (
     DepositDataGenerate,
     DepositDataResponse,
     BatchDepositSubmit,
+    DepositSubmitByTxHashes,
     DepositTransactionResponse,
     BatchDepositDeployRequest,
     BatchDepositContractResponse,
@@ -68,13 +69,98 @@ async def generate_deposit_data(
         raise HTTPException(status_code=500, detail=str(e))
 
 
+@router.post("/deposits/submit-by-tx-hashes", response_model=List[dict])
+async def submit_deposits_by_tx_hashes(
+    request: DepositSubmitByTxHashes,
+    db: Session = Depends(get_db)
+):
+    """通过交易哈希提交存款（MetaMask 方式）"""
+    try:
+        from app.config import settings
+        from app.services.network_service import NetworkService
+        from app.services.transaction_service import TransactionService
+        
+        # 获取 RPC URL
+        rpc_url = None
+        try:
+            network_service = NetworkService()
+            rpc_endpoints = network_service.get_rpc_endpoints()
+            if rpc_endpoints.get("rpc_url") and not rpc_endpoints.get("error"):
+                rpc_url = rpc_endpoints["rpc_url"]
+                logger.info(f"从 Kurtosis 网络获取 RPC URL: {rpc_url}")
+        except Exception as e:
+            logger.warning(f"无法从 Kurtosis 网络获取 RPC URL: {e}")
+        
+        if not rpc_url:
+            rpc_url = settings.execution_rpc_url
+        
+        if not rpc_url:
+            raise HTTPException(
+                status_code=501,
+                detail="无法获取 RPC URL。请确保 Kurtosis 网络正在运行，或配置 EXECUTION_RPC_URL 环境变量"
+            )
+        
+        # 初始化 Web3 连接
+        web3 = Web3(Web3.HTTPProvider(rpc_url))
+        
+        if not web3.is_connected():
+            raise HTTPException(
+                status_code=503,
+                detail=f"无法连接到 Web3 RPC: {rpc_url}"
+            )
+        
+        # 转换 deposit_data_list 格式
+        deposit_data_list = None
+        if request.deposit_data_list:
+            deposit_data_list = [dd.model_dump() if hasattr(dd, 'model_dump') else dd for dd in request.deposit_data_list]
+        
+        # 创建交易服务
+        tx_service = TransactionService(db, web3)
+        
+        # 处理交易
+        results = tx_service.process_deposit_transactions(
+            tx_hashes=request.tx_hashes,
+            from_address=request.from_address,
+            deposit_type=request.deposit_type,
+            batch_contract_address=request.batch_contract_address,
+            official_contract_address=request.official_deposit_contract_address,
+            deposit_data_list=deposit_data_list
+        )
+        
+        # 格式化返回结果
+        formatted_results = []
+        for result in results:
+            if result['status'] == 'submitted':
+                formatted_results.append({
+                    'tx_hash': result['tx_hash'],
+                    'status': 'submitted',
+                    'validator_count': result.get('validator_count', 0),
+                    'pubkeys': result.get('pubkeys', []),
+                    'batch_id': result.get('batch_id'),
+                })
+            else:
+                formatted_results.append({
+                    'tx_hash': result['tx_hash'],
+                    'status': 'failed',
+                    'error': result.get('error', 'Unknown error')
+                })
+        
+        return formatted_results
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"通过交易哈希提交存款失败: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 @router.post("/deposits/submit", response_model=List[dict])
 async def submit_deposits(
     request: BatchDepositSubmit,
     deposit_service: DepositManagementService = Depends(get_deposit_service),
     db: Session = Depends(get_db)
 ):
-    """提交批量存款"""
+    """提交批量存款（使用私钥签名，向后兼容）"""
     try:
         from app.config import settings
         from app.services.network_service import NetworkService

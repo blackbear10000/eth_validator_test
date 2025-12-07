@@ -125,13 +125,23 @@ class BatchContractStatistics(BaseModel):
 
 
 class BatchDepositSubmit(BaseModel):
-    """批量存款提交请求"""
+    """批量存款提交请求（使用私钥签名）"""
     deposit_data_list: List[DepositDataResponse]
     from_address: str = Field(..., description="发送交易的钱包地址")
     private_key: Optional[str] = Field(None, description="私钥（用于签名交易）")
     deposit_type: str = Field("batch", description="存款类型: official 或 batch")
     batch_contract_address: Optional[str] = Field(None, description="Batch Deposit 合约地址（deposit_type 为 batch 时必需）")
     official_deposit_contract_address: Optional[str] = Field(None, description="官方 Deposit 合约地址（deposit_type 为 official 时可选）")
+
+
+class DepositSubmitByTxHashes(BaseModel):
+    """通过交易哈希提交存款（MetaMask 方式）"""
+    tx_hashes: List[str] = Field(..., description="交易哈希列表")
+    from_address: str = Field(..., description="发送交易的钱包地址")
+    deposit_type: str = Field(..., description="存款类型: official 或 batch")
+    batch_contract_address: Optional[str] = Field(None, description="Batch Deposit 合约地址（deposit_type 为 batch 时必需）")
+    official_deposit_contract_address: Optional[str] = Field(None, description="官方 Deposit 合约地址（deposit_type 为 official 时可选）")
+    deposit_data_list: Optional[List[DepositDataResponse]] = Field(None, description="Deposit Data 列表（可选，用于验证）")
 
 
 class DepositTransactionResponse(BaseModel):

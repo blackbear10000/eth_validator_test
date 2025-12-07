@@ -191,11 +191,25 @@ const DepositList: React.FC = () => {
         message.success(`批量存款交易已发送: ${txHash}`)
         
         // 调用后端 API 保存交易信息
-        // 注意：需要修改后端 API 来接收交易哈希而不是私钥
         try {
-          // TODO: 修改后端 API 后，这里调用新的 API
-          // await depositsApi.submitByTxHashes([txHash], account, values.deposit_type, ...)
-          message.warning('交易已发送，但后端 API 尚未更新，请手动同步交易状态')
+          const response = await depositsApi.submitByTxHashes(
+            [txHash],
+            account,
+            values.deposit_type,
+            generatedDepositData,
+            values.batch_contract_address,
+            values.official_deposit_contract_address
+          ) as any
+          
+          const results = response.data || response || []
+          const successCount = results.filter((r: any) => r.status === 'submitted').length
+          const failedCount = results.filter((r: any) => r.status === 'failed').length
+          
+          if (failedCount === 0) {
+            message.success(`存款交易已保存: ${successCount} 个交易`)
+          } else {
+            message.warning(`部分交易保存失败: ${successCount} 个成功，${failedCount} 个失败`)
+          }
         } catch (apiError: any) {
           console.warn('保存交易信息失败:', apiError)
           message.warning('交易已发送，但保存交易信息失败，请手动同步交易状态')
@@ -217,9 +231,24 @@ const DepositList: React.FC = () => {
         
         // 调用后端 API 保存交易信息
         try {
-          // TODO: 修改后端 API 后，这里调用新的 API
-          // await depositsApi.submitByTxHashes(txHashes, account, values.deposit_type, ...)
-          message.warning('交易已发送，但后端 API 尚未更新，请手动同步交易状态')
+          const response = await depositsApi.submitByTxHashes(
+            txHashes,
+            account,
+            values.deposit_type,
+            generatedDepositData,
+            values.batch_contract_address,
+            values.official_deposit_contract_address
+          ) as any
+          
+          const results = response.data || response || []
+          const successCount = results.filter((r: any) => r.status === 'submitted').length
+          const failedCount = results.filter((r: any) => r.status === 'failed').length
+          
+          if (failedCount === 0) {
+            message.success(`存款交易已保存: ${successCount} 个交易`)
+          } else {
+            message.warning(`部分交易保存失败: ${successCount} 个成功，${failedCount} 个失败`)
+          }
         } catch (apiError: any) {
           console.warn('保存交易信息失败:', apiError)
           message.warning('交易已发送，但保存交易信息失败，请手动同步交易状态')

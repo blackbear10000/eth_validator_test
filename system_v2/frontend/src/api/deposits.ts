@@ -65,7 +65,7 @@ export const depositsApi = {
     network_name?: string
   }) => apiClient.post('/deposits/generate', params),
 
-  // 提交批量存款
+  // 提交批量存款（使用私钥签名，向后兼容）
   submit: (
     depositDataList: DepositData[],
     fromAddress: string,
@@ -79,6 +79,24 @@ export const depositsApi = {
       from_address: fromAddress,
       private_key: privateKey,
       deposit_type: depositType,
+      batch_contract_address: batchContractAddress,
+      official_deposit_contract_address: officialContractAddress,
+    }),
+
+  // 通过交易哈希提交存款（MetaMask 方式）
+  submitByTxHashes: (
+    txHashes: string[],
+    fromAddress: string,
+    depositType: 'official' | 'batch',
+    depositDataList?: DepositData[],
+    batchContractAddress?: string,
+    officialContractAddress?: string
+  ) =>
+    apiClient.post('/deposits/submit-by-tx-hashes', {
+      tx_hashes: txHashes,
+      from_address: fromAddress,
+      deposit_type: depositType,
+      deposit_data_list: depositDataList,
       batch_contract_address: batchContractAddress,
       official_deposit_contract_address: officialContractAddress,
     }),
