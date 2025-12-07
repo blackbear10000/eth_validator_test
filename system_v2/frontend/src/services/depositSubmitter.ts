@@ -55,25 +55,37 @@ export class DepositSubmitterService {
     totalValue: bigint
   } {
     const pubkeys: Uint8Array[] = []
-    const withdrawal_credentials: Uint8Array[] = []
     const signatures: Uint8Array[] = []
     const deposit_data_roots: string[] = []
     const amounts: bigint[] = []
 
+    // Batch Deposit 合约要求所有验证者使用相同的 withdrawal_credentials
+    // 只使用第一个验证者的 withdrawal_credentials（32 字节）
+    const firstWithdrawalCredentials = this.hexToBytes(depositDataList[0].withdrawal_credentials)
+    if (firstWithdrawalCredentials.length !== 32) {
+      throw new Error(`Invalid withdrawal_credentials length: ${firstWithdrawalCredentials.length}, expected 32`)
+    }
+
+    // 验证所有验证者使用相同的 withdrawal_credentials
+    for (let i = 1; i < depositDataList.length; i++) {
+      const withdrawalBytes = this.hexToBytes(depositDataList[i].withdrawal_credentials)
+      if (withdrawalBytes.length !== 32) {
+        throw new Error(`Invalid withdrawal_credentials length at index ${i}: ${withdrawalBytes.length}, expected 32`)
+      }
+      // 比较字节数组
+      const isEqual = firstWithdrawalCredentials.every((byte, idx) => byte === withdrawalBytes[idx])
+      if (!isEqual) {
+        throw new Error(`所有验证者必须使用相同的 withdrawal_credentials。验证者 0 和验证者 ${i} 的 withdrawal_credentials 不匹配`)
+      }
+    }
+
     for (const data of depositDataList) {
-      // 转换 pubkey (96 字节)
+      // 转换 pubkey (48 字节)
       const pubkeyBytes = this.hexToBytes(data.pubkey)
       if (pubkeyBytes.length !== 48) {
         throw new Error(`Invalid pubkey length: ${pubkeyBytes.length}, expected 48`)
       }
       pubkeys.push(pubkeyBytes)
-
-      // 转换 withdrawal_credentials (32 字节)
-      const withdrawalBytes = this.hexToBytes(data.withdrawal_credentials)
-      if (withdrawalBytes.length !== 32) {
-        throw new Error(`Invalid withdrawal_credentials length: ${withdrawalBytes.length}, expected 32`)
-      }
-      withdrawal_credentials.push(withdrawalBytes)
 
       // 转换 signature (96 字节)
       const signatureBytes = this.hexToBytes(data.signature)
@@ -97,7 +109,8 @@ export class DepositSubmitterService {
 
     // 合并为单个 bytes
     const pubkeysBytes = this.concatBytes(pubkeys)
-    const withdrawalCredentialsBytes = this.concatBytes(withdrawal_credentials)
+    // withdrawal_credentials 只使用第一个验证者的（32 字节），不合并
+    const withdrawalCredentialsBytes = firstWithdrawalCredentials
     const signaturesBytes = this.concatBytes(signatures)
 
     // 计算总金额
