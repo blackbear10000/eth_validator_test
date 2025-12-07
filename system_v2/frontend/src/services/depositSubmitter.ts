@@ -61,9 +61,12 @@ export class DepositSubmitterService {
 
     // Batch Deposit 合约要求所有验证者使用相同的 withdrawal_credentials
     // 只使用第一个验证者的 withdrawal_credentials（32 字节）
-    const firstWithdrawalCredentials = this.hexToBytes(depositDataList[0].withdrawal_credentials)
+    const firstWithdrawalCredentialsHex = depositDataList[0].withdrawal_credentials
+    console.log('First withdrawal_credentials (hex):', firstWithdrawalCredentialsHex)
+    
+    const firstWithdrawalCredentials = this.hexToBytes(firstWithdrawalCredentialsHex)
     if (firstWithdrawalCredentials.length !== 32) {
-      throw new Error(`Invalid withdrawal_credentials length: ${firstWithdrawalCredentials.length}, expected 32`)
+      throw new Error(`Invalid withdrawal_credentials length: ${firstWithdrawalCredentials.length}, expected 32. Hex: ${firstWithdrawalCredentialsHex}`)
     }
 
     // 验证所有验证者使用相同的 withdrawal_credentials
@@ -116,6 +119,33 @@ export class DepositSubmitterService {
     // 计算总金额
     const totalValue = amounts.reduce((sum, amount) => sum + amount, 0n)
 
+    // 验证数据长度
+    const validatorCount = depositDataList.length
+    const expectedPubkeysLength = validatorCount * 48
+    const expectedSignaturesLength = validatorCount * 96
+    const expectedWithdrawalCredentialsLength = 32 // 必须是 32 字节，不是 validatorCount * 32
+
+    if (pubkeysBytes.length !== expectedPubkeysLength) {
+      throw new Error(`Pubkeys length mismatch: expected ${expectedPubkeysLength}, got ${pubkeysBytes.length}`)
+    }
+    if (signaturesBytes.length !== expectedSignaturesLength) {
+      throw new Error(`Signatures length mismatch: expected ${expectedSignaturesLength}, got ${signaturesBytes.length}`)
+    }
+    if (withdrawalCredentialsBytes.length !== expectedWithdrawalCredentialsLength) {
+      throw new Error(`Withdrawal credentials length mismatch: expected ${expectedWithdrawalCredentialsLength}, got ${withdrawalCredentialsBytes.length}`)
+    }
+
+    // 调试日志
+    console.log('Batch Deposit Data:', {
+      validatorCount,
+      pubkeysLength: pubkeysBytes.length,
+      withdrawalCredentialsLength: withdrawalCredentialsBytes.length,
+      signaturesLength: signaturesBytes.length,
+      depositDataRootsCount: deposit_data_roots.length,
+      amountsCount: amounts.length,
+      withdrawalCredentialsHex: '0x' + this.bytesToHex(withdrawalCredentialsBytes),
+    })
+
     return {
       pubkeys: '0x' + this.bytesToHex(pubkeysBytes),
       withdrawal_credentials: '0x' + this.bytesToHex(withdrawalCredentialsBytes),
@@ -141,6 +171,26 @@ export class DepositSubmitterService {
 
     // 准备批量数据
     const batchData = this.prepareBatchData(depositDataList)
+
+    // 再次验证 withdrawal_credentials 长度（应该是 32 字节，即 64 个十六进制字符 + 0x = 66 字符）
+    const withdrawalCredentialsHex = batchData.withdrawal_credentials
+    const withdrawalCredentialsBytes = this.hexToBytes(withdrawalCredentialsHex)
+    if (withdrawalCredentialsBytes.length !== 32) {
+      throw new Error(
+        `Withdrawal credentials length is incorrect: ${withdrawalCredentialsBytes.length} bytes (hex: ${withdrawalCredentialsHex}, length: ${withdrawalCredentialsHex.length} chars). ` +
+        `Expected 32 bytes (66 hex chars with 0x prefix). ` +
+        `This indicates a bug in prepareBatchData.`
+      )
+    }
+
+    console.log('Final batch data before sending:', {
+      withdrawalCredentialsLength: withdrawalCredentialsBytes.length,
+      withdrawalCredentialsHex: withdrawalCredentialsHex.substring(0, 20) + '...',
+      pubkeysLength: this.hexToBytes(batchData.pubkeys).length,
+      signaturesLength: this.hexToBytes(batchData.signatures).length,
+      depositDataRootsCount: batchData.deposit_data_roots.length,
+      amountsCount: batchData.amounts.length,
+    })
 
     // 创建合约实例
     const contract = new Contract(contractAddress, BATCH_DEPOSIT_ABI, signer)
@@ -260,7 +310,13 @@ export class DepositSubmitterService {
 
   // 工具函数
   private static hexToBytes(hex: string): Uint8Array {
+    if (!hex) {
+      throw new Error('Hex string is empty or null')
+    }
     const cleanHex = hex.startsWith('0x') ? hex.slice(2) : hex
+    if (cleanHex.length % 2 !== 0) {
+      throw new Error(`Invalid hex string length: ${hex} (length: ${cleanHex.length})`)
+    }
     const bytes = new Uint8Array(cleanHex.length / 2)
     for (let i = 0; i < cleanHex.length; i += 2) {
       bytes[i / 2] = parseInt(cleanHex.substr(i, 2), 16)
