@@ -801,7 +801,7 @@ port = 5062
                     logger.warning(error_msg)
                     raise ValueError(error_msg)
                 
-                # 创建映射关系
+                # 创建映射关系（先不提交数据库）
                 client_key = ValidatorClientKey(
                     client_id=client_instance.id,
                     pubkey=validator_key.pubkey,
@@ -811,35 +811,45 @@ port = 5062
                 self.db.add(client_key)
                 assigned_keys.append(client_key)
             
-            self.db.commit()
-            
             # 处理密钥分配后的操作
             if assigned_keys:
                 pubkey_list = [ck.pubkey for ck in assigned_keys]
                 is_running = self._is_client_running(client_instance)
                 
                 if is_running:
-                    # 客户端正在运行：只通过 Remote Validator API 添加密钥，不生成配置文件
+                    # 客户端正在运行：先通过 Remote Validator API 添加密钥，成功后再提交数据库
                     logger.info(f"客户端 {client_instance.name} 正在运行，通过 Remote Validator API 添加密钥")
                     if use_remote_keymanager:
                         try:
+                            # 先调用 Remote Validator API（不提交数据库）
                             self.sync_keys_to_validator_client(
                                 client_instance,
                                 add_pubkeys=pubkey_list
                             )
+                            # API 调用成功后再提交数据库
+                            self.db.commit()
                             logger.info(f"密钥已通过 Remote Validator API 添加到客户端: {client_instance.name}")
                         except Exception as e:
-                            logger.warning(f"通过 Remote Validator API 添加密钥失败: {e}，但密钥已分配到客户端")
+                            # API 调用失败，回滚数据库
+                            self.db.rollback()
+                            logger.error(f"通过 Remote Validator API 添加密钥失败: {e}，已回滚数据库")
+                            raise ClientManagementError(f"通过 Remote Validator API 添加密钥失败: {e}")
                     else:
+                        # 未启用 Remote Keymanager API，直接提交数据库
+                        self.db.commit()
                         logger.warning("客户端正在运行但未启用 Remote Keymanager API，密钥已分配到数据库但未加载到客户端")
                 else:
-                    # 客户端未运行：生成配置文件（包含所有分配的密钥）
+                    # 客户端未运行：直接提交数据库并生成配置文件
+                    self.db.commit()
                     logger.info(f"客户端 {client_instance.name} 未运行，生成配置文件")
                     # 获取所有分配给客户端的密钥（包括新分配的）
                     all_client_keys = self.get_client_keys(client_instance)
                     all_pubkeys = [key.pubkey for key in all_client_keys]
                     self.generate_config_files(client_instance, all_pubkeys)
                     logger.info(f"配置文件已生成，包含 {len(all_pubkeys)} 个密钥")
+            else:
+                # 没有需要分配的密钥，直接提交（虽然不会有任何更改）
+                self.db.commit()
             
             logger.info(f"成功分配 {len(assigned_keys)} 个密钥到客户端: {client_instance.name}")
             return assigned_keys
@@ -879,25 +889,30 @@ port = 5062
                     client_key.removed_at = datetime.utcnow()
                     removed_count += 1
             
-            self.db.commit()
-            
             # 处理密钥删除后的操作
             if removed_count > 0:
                 is_running = self._is_client_running(client_instance)
                 
                 if is_running:
-                    # 客户端正在运行：只通过 Remote Validator API 删除密钥，不生成配置文件
+                    # 客户端正在运行：先通过 Remote Validator API 删除密钥，成功后再提交数据库
                     logger.info(f"客户端 {client_instance.name} 正在运行，通过 Remote Validator API 删除密钥")
                     try:
+                        # 先调用 Remote Validator API（不提交数据库）
                         self.sync_keys_to_validator_client(
                             client_instance,
                             remove_pubkeys=pubkeys
                         )
+                        # API 调用成功后再提交数据库
+                        self.db.commit()
                         logger.info(f"密钥已通过 Remote Validator API 从客户端删除: {client_instance.name}")
                     except Exception as e:
-                        logger.warning(f"通过 Remote Validator API 删除密钥失败: {e}，但密钥已从数据库移除")
+                        # API 调用失败，回滚数据库
+                        self.db.rollback()
+                        logger.error(f"通过 Remote Validator API 删除密钥失败: {e}，已回滚数据库")
+                        raise ClientManagementError(f"通过 Remote Validator API 删除密钥失败: {e}")
                 else:
-                    # 客户端未运行：重新生成配置文件（排除已移除的密钥）
+                    # 客户端未运行：直接提交数据库并重新生成配置文件
+                    self.db.commit()
                     logger.info(f"客户端 {client_instance.name} 未运行，重新生成配置文件")
                     active_keys = self.db.query(ValidatorClientKey).filter(
                         ValidatorClientKey.client_id == client_instance.id,
@@ -912,6 +927,9 @@ port = 5062
                         # 如果没有活跃密钥，生成空配置
                         self.generate_config_files(client_instance, [])
                         logger.info("配置文件已重新生成（无密钥）")
+            else:
+                # 没有需要删除的密钥，直接提交（虽然不会有任何更改）
+                self.db.commit()
             
             logger.info(f"成功从客户端移除 {removed_count} 个密钥: {client_instance.name}")
             return removed_count
@@ -1025,11 +1043,24 @@ port = 5062
                     result['added'] = add_result.get('imported', [])
                     if add_result.get('error'):
                         result['errors'].extend(add_result['error'])
+                    
+                    # 检查是否有成功的密钥
+                    if not result['added'] and add_result.get('error'):
+                        # 所有密钥都失败了，抛出异常
+                        error_messages = [err.get('error', 'Unknown error') for err in add_result.get('error', [])]
+                        error_msg = f"所有密钥添加失败: {', '.join(error_messages)}"
+                        logger.error(error_msg)
+                        raise ClientManagementError(error_msg)
+                    
                     logger.info(f"通过 Remote Validator API 添加了 {len(result['added'])} 个密钥 (URL: {remote_api_url})")
+                except ClientManagementError:
+                    # 重新抛出 ClientManagementError
+                    raise
                 except Exception as e:
+                    # 其他异常（如网络错误、API 错误等）直接抛出
                     error_msg = f"添加密钥失败: {e}"
                     logger.error(error_msg)
-                    result['errors'].append({'action': 'add', 'error': error_msg})
+                    raise ClientManagementError(error_msg)
             
             # 删除密钥
             if remove_pubkeys:
@@ -1038,11 +1069,24 @@ port = 5062
                     result['removed'] = remove_result.get('deleted', [])
                     if remove_result.get('error'):
                         result['errors'].extend(remove_result['error'])
+                    
+                    # 检查是否有成功的密钥
+                    if not result['removed'] and remove_result.get('error'):
+                        # 所有密钥都失败了，抛出异常
+                        error_messages = [err.get('error', 'Unknown error') for err in remove_result.get('error', [])]
+                        error_msg = f"所有密钥删除失败: {', '.join(error_messages)}"
+                        logger.error(error_msg)
+                        raise ClientManagementError(error_msg)
+                    
                     logger.info(f"通过 Remote Validator API 删除了 {len(result['removed'])} 个密钥 (URL: {remote_api_url})")
+                except ClientManagementError:
+                    # 重新抛出 ClientManagementError
+                    raise
                 except Exception as e:
+                    # 其他异常（如网络错误、API 错误等）直接抛出
                     error_msg = f"删除密钥失败: {e}"
                     logger.error(error_msg)
-                    result['errors'].append({'action': 'remove', 'error': error_msg})
+                    raise ClientManagementError(error_msg)
             
             return result
             

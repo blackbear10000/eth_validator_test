@@ -89,29 +89,42 @@ class RemoteValidatorClient:
     
     def get_keystores(self) -> List[Dict[str, Any]]:
         """
-        获取所有已加载的密钥列表
+        获取所有已加载的密钥列表（使用 Remote Key Manager API）
+        
+        根据 Ethereum Remote Key Manager API 规范：
+        https://ethereum.github.io/keymanager-APIs/#/Remote%20Key%20Manager/listRemoteKeys
+        
+        使用 Web3Signer 时，应使用 /eth/v1/remotekeys 端点，而不是 /eth/v1/keystores
         
         Returns:
             密钥列表，每个密钥包含 pubkey 等信息
         """
         try:
-            response = self._request("GET", "/eth/v1/keystores")
+            # 使用 Remote Key Manager API 端点（符合标准规范）
+            response = self._request("GET", "/eth/v1/remotekeys")
             
             # 处理不同的响应格式
-            # 标准格式: {"data": {"keystores": [...]}}
+            # Remote Key Manager API 标准格式: {"data": {"remote_keys": [...]}}
+            # 每个 remote_key 包含: {"pubkey": "0x...", "url": "http://..."}
             # 某些实现可能直接返回列表: [...]
             if isinstance(response, list):
                 # 如果响应直接是列表，直接返回
                 logger.debug(f"API 响应是列表格式，包含 {len(response)} 个密钥")
                 return response
             elif isinstance(response, dict):
-                # 标准格式，从 data.keystores 获取
+                # 标准格式，从 data.remote_keys 获取（Remote Key Manager API）
                 data = response.get('data', {})
                 if isinstance(data, list):
                     # 某些实现可能 data 直接是列表
                     logger.debug(f"API 响应 data 是列表格式，包含 {len(data)} 个密钥")
                     return data
                 else:
+                    # 优先尝试 Remote Key Manager API 格式
+                    remote_keys = data.get('remote_keys', [])
+                    if remote_keys:
+                        logger.debug(f"API 响应包含 {len(remote_keys)} 个远程密钥")
+                        return remote_keys
+                    # 回退到标准 keystores 格式（兼容性）
                     keystores = data.get('keystores', [])
                     logger.debug(f"API 响应包含 {len(keystores)} 个密钥")
                     return keystores
@@ -136,10 +149,12 @@ class RemoteValidatorClient:
         
         for keystore in keystores:
             # 处理不同的 keystore 格式
+            # Remote Key Manager API 格式: {"pubkey": "0x...", "url": "http://..."}
             # 标准格式: {"validating_pubkey": "0x..."}
             # 某些实现可能直接返回字符串列表: ["0x...", ...]
             if isinstance(keystore, dict):
-                pubkey = keystore.get('validating_pubkey', '')
+                # 优先使用 Remote Key Manager API 格式
+                pubkey = keystore.get('pubkey', '') or keystore.get('validating_pubkey', '')
             elif isinstance(keystore, str):
                 # 如果 keystore 直接是字符串（公钥），直接使用
                 pubkey = keystore
@@ -161,7 +176,12 @@ class RemoteValidatorClient:
         web3signer_url: str
     ) -> Dict[str, Any]:
         """
-        添加密钥到 Validator Client
+        添加密钥到 Validator Client（使用 Remote Key Manager API）
+        
+        根据 Ethereum Remote Key Manager API 规范：
+        https://ethereum.github.io/keymanager-APIs/#/Remote%20Key%20Manager/importRemoteKeys
+        
+        使用 Web3Signer 时，应使用 /eth/v1/remotekeys 端点，而不是 /eth/v1/keystores
         
         Args:
             pubkeys: 要添加的公钥列表
@@ -171,35 +191,35 @@ class RemoteValidatorClient:
             添加结果，包含成功和失败的密钥
         """
         try:
-            # 准备请求数据
-            # 根据 Remote Validator API 标准，需要提供 keystores 和 passwords
-            # 但使用 Web3Signer 时，只需要提供 pubkeys 和 web3signer_url
-            keystores_data = []
+            # 规范化 Web3Signer URL
+            # 在容器间通信时，应该使用容器名称（haproxy），而不是 host.docker.internal
+            web3signer_url_normalized = web3signer_url
+            if 'host.docker.internal:9002' in web3signer_url:
+                # 将 host.docker.internal:9002 转换为 haproxy:9002（容器间通信）
+                web3signer_url_normalized = web3signer_url.replace('host.docker.internal:9002', 'haproxy:9002')
+                logger.debug(f"Web3Signer URL 已转换: {web3signer_url} -> {web3signer_url_normalized}")
+            
+            # 准备请求数据（符合 Remote Key Manager API 规范）
+            remote_keys = []
             for pubkey in pubkeys:
                 # 规范化 pubkey
                 pubkey_normalized = pubkey.lower().strip()
                 if not pubkey_normalized.startswith('0x'):
                     pubkey_normalized = f"0x{pubkey_normalized}"
                 
-                keystores_data.append({
-                    "validating_pubkey": pubkey_normalized,
-                    "derivation_path": "",  # 使用 Web3Signer 时可以为空
-                    "readonly": False
+                remote_keys.append({
+                    "pubkey": pubkey_normalized,
+                    "url": web3signer_url_normalized  # Web3Signer URL（已规范化）
                 })
             
             request_data = {
-                "keystores": keystores_data,
-                "passwords": [""] * len(pubkeys),  # 使用 Web3Signer 时密码可以为空
-                "slashing_protection": None  # 可选：slashing protection 数据
+                "remote_keys": remote_keys
             }
             
-            # 某些 Validator Client 可能需要额外的配置
-            # 例如，如果使用 Web3Signer，可能需要配置 web3signer_url
-            # 这里假设 Validator Client 已经配置了 Web3Signer URL
+            # 使用 Remote Key Manager API 端点（符合标准规范）
+            response = self._request("POST", "/eth/v1/remotekeys", json=request_data)
             
-            response = self._request("POST", "/eth/v1/keystores", json=request_data)
-            
-            # 解析响应
+            # 解析响应（Remote Key Manager API 响应格式）
             data = response.get('data', {})
             statuses = data.get('statuses', [])
             
@@ -243,7 +263,12 @@ class RemoteValidatorClient:
         pubkeys: List[str]
     ) -> Dict[str, Any]:
         """
-        从 Validator Client 删除密钥
+        从 Validator Client 删除密钥（使用 Remote Key Manager API）
+        
+        根据 Ethereum Remote Key Manager API 规范：
+        https://ethereum.github.io/keymanager-APIs/#/Remote%20Key%20Manager/deleteRemoteKeys
+        
+        使用 Web3Signer 时，应使用 /eth/v1/remotekeys 端点，而不是 /eth/v1/keystores
         
         Args:
             pubkeys: 要删除的公钥列表
@@ -264,7 +289,8 @@ class RemoteValidatorClient:
                 "pubkeys": pubkeys_normalized
             }
             
-            response = self._request("DELETE", "/eth/v1/keystores", json=request_data)
+            # 使用 Remote Key Manager API 端点（符合标准规范）
+            response = self._request("DELETE", "/eth/v1/remotekeys", json=request_data)
             
             # 解析响应
             data = response.get('data', {})
