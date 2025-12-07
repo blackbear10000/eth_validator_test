@@ -38,6 +38,7 @@ network_params:
   # ===== 激活队列（更快清队列）=====
   churn_limit_quotient: 32
   max_per_epoch_activation_churn_limit: 64
+  min_validator_withdrawability_delay: 2
 
   # ===== 创世与验证者基数 =====
   num_validator_keys_per_node: 64
