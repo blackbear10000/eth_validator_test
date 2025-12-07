@@ -106,5 +106,13 @@ export const clientsApi = {
   // 获取密钥对比信息（数据库 vs validator client）
   getKeysCompare: (clientId: number) =>
     apiClient.get(`/clients/${clientId}/keys/compare`),
+
+  // 同步孤儿密钥到数据库（Validator Client 中有但数据库中没有的密钥）
+  syncOrphanedKeys: (clientId: number, pubkeys?: string[]) =>
+    apiClient.post(`/clients/${clientId}/keys/sync-orphaned`, pubkeys ? { pubkeys } : {}),
+
+  // 从 Validator Client 删除孤儿密钥（Validator Client 中有但数据库中没有的密钥）
+  removeOrphanedKeys: (clientId: number, pubkeys?: string[]) =>
+    apiClient.post(`/clients/${clientId}/keys/remove-orphaned`, pubkeys ? { pubkeys } : {}),
 }
 

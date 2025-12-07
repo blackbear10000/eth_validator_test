@@ -468,6 +468,90 @@ async def compare_keys(
         raise HTTPException(status_code=500, detail=str(e))
 
 
+@router.post("/clients/{client_id}/keys/sync-orphaned", response_model=dict)
+async def sync_orphaned_keys(
+    client_id: int,
+    request: Optional[ClientKeyAssignment] = None,
+    client_service: ClientManagementService = Depends(get_client_service)
+):
+    """
+    将 Validator Client 中的"孤儿"密钥同步到数据库
+    
+    这些密钥在 Validator Client 中存在，但在数据库中没有记录。
+    通常是由于之前的代码 bug 导致的数据不一致。
+    """
+    try:
+        from app.models.database import ClientInstance
+        db = client_service.db
+        client = db.query(ClientInstance).filter(ClientInstance.id == client_id).first()
+        
+        if not client:
+            raise HTTPException(status_code=404, detail="客户端不存在")
+        
+        # 获取要同步的公钥列表（如果提供）
+        pubkeys = request.pubkeys if request else None
+        
+        # 同步孤儿密钥到数据库
+        result = client_service.sync_orphaned_keys_from_validator_client(client, pubkeys=pubkeys)
+        
+        return {
+            "client_id": client_id,
+            "synced_count": len(result['synced']),
+            "skipped_count": len(result['skipped']),
+            "error_count": len(result['errors']),
+            "synced": result['synced'],
+            "skipped": result['skipped'],
+            "errors": result['errors']
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"同步孤儿密钥失败: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/clients/{client_id}/keys/remove-orphaned", response_model=dict)
+async def remove_orphaned_keys(
+    client_id: int,
+    request: Optional[ClientKeyAssignment] = None,
+    client_service: ClientManagementService = Depends(get_client_service)
+):
+    """
+    从 Validator Client 删除"孤儿"密钥
+    
+    这些密钥在 Validator Client 中存在，但在数据库中没有记录。
+    通常是由于之前的代码 bug 导致的数据不一致。
+    """
+    try:
+        from app.models.database import ClientInstance
+        db = client_service.db
+        client = db.query(ClientInstance).filter(ClientInstance.id == client_id).first()
+        
+        if not client:
+            raise HTTPException(status_code=404, detail="客户端不存在")
+        
+        # 获取要删除的公钥列表（如果提供）
+        pubkeys = request.pubkeys if request else None
+        
+        # 从 Validator Client 删除孤儿密钥
+        result = client_service.remove_orphaned_keys_from_validator_client(client, pubkeys=pubkeys)
+        
+        return {
+            "client_id": client_id,
+            "removed_count": len(result['removed']),
+            "not_found_count": len(result['not_found']),
+            "error_count": len(result['errors']),
+            "removed": result['removed'],
+            "not_found": result['not_found'],
+            "errors": result['errors']
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"删除孤儿密钥失败: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 @router.post("/clients/{client_id}/start", response_model=dict)
 async def start_client(
     client_id: int,

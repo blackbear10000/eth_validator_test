@@ -58,6 +58,8 @@ const ClientKeyManagementModal: React.FC<ClientKeyManagementModalProps> = ({
   const [selectedKeys, setSelectedKeys] = useState<string[]>([])
   const [addingKeys, setAddingKeys] = useState(false)
   const [removingKeys, setRemovingKeys] = useState<string[]>([])
+  const [syncingOrphaned, setSyncingOrphaned] = useState(false)
+  const [removingOrphaned, setRemovingOrphaned] = useState(false)
   const [compareInfo, setCompareInfo] = useState<{
     container_running?: boolean
     warning?: string
@@ -143,6 +145,60 @@ const ClientKeyManagementModal: React.FC<ClientKeyManagementModalProps> = ({
       message.error(`移除密钥失败: ${error.message}`)
     } finally {
       setRemovingKeys(removingKeys.filter(k => k !== pubkey))
+    }
+  }
+
+  const handleSyncOrphanedKeys = async () => {
+    if (!client) return
+
+    setSyncingOrphaned(true)
+    try {
+      const result = await clientsApi.syncOrphanedKeys(client.id) as any
+      const syncedCount = result.synced_count || 0
+      const skippedCount = result.skipped_count || 0
+      const errorCount = result.error_count || 0
+      
+      if (syncedCount > 0) {
+        message.success(`成功同步 ${syncedCount} 个密钥到数据库`)
+      }
+      if (skippedCount > 0) {
+        message.warning(`${skippedCount} 个密钥被跳过（可能已存在或分配给其他客户端）`)
+      }
+      if (errorCount > 0) {
+        message.error(`${errorCount} 个密钥同步失败`)
+      }
+      
+      await loadData()
+      onRefresh?.()
+    } catch (error: any) {
+      message.error(`同步孤儿密钥失败: ${error.message}`)
+    } finally {
+      setSyncingOrphaned(false)
+    }
+  }
+
+  const handleRemoveOrphanedKeys = async () => {
+    if (!client) return
+
+    setRemovingOrphaned(true)
+    try {
+      const result = await clientsApi.removeOrphanedKeys(client.id) as any
+      const removedCount = result.removed_count || 0
+      const errorCount = result.error_count || 0
+      
+      if (removedCount > 0) {
+        message.success(`成功从 Validator Client 删除 ${removedCount} 个密钥`)
+      }
+      if (errorCount > 0) {
+        message.error(`${errorCount} 个密钥删除失败`)
+      }
+      
+      await loadData()
+      onRefresh?.()
+    } catch (error: any) {
+      message.error(`删除孤儿密钥失败: ${error.message}`)
+    } finally {
+      setRemovingOrphaned(false)
     }
   }
 
@@ -303,7 +359,40 @@ const ClientKeyManagementModal: React.FC<ClientKeyManagementModalProps> = ({
         {!compareInfo.warning && stats.onlyInValidator > 0 && (
           <Alert
             message="部分密钥仅在 Validator Client 中"
-            description={`有 ${stats.onlyInValidator} 个密钥已加载到 Validator Client，但未在数据库中记录。这可能是配置不一致导致的。`}
+            description={
+              <div>
+                <div style={{ marginBottom: 8 }}>
+                  有 {stats.onlyInValidator} 个密钥已加载到 Validator Client，但未在数据库中记录。这可能是配置不一致导致的。
+                </div>
+                <Space>
+                  <Button
+                    size="small"
+                    type="primary"
+                    onClick={handleSyncOrphanedKeys}
+                    loading={syncingOrphaned}
+                    disabled={!compareInfo.container_running}
+                  >
+                    同步到数据库
+                  </Button>
+                  <Popconfirm
+                    title="确定要删除这些孤儿密钥吗？"
+                    description="这将从 Validator Client 中删除这些密钥，但不会影响数据库"
+                    onConfirm={handleRemoveOrphanedKeys}
+                    okText="确定"
+                    cancelText="取消"
+                  >
+                    <Button
+                      size="small"
+                      danger
+                      loading={removingOrphaned}
+                      disabled={!compareInfo.container_running}
+                    >
+                      从客户端删除
+                    </Button>
+                  </Popconfirm>
+                </Space>
+              </div>
+            }
             type="error"
             showIcon
             style={{ marginBottom: 16 }}

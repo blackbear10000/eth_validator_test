@@ -1308,4 +1308,244 @@ port = 5062
             logger.warning(f"滚动更新部分失败: {len(result['errors'])} 个错误")
         
         return result
+    
+    def sync_orphaned_keys_from_validator_client(
+        self,
+        client_instance: ClientInstance,
+        pubkeys: Optional[List[str]] = None
+    ) -> Dict[str, Any]:
+        """
+        将 Validator Client 中的"孤儿"密钥同步到数据库
+        
+        这些密钥在 Validator Client 中存在，但在数据库中没有记录。
+        通常是由于之前的代码 bug 导致的数据不一致。
+        
+        Args:
+            client_instance: 客户端实例
+            pubkeys: 要同步的公钥列表（可选，如果不提供则同步所有"孤儿"密钥）
+            
+        Returns:
+            同步结果
+        """
+        result = {
+            'synced': [],
+            'skipped': [],
+            'errors': []
+        }
+        
+        try:
+            # 获取 Remote Validator API URL
+            remote_api_url = self._get_remote_validator_api_url(client_instance)
+            if not remote_api_url:
+                raise ClientManagementError(
+                    f"无法确定 Remote Validator API URL（客户端类型: {client_instance.client_type}）"
+                )
+            
+            # 获取 auth token
+            auth_token = self._get_auth_token_from_container(client_instance)
+            remote_client = RemoteValidatorClient(remote_api_url, auth_token=auth_token)
+            
+            # 获取 Validator Client 中实际加载的密钥
+            actual_pubkeys_list = remote_client.get_public_keys()
+            actual_pubkeys = set([pubkey.lower() for pubkey in actual_pubkeys_list])
+            
+            # 获取数据库中该客户端的密钥
+            db_keys = self.get_client_keys(client_instance)
+            db_pubkeys = set([key.pubkey.lower() for key in db_keys])
+            
+            # 计算"孤儿"密钥（在 Validator Client 中但不在数据库中）
+            orphaned_pubkeys = actual_pubkeys - db_pubkeys
+            
+            if not orphaned_pubkeys:
+                logger.info(f"客户端 {client_instance.name} 没有孤儿密钥")
+                return result
+            
+            # 如果指定了 pubkeys，只同步指定的密钥
+            if pubkeys:
+                pubkeys_normalized = set([pubkey.lower().strip() for pubkey in pubkeys])
+                orphaned_pubkeys = orphaned_pubkeys & pubkeys_normalized
+            
+            if not orphaned_pubkeys:
+                logger.info(f"指定的密钥中没有孤儿密钥")
+                return result
+            
+            logger.info(f"发现 {len(orphaned_pubkeys)} 个孤儿密钥，开始同步到数据库...")
+            
+            # 为每个孤儿密钥创建数据库记录
+            for pubkey in orphaned_pubkeys:
+                try:
+                    # 检查密钥是否在 ValidatorKey 表中存在
+                    validator_key = self.db.query(ValidatorKey).filter(
+                        ValidatorKey.pubkey == pubkey
+                    ).first()
+                    
+                    if not validator_key:
+                        # 密钥在 ValidatorKey 表中也不存在，跳过
+                        logger.warning(f"密钥 {pubkey[:10]}... 在 ValidatorKey 表中不存在，无法同步")
+                        result['skipped'].append({
+                            'pubkey': pubkey,
+                            'reason': '密钥在 ValidatorKey 表中不存在'
+                        })
+                        continue
+                    
+                    # 检查是否已经分配给其他客户端
+                    existing_mapping = self.db.query(ValidatorClientKey).filter(
+                        ValidatorClientKey.pubkey == pubkey,
+                        ValidatorClientKey.status == "active",
+                        ValidatorClientKey.client_id != client_instance.id
+                    ).first()
+                    
+                    if existing_mapping:
+                        other_client = existing_mapping.client_instance
+                        logger.warning(
+                            f"密钥 {pubkey[:10]}... 已分配给其他客户端 '{other_client.name}' (ID: {other_client.id})，跳过"
+                        )
+                        result['skipped'].append({
+                            'pubkey': pubkey,
+                            'reason': f"已分配给其他客户端 '{other_client.name}'"
+                        })
+                        continue
+                    
+                    # 检查是否已经分配给当前客户端（可能状态是 removed）
+                    existing = self.db.query(ValidatorClientKey).filter(
+                        ValidatorClientKey.client_id == client_instance.id,
+                        ValidatorClientKey.pubkey == pubkey
+                    ).first()
+                    
+                    if existing:
+                        # 如果存在但状态是 removed，重新激活
+                        if existing.status == "removed":
+                            existing.status = "active"
+                            existing.added_at = datetime.utcnow()
+                            existing.removed_at = None
+                            logger.info(f"重新激活密钥 {pubkey[:10]}... 的数据库记录")
+                        else:
+                            logger.debug(f"密钥 {pubkey[:10]}... 已在数据库中")
+                            result['skipped'].append({
+                                'pubkey': pubkey,
+                                'reason': '已在数据库中'
+                            })
+                            continue
+                    else:
+                        # 创建新的映射关系
+                        client_key = ValidatorClientKey(
+                            client_id=client_instance.id,
+                            pubkey=validator_key.pubkey,
+                            status="active",
+                            added_at=datetime.utcnow()
+                        )
+                        self.db.add(client_key)
+                        logger.info(f"创建密钥 {pubkey[:10]}... 的数据库记录")
+                    
+                    result['synced'].append(pubkey)
+                    
+                except Exception as e:
+                    error_msg = f"同步密钥 {pubkey[:10]}... 失败: {e}"
+                    logger.error(error_msg, exc_info=True)
+                    result['errors'].append({
+                        'pubkey': pubkey,
+                        'error': error_msg
+                    })
+            
+            # 提交数据库更改
+            if result['synced']:
+                self.db.commit()
+                logger.info(f"成功同步 {len(result['synced'])} 个孤儿密钥到数据库")
+            
+            return result
+            
+        except Exception as e:
+            self.db.rollback()
+            logger.error(f"同步孤儿密钥失败: {e}", exc_info=True)
+            raise ClientManagementError(f"同步孤儿密钥失败: {e}")
+    
+    def remove_orphaned_keys_from_validator_client(
+        self,
+        client_instance: ClientInstance,
+        pubkeys: Optional[List[str]] = None
+    ) -> Dict[str, Any]:
+        """
+        从 Validator Client 删除"孤儿"密钥
+        
+        这些密钥在 Validator Client 中存在，但在数据库中没有记录。
+        通常是由于之前的代码 bug 导致的数据不一致。
+        
+        Args:
+            client_instance: 客户端实例
+            pubkeys: 要删除的公钥列表（可选，如果不提供则删除所有"孤儿"密钥）
+            
+        Returns:
+            删除结果
+        """
+        result = {
+            'removed': [],
+            'not_found': [],
+            'errors': []
+        }
+        
+        try:
+            # 检查容器是否运行
+            is_running = self._is_client_running(client_instance)
+            if not is_running:
+                raise ClientManagementError("客户端容器未运行，无法删除密钥")
+            
+            # 获取 Remote Validator API URL
+            remote_api_url = self._get_remote_validator_api_url(client_instance)
+            if not remote_api_url:
+                raise ClientManagementError(
+                    f"无法确定 Remote Validator API URL（客户端类型: {client_instance.client_type}）"
+                )
+            
+            # 获取 auth token
+            auth_token = self._get_auth_token_from_container(client_instance)
+            remote_client = RemoteValidatorClient(remote_api_url, auth_token=auth_token)
+            
+            # 获取 Validator Client 中实际加载的密钥
+            actual_pubkeys_list = remote_client.get_public_keys()
+            actual_pubkeys = set([pubkey.lower() for pubkey in actual_pubkeys_list])
+            
+            # 获取数据库中该客户端的密钥
+            db_keys = self.get_client_keys(client_instance)
+            db_pubkeys = set([key.pubkey.lower() for key in db_keys])
+            
+            # 计算"孤儿"密钥（在 Validator Client 中但不在数据库中）
+            orphaned_pubkeys = actual_pubkeys - db_pubkeys
+            
+            if not orphaned_pubkeys:
+                logger.info(f"客户端 {client_instance.name} 没有孤儿密钥")
+                return result
+            
+            # 如果指定了 pubkeys，只删除指定的密钥
+            if pubkeys:
+                pubkeys_normalized = set([pubkey.lower().strip() for pubkey in pubkeys])
+                orphaned_pubkeys = orphaned_pubkeys & pubkeys_normalized
+            
+            if not orphaned_pubkeys:
+                logger.info(f"指定的密钥中没有孤儿密钥")
+                return result
+            
+            logger.info(f"发现 {len(orphaned_pubkeys)} 个孤儿密钥，开始从 Validator Client 删除...")
+            
+            # 通过 Remote Validator API 删除这些密钥
+            try:
+                remove_result = remote_client.delete_keystores(pubkeys=list(orphaned_pubkeys))
+                result['removed'] = remove_result.get('deleted', [])
+                result['not_found'] = remove_result.get('not_found', [])
+                if remove_result.get('error'):
+                    result['errors'].extend(remove_result['error'])
+                
+                logger.info(f"成功从 Validator Client 删除 {len(result['removed'])} 个孤儿密钥")
+            except Exception as e:
+                error_msg = f"通过 Remote Validator API 删除孤儿密钥失败: {e}"
+                logger.error(error_msg, exc_info=True)
+                result['errors'].append({'error': error_msg})
+                raise ClientManagementError(error_msg)
+            
+            return result
+            
+        except ClientManagementError:
+            raise
+        except Exception as e:
+            logger.error(f"删除孤儿密钥失败: {e}", exc_info=True)
+            raise ClientManagementError(f"删除孤儿密钥失败: {e}")
 
