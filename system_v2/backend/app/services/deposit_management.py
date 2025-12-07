@@ -555,24 +555,26 @@ class DepositManagementService:
             web3=eth1_client.web3
         )
         
-        # 查询待同步的交易（包括 SUBMITTED 和旧的 PENDING 状态）
+        # 查询待同步的交易
+        # 包括：已提交、已确认、已验证、等待激活的交易
+        # 这些状态都需要定期同步以检测状态变化（如从 pending_activation 变为 activated）
+        statuses_to_sync = [
+            DepositStatus.SUBMITTED.value,
+            DepositStatus.PENDING.value,  # 向后兼容
+            DepositStatus.CONFIRMED.value,  # 已确认但未验证的交易
+            DepositStatus.VALIDATED.value,  # 已验证，可能还在等待激活
+            DepositStatus.PENDING_ACTIVATION.value,  # 等待激活，需要检查是否已激活
+        ]
+        
         if tx_hash:
             transactions = self.db.query(DepositTransaction).filter(
                 DepositTransaction.tx_hash == tx_hash
             ).filter(
-                DepositTransaction.status.in_([
-                    DepositStatus.SUBMITTED.value,
-                    DepositStatus.PENDING.value,  # 向后兼容
-                    DepositStatus.CONFIRMED.value  # 已确认但未验证的交易
-                ])
+                DepositTransaction.status.in_(statuses_to_sync)
             ).all()
         else:
             transactions = self.db.query(DepositTransaction).filter(
-                DepositTransaction.status.in_([
-                    DepositStatus.SUBMITTED.value,
-                    DepositStatus.PENDING.value,  # 向后兼容
-                    DepositStatus.CONFIRMED.value  # 已确认但未验证的交易
-                ])
+                DepositTransaction.status.in_(statuses_to_sync)
             ).all()
         
         synced_count = 0
@@ -595,6 +597,9 @@ class DepositManagementService:
                 tx_status = eth1_client.get_transaction_status(tx.tx_hash)
                 
                 if tx_status['status'] == 'confirmed':
+                    # 保存当前状态，用于判断是否需要验证
+                    current_status = tx.status
+                    
                     # 交易已确认
                     if tx.status != DepositStatus.CONFIRMED.value:
                         tx.status = DepositStatus.CONFIRMED.value
@@ -602,8 +607,15 @@ class DepositManagementService:
                         tx.block_number = tx_status['block_number']
                         confirmed_count += 1
                     
-                    # 如果 validate_immediately=True，立即验证
-                    if validate_immediately:
+                    # 对于已确认的交易，需要验证以更新状态
+                    # 特别是对于 VALIDATED 和 PENDING_ACTIVATION 状态的交易，需要检查是否已激活
+                    # 使用保存的 current_status 而不是更新后的 tx.status
+                    should_validate = (
+                        validate_immediately or 
+                        current_status in [DepositStatus.VALIDATED.value, DepositStatus.PENDING_ACTIVATION.value, DepositStatus.CONFIRMED.value]
+                    )
+                    
+                    if should_validate:
                         validation_result = validation_service.validate_deposit_transaction(tx, rpc_url)
                         
                         if validation_result['is_valid']:
