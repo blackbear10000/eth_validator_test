@@ -220,8 +220,28 @@ class RemoteValidatorClient:
             response = self._request("POST", "/eth/v1/remotekeys", json=request_data)
             
             # 解析响应（Remote Key Manager API 响应格式）
-            data = response.get('data', {})
-            statuses = data.get('statuses', [])
+            # 处理不同的响应格式
+            # 标准格式: {"data": {"statuses": [...]}}
+            # 某些实现可能直接返回列表或其他格式
+            if isinstance(response, list):
+                # 如果响应直接是列表，尝试解析
+                logger.warning(f"API 响应是列表格式，可能不符合标准: {len(response)} 个元素")
+                statuses = response
+            elif isinstance(response, dict):
+                # 标准格式，从 data.statuses 获取
+                data = response.get('data', {})
+                if isinstance(data, dict):
+                    statuses = data.get('statuses', [])
+                elif isinstance(data, list):
+                    # 某些实现可能 data 直接是列表
+                    logger.debug(f"API 响应 data 是列表格式，包含 {len(data)} 个状态")
+                    statuses = data
+                else:
+                    logger.warning(f"意外的响应 data 格式: {type(data)}")
+                    statuses = []
+            else:
+                logger.warning(f"意外的响应格式: {type(response)}")
+                statuses = []
             
             # 统计结果
             result = {
@@ -232,17 +252,26 @@ class RemoteValidatorClient:
             
             for i, status in enumerate(statuses):
                 pubkey = pubkeys[i] if i < len(pubkeys) else None
-                status_value = status.get('status', '')
                 
-                if status_value == 'imported':
-                    result['imported'].append(pubkey)
-                elif status_value == 'duplicate':
-                    result['duplicate'].append(pubkey)
+                # 处理不同的 status 格式
+                if isinstance(status, dict):
+                    status_value = status.get('status', '')
+                    if status_value == 'imported':
+                        result['imported'].append(pubkey)
+                    elif status_value == 'duplicate':
+                        result['duplicate'].append(pubkey)
+                    else:
+                        error_msg = status.get('message', 'Unknown error')
+                        result['error'].append({
+                            'pubkey': pubkey,
+                            'error': error_msg
+                        })
                 else:
-                    error_msg = status.get('message', 'Unknown error')
+                    # 如果 status 不是字典，记录警告
+                    logger.warning(f"意外的 status 格式: {type(status)}, 值: {status}")
                     result['error'].append({
                         'pubkey': pubkey,
-                        'error': error_msg
+                        'error': f'Invalid status format: {status}'
                     })
             
             logger.info(
@@ -292,10 +321,34 @@ class RemoteValidatorClient:
             # 使用 Remote Key Manager API 端点（符合标准规范）
             response = self._request("DELETE", "/eth/v1/remotekeys", json=request_data)
             
-            # 解析响应
-            data = response.get('data', {})
-            statuses = data.get('statuses', [])
-            slashing_protection = data.get('slashing_protection', {})
+            # 解析响应（Remote Key Manager API 响应格式）
+            # 处理不同的响应格式
+            # 标准格式: {"data": {"statuses": [...], "slashing_protection": {...}}}
+            # 某些实现可能直接返回列表或其他格式
+            if isinstance(response, list):
+                # 如果响应直接是列表，尝试解析
+                logger.warning(f"API 响应是列表格式，可能不符合标准: {len(response)} 个元素")
+                statuses = response
+                slashing_protection = {}
+            elif isinstance(response, dict):
+                # 标准格式，从 data.statuses 获取
+                data = response.get('data', {})
+                if isinstance(data, dict):
+                    statuses = data.get('statuses', [])
+                    slashing_protection = data.get('slashing_protection', {})
+                elif isinstance(data, list):
+                    # 某些实现可能 data 直接是列表
+                    logger.debug(f"API 响应 data 是列表格式，包含 {len(data)} 个状态")
+                    statuses = data
+                    slashing_protection = {}
+                else:
+                    logger.warning(f"意外的响应 data 格式: {type(data)}")
+                    statuses = []
+                    slashing_protection = {}
+            else:
+                logger.warning(f"意外的响应格式: {type(response)}")
+                statuses = []
+                slashing_protection = {}
             
             # 统计结果
             result = {
@@ -307,17 +360,26 @@ class RemoteValidatorClient:
             
             for i, status in enumerate(statuses):
                 pubkey = pubkeys_normalized[i] if i < len(pubkeys_normalized) else None
-                status_value = status.get('status', '')
                 
-                if status_value == 'deleted':
-                    result['deleted'].append(pubkey)
-                elif status_value == 'not_found':
-                    result['not_found'].append(pubkey)
+                # 处理不同的 status 格式
+                if isinstance(status, dict):
+                    status_value = status.get('status', '')
+                    if status_value == 'deleted':
+                        result['deleted'].append(pubkey)
+                    elif status_value == 'not_found':
+                        result['not_found'].append(pubkey)
+                    else:
+                        error_msg = status.get('message', 'Unknown error')
+                        result['error'].append({
+                            'pubkey': pubkey,
+                            'error': error_msg
+                        })
                 else:
-                    error_msg = status.get('message', 'Unknown error')
+                    # 如果 status 不是字典，记录警告
+                    logger.warning(f"意外的 status 格式: {type(status)}, 值: {status}")
                     result['error'].append({
                         'pubkey': pubkey,
-                        'error': error_msg
+                        'error': f'Invalid status format: {status}'
                     })
             
             logger.info(
