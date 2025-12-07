@@ -25,6 +25,8 @@ import {
 } from '@ant-design/icons'
 import { depositsApi, DepositTransaction, DepositData, BatchDepositContract } from '../../api/deposits'
 import { keysApi } from '../../api/keys'
+import { useMetaMaskStore } from '../../stores/metamaskStore'
+import { DepositSubmitterService } from '../../services/depositSubmitter'
 
 const { Title, Text } = Typography
 const { Option } = Select
@@ -45,6 +47,9 @@ const DepositList: React.FC = () => {
   const [showBalance, setShowBalance] = useState(true) // 默认显示余额
   const [form] = Form.useForm()
   const [submitForm] = Form.useForm()
+  
+  // MetaMask 状态
+  const { isConnected, account } = useMetaMaskStore()
 
   const loadBatchContracts = async () => {
     try {
@@ -155,8 +160,6 @@ const DepositList: React.FC = () => {
   const [submitting, setSubmitting] = useState(false)
 
   const handleSubmit = async (values: {
-    from_address: string
-    private_key: string
     deposit_type: 'official' | 'batch'
     batch_contract_address?: string
     official_deposit_contract_address?: string
@@ -166,54 +169,78 @@ const DepositList: React.FC = () => {
       return
     }
 
+    // 检查 MetaMask 连接
+    if (!isConnected || !account) {
+      message.error('请先连接 MetaMask')
+      return
+    }
+
     setSubmitting(true)
     try {
-      const response = await depositsApi.submit(
-        generatedDepositData,
-        values.from_address,
-        values.private_key,
-        values.deposit_type,
-        values.batch_contract_address,
-        values.official_deposit_contract_address
-      ) as any
-      
-      // 检查返回结果
-      const results = response.data || response || []
-      const successCount = results.filter((r: any) => r.status === 'submitted' || r.status === 'success').length
-      const failedCount = results.filter((r: any) => r.status === 'failed').length
-      
-      if (failedCount === 0) {
-        message.success(`存款提交成功: ${successCount} 个批次已提交`)
-      } else if (successCount > 0) {
-        message.warning(`部分提交成功: ${successCount} 个批次成功，${failedCount} 个批次失败`)
+      if (values.deposit_type === 'batch') {
+        // 批量存款
+        if (!values.batch_contract_address) {
+          message.error('请选择或输入 Batch Deposit 合约地址')
+          return
+        }
+
+        const txHash = await DepositSubmitterService.submitBatchDeposit(
+          values.batch_contract_address,
+          generatedDepositData
+        )
+        message.success(`批量存款交易已发送: ${txHash}`)
+        
+        // 调用后端 API 保存交易信息
+        // 注意：需要修改后端 API 来接收交易哈希而不是私钥
+        try {
+          // TODO: 修改后端 API 后，这里调用新的 API
+          // await depositsApi.submitByTxHashes([txHash], account, values.deposit_type, ...)
+          message.warning('交易已发送，但后端 API 尚未更新，请手动同步交易状态')
+        } catch (apiError: any) {
+          console.warn('保存交易信息失败:', apiError)
+          message.warning('交易已发送，但保存交易信息失败，请手动同步交易状态')
+        }
       } else {
-        message.error(`存款提交失败: ${failedCount} 个批次全部失败`)
-      }
-      
-      // 显示详细错误信息（如果有）
-      if (failedCount > 0) {
-        const errors = results
-          .filter((r: any) => r.status === 'failed')
-          .map((r: any) => r.error || '未知错误')
-          .filter((e: string, i: number, arr: string[]) => arr.indexOf(e) === i) // 去重
-        if (errors.length > 0) {
-          console.error('提交失败详情:', errors)
+        // 官方存款（逐个发送）
+        if (!values.official_deposit_contract_address) {
+          message.error('请提供官方 Deposit 合约地址')
+          return
+        }
+
+        message.info(`开始提交 ${generatedDepositData.length} 个存款交易，请在 MetaMask 中逐个确认...`)
+        
+        const txHashes = await DepositSubmitterService.submitMultipleDeposits(
+          values.official_deposit_contract_address,
+          generatedDepositData
+        )
+        message.success(`所有存款交易已发送: ${txHashes.length} 个交易`)
+        
+        // 调用后端 API 保存交易信息
+        try {
+          // TODO: 修改后端 API 后，这里调用新的 API
+          // await depositsApi.submitByTxHashes(txHashes, account, values.deposit_type, ...)
+          message.warning('交易已发送，但后端 API 尚未更新，请手动同步交易状态')
+        } catch (apiError: any) {
+          console.warn('保存交易信息失败:', apiError)
+          message.warning('交易已发送，但保存交易信息失败，请手动同步交易状态')
         }
       }
-      
+
       setSubmitModalVisible(false)
       submitForm.resetFields()
       setGeneratedDepositData([])
       // 延迟加载，确保后端已保存记录
       setTimeout(() => {
         loadDeposits()
-      }, 1000)
+      }, 2000)
     } catch (error: any) {
       let errorMessage = '提交存款失败'
       if (error?.message) {
         errorMessage = error.message
-      } else if (error?.response?.data?.detail) {
-        errorMessage = error.response.data.detail
+      } else if (error?.code === 4001) {
+        errorMessage = '用户拒绝了交易'
+      } else if (error?.code === -32603) {
+        errorMessage = '交易执行失败，请检查余额和参数'
       }
       message.error(`提交存款失败: ${errorMessage}`)
       console.error('提交存款错误详情:', error)
@@ -664,26 +691,31 @@ const DepositList: React.FC = () => {
           </Form.Item>
 
           <Form.Item
-            name="from_address"
-            label="发送地址（用于发送存款交易的钱包地址）"
-            help="此地址需要有足够的 ETH 来支付存款金额（32 ETH × 验证者数量）和 gas 费用"
-            rules={[
-              { required: true, message: '请输入发送地址' },
-              { pattern: /^0x[a-fA-F0-9]{40}$/, message: '请输入有效的以太坊地址' },
-            ]}
+            label="发送地址"
+            help={
+              <div>
+                {isConnected && account ? (
+                  <div>
+                    <span style={{ color: '#52c41a' }}>✓ 已连接 MetaMask: </span>
+                    <span style={{ fontFamily: 'monospace' }}>{account.slice(0, 6)}...{account.slice(-4)}</span>
+                    <br />
+                    <span style={{ fontSize: '12px', color: '#666' }}>
+                      将使用此地址发送交易，请确保有足够的 ETH 支付存款金额和 gas 费用
+                    </span>
+                  </div>
+                ) : (
+                  <div>
+                    <span style={{ color: '#faad14' }}>⚠ 请先连接 MetaMask</span>
+                    <br />
+                    <span style={{ fontSize: '12px', color: '#666' }}>
+                      需要连接 MetaMask 才能提交存款交易
+                    </span>
+                  </div>
+                )}
+              </div>
+            }
           >
-            <Input placeholder="0x..." />
-          </Form.Item>
-          <Form.Item
-            name="private_key"
-            label="私钥（用于签名交易）"
-            help="⚠️ 警告：私钥将用于签名交易，请确保在安全环境中使用"
-            rules={[
-              { required: true, message: '请输入私钥' },
-              { pattern: /^0x[a-fA-F0-9]{64}$/, message: '请输入有效的私钥（64 个十六进制字符，0x开头）' },
-            ]}
-          >
-            <Input.Password placeholder="0x..." />
+            <Input disabled value={account || '未连接 MetaMask'} />
           </Form.Item>
           <Divider />
           <Typography.Text strong>

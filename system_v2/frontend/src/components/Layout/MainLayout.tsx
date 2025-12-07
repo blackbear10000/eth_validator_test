@@ -12,8 +12,9 @@ import {
   FileTextOutlined,
   SafetyOutlined,
 } from '@ant-design/icons'
+import MetaMaskConnect from '../MetaMask/MetaMaskConnect'
 
-const { Sider } = Layout
+const { Sider, Header } = Layout
 
 interface MainLayoutProps {
   children: React.ReactNode
@@ -85,6 +86,9 @@ const MainLayout: React.FC<MainLayoutProps> = ({ children }) => {
         />
       </Sider>
       <Layout>
+        <Header style={{ background: '#fff', padding: '0 24px', display: 'flex', justifyContent: 'flex-end', alignItems: 'center' }}>
+          <MetaMaskConnect />
+        </Header>
         {children}
       </Layout>
     </Layout>

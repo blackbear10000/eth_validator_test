@@ -1,0 +1,267 @@
+import { Contract } from 'ethers'
+import { useMetaMaskStore } from '../stores/metamaskStore'
+import type { DepositData } from '../api/deposits'
+
+/**
+ * 官方 Deposit 合约 ABI
+ */
+const DEPOSIT_CONTRACT_ABI = [
+  {
+    inputs: [
+      { internalType: 'bytes', name: 'pubkey', type: 'bytes' },
+      { internalType: 'bytes', name: 'withdrawal_credentials', type: 'bytes' },
+      { internalType: 'bytes', name: 'signature', type: 'bytes' },
+      { internalType: 'bytes32', name: 'deposit_data_root', type: 'bytes32' },
+    ],
+    name: 'deposit',
+    outputs: [],
+    stateMutability: 'payable',
+    type: 'function',
+  },
+]
+
+/**
+ * Batch Deposit 合约 ABI（只包含 batchDeposit 方法）
+ */
+const BATCH_DEPOSIT_ABI = [
+  {
+    inputs: [
+      { internalType: 'bytes', name: 'pubkeys', type: 'bytes' },
+      { internalType: 'bytes', name: 'withdrawal_credentials', type: 'bytes' },
+      { internalType: 'bytes', name: 'signatures', type: 'bytes' },
+      { internalType: 'bytes32[]', name: 'deposit_data_roots', type: 'bytes32[]' },
+      { internalType: 'uint256[]', name: 'amounts', type: 'uint256[]' },
+    ],
+    name: 'batchDeposit',
+    outputs: [],
+    stateMutability: 'payable',
+    type: 'function',
+  },
+]
+
+/**
+ * 存款提交服务
+ */
+export class DepositSubmitterService {
+  /**
+   * 准备批量存款数据
+   */
+  static prepareBatchData(depositDataList: DepositData[]): {
+    pubkeys: string
+    withdrawal_credentials: string
+    signatures: string
+    deposit_data_roots: string[]
+    amounts: bigint[]
+    totalValue: bigint
+  } {
+    const pubkeys: Uint8Array[] = []
+    const withdrawal_credentials: Uint8Array[] = []
+    const signatures: Uint8Array[] = []
+    const deposit_data_roots: string[] = []
+    const amounts: bigint[] = []
+
+    for (const data of depositDataList) {
+      // 转换 pubkey (96 字节)
+      const pubkeyBytes = this.hexToBytes(data.pubkey)
+      if (pubkeyBytes.length !== 48) {
+        throw new Error(`Invalid pubkey length: ${pubkeyBytes.length}, expected 48`)
+      }
+      pubkeys.push(pubkeyBytes)
+
+      // 转换 withdrawal_credentials (32 字节)
+      const withdrawalBytes = this.hexToBytes(data.withdrawal_credentials)
+      if (withdrawalBytes.length !== 32) {
+        throw new Error(`Invalid withdrawal_credentials length: ${withdrawalBytes.length}, expected 32`)
+      }
+      withdrawal_credentials.push(withdrawalBytes)
+
+      // 转换 signature (96 字节)
+      const signatureBytes = this.hexToBytes(data.signature)
+      if (signatureBytes.length !== 96) {
+        throw new Error(`Invalid signature length: ${signatureBytes.length}, expected 96`)
+      }
+      signatures.push(signatureBytes)
+
+      // deposit_data_root (32 字节，已经是 hex string)
+      deposit_data_roots.push(data.deposit_data_root)
+
+      // amount (gwei 转 wei)
+      const amountGwei = BigInt(data.amount)
+      const amountWei = amountGwei * 1000000000n // 1 gwei = 10^9 wei
+      amounts.push(amountWei)
+    }
+
+    // 合并为单个 bytes
+    const pubkeysBytes = this.concatBytes(pubkeys)
+    const withdrawalCredentialsBytes = this.concatBytes(withdrawal_credentials)
+    const signaturesBytes = this.concatBytes(signatures)
+
+    // 计算总金额
+    const totalValue = amounts.reduce((sum, amount) => sum + amount, 0n)
+
+    return {
+      pubkeys: '0x' + this.bytesToHex(pubkeysBytes),
+      withdrawal_credentials: '0x' + this.bytesToHex(withdrawalCredentialsBytes),
+      signatures: '0x' + this.bytesToHex(signaturesBytes),
+      deposit_data_roots,
+      amounts,
+      totalValue,
+    }
+  }
+
+  /**
+   * 通过 Batch Deposit 合约提交批量存款
+   */
+  static async submitBatchDeposit(
+    contractAddress: string,
+    depositDataList: DepositData[]
+  ): Promise<string> {
+    const { signer, provider } = useMetaMaskStore.getState()
+
+    if (!signer || !provider) {
+      throw new Error('MetaMask 未连接，请先连接 MetaMask')
+    }
+
+    // 准备批量数据
+    const batchData = this.prepareBatchData(depositDataList)
+
+    // 创建合约实例
+    const contract = new Contract(contractAddress, BATCH_DEPOSIT_ABI, signer)
+
+    // 估算 gas
+    let gasLimit: bigint
+    try {
+      gasLimit = await contract.batchDeposit.estimateGas(
+        batchData.pubkeys,
+        batchData.withdrawal_credentials,
+        batchData.signatures,
+        batchData.deposit_data_roots,
+        batchData.amounts,
+        { value: batchData.totalValue }
+      )
+      // 增加 20% 的 gas 缓冲
+      gasLimit = (gasLimit * 120n) / 100n
+    } catch (error) {
+      console.warn('Gas 估算失败，使用默认值:', error)
+      // 默认值：每个验证者约 200k gas，加上基础 gas
+      gasLimit = BigInt(200000 * depositDataList.length + 100000)
+    }
+
+    // 发送交易
+    const tx = await contract.batchDeposit(
+      batchData.pubkeys,
+      batchData.withdrawal_credentials,
+      batchData.signatures,
+      batchData.deposit_data_roots,
+      batchData.amounts,
+      {
+        value: batchData.totalValue,
+        gasLimit,
+      }
+    )
+
+    return tx.hash
+  }
+
+  /**
+   * 通过官方 Deposit 合约提交单个存款
+   */
+  static async submitSingleDeposit(
+    contractAddress: string,
+    depositData: DepositData
+  ): Promise<string> {
+    const { signer } = useMetaMaskStore.getState()
+
+    if (!signer) {
+      throw new Error('MetaMask 未连接，请先连接 MetaMask')
+    }
+
+    // 转换数据
+    const pubkeyBytes = this.hexToBytes(depositData.pubkey)
+    const withdrawalBytes = this.hexToBytes(depositData.withdrawal_credentials)
+    const signatureBytes = this.hexToBytes(depositData.signature)
+    const depositDataRoot = depositData.deposit_data_root
+
+    // 计算金额（gwei 转 wei）
+    const amountGwei = BigInt(depositData.amount)
+    const amountWei = amountGwei * 1000000000n
+
+    // 创建合约实例
+    const contract = new Contract(contractAddress, DEPOSIT_CONTRACT_ABI, signer)
+
+    // 估算 gas
+    let gasLimit: bigint
+    try {
+      gasLimit = await contract.deposit.estimateGas(
+        '0x' + this.bytesToHex(pubkeyBytes),
+        '0x' + this.bytesToHex(withdrawalBytes),
+        '0x' + this.bytesToHex(signatureBytes),
+        depositDataRoot,
+        { value: amountWei }
+      )
+      gasLimit = (gasLimit * 120n) / 100n // 增加 20% 缓冲
+    } catch (error) {
+      console.warn('Gas 估算失败，使用默认值:', error)
+      gasLimit = 200000n // 默认 200k gas
+    }
+
+    // 发送交易
+    const tx = await contract.deposit(
+      '0x' + this.bytesToHex(pubkeyBytes),
+      '0x' + this.bytesToHex(withdrawalBytes),
+      '0x' + this.bytesToHex(signatureBytes),
+      depositDataRoot,
+      {
+        value: amountWei,
+        gasLimit,
+      }
+    )
+
+    return tx.hash
+  }
+
+  /**
+   * 通过官方 Deposit 合约提交多个存款（逐个发送）
+   */
+  static async submitMultipleDeposits(
+    contractAddress: string,
+    depositDataList: DepositData[]
+  ): Promise<string[]> {
+    const txHashes: string[] = []
+
+    for (const depositData of depositDataList) {
+      const txHash = await this.submitSingleDeposit(contractAddress, depositData)
+      txHashes.push(txHash)
+    }
+
+    return txHashes
+  }
+
+  // 工具函数
+  private static hexToBytes(hex: string): Uint8Array {
+    const cleanHex = hex.startsWith('0x') ? hex.slice(2) : hex
+    const bytes = new Uint8Array(cleanHex.length / 2)
+    for (let i = 0; i < cleanHex.length; i += 2) {
+      bytes[i / 2] = parseInt(cleanHex.substr(i, 2), 16)
+    }
+    return bytes
+  }
+
+  private static bytesToHex(bytes: Uint8Array): string {
+    return Array.from(bytes)
+      .map((b) => b.toString(16).padStart(2, '0'))
+      .join('')
+  }
+
+  private static concatBytes(arrays: Uint8Array[]): Uint8Array {
+    const totalLength = arrays.reduce((sum, arr) => sum + arr.length, 0)
+    const result = new Uint8Array(totalLength)
+    let offset = 0
+    for (const arr of arrays) {
+      result.set(arr, offset)
+      offset += arr.length
+    }
+    return result
+  }
+}
+
