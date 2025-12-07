@@ -773,16 +773,29 @@ port = 5062
                     )
                     continue
                 
-                # 检查是否已分配给当前客户端
+                # 检查是否已分配给当前客户端（检查所有状态的记录）
                 existing = self.db.query(ValidatorClientKey).filter(
                     ValidatorClientKey.client_id == client_instance.id,
-                    ValidatorClientKey.pubkey == pubkey.lower(),
-                    ValidatorClientKey.status == "active"
+                    ValidatorClientKey.pubkey == pubkey.lower()
                 ).first()
                 
                 if existing:
-                    logger.debug(f"密钥已分配给当前客户端: {pubkey[:10]}...")
-                    continue
+                    if existing.status == "active":
+                        logger.debug(f"密钥已分配给当前客户端（状态: active）: {pubkey[:10]}...")
+                        # 已存在且为 active，跳过
+                        continue
+                    elif existing.status == "removed":
+                        # 如果状态是 removed，重新激活
+                        logger.info(f"密钥之前已移除，重新激活: {pubkey[:10]}...")
+                        existing.status = "active"
+                        existing.added_at = datetime.utcnow()
+                        existing.removed_at = None
+                        assigned_keys.append(existing)
+                        continue
+                    else:
+                        # 其他状态，记录警告但继续
+                        logger.warning(f"密钥已存在但状态异常: {pubkey[:10]}... (状态: {existing.status})")
+                        continue
                 
                 # 检查密钥是否已被其他激活的客户端使用
                 other_client_key = self.db.query(ValidatorClientKey).join(ClientInstance).filter(
@@ -822,13 +835,37 @@ port = 5062
                     if use_remote_keymanager:
                         try:
                             # 先调用 Remote Validator API（不提交数据库）
-                            self.sync_keys_to_validator_client(
+                            sync_result = self.sync_keys_to_validator_client(
                                 client_instance,
                                 add_pubkeys=pubkey_list
                             )
+                            
+                            # 过滤掉那些在 API 调用中失败的密钥，避免插入数据库
+                            # 只保留成功添加（imported）的密钥
+                            successful_pubkeys = set()
+                            if sync_result.get('added'):
+                                successful_pubkeys.update([p.lower() for p in sync_result['added']])
+                            
+                            # 从 assigned_keys 中移除失败的密钥
+                            filtered_assigned_keys = []
+                            for client_key in assigned_keys:
+                                if client_key.pubkey.lower() in successful_pubkeys:
+                                    filtered_assigned_keys.append(client_key)
+                                else:
+                                    # 从 session 中移除失败的密钥
+                                    self.db.expunge(client_key)
+                                    logger.warning(f"密钥 {client_key.pubkey[:10]}... 未成功添加到 Validator Client，跳过数据库插入")
+                            
+                            assigned_keys = filtered_assigned_keys
+                            
                             # API 调用成功后再提交数据库
-                            self.db.commit()
-                            logger.info(f"密钥已通过 Remote Validator API 添加到客户端: {client_instance.name}")
+                            if assigned_keys:
+                                self.db.commit()
+                                logger.info(f"密钥已通过 Remote Validator API 添加到客户端: {client_instance.name} ({len(assigned_keys)} 个密钥)")
+                            else:
+                                # 没有成功的密钥，回滚
+                                self.db.rollback()
+                                logger.warning("没有密钥成功添加到 Validator Client，已回滚数据库")
                         except Exception as e:
                             # API 调用失败，回滚数据库
                             self.db.rollback()
@@ -1041,18 +1078,29 @@ port = 5062
                         web3signer_url=client_instance.web3signer_url
                     )
                     result['added'] = add_result.get('imported', [])
+                    duplicate_keys = add_result.get('duplicate', [])
                     if add_result.get('error'):
                         result['errors'].extend(add_result['error'])
                     
-                    # 检查是否有成功的密钥
-                    if not result['added'] and add_result.get('error'):
+                    # 处理 duplicate 状态的密钥（这些密钥已经在 Validator Client 中，但可能不在数据库中）
+                    if duplicate_keys:
+                        logger.info(f"有 {len(duplicate_keys)} 个密钥在 Validator Client 中已存在（duplicate）: {duplicate_keys}")
+                        # duplicate 状态的密钥不应该阻止操作，因为它们已经在 Validator Client 中
+                        # 但我们需要确保数据库中也有记录
+                    
+                    # 检查是否有成功的密钥（imported 或 duplicate 都算成功）
+                    success_count = len(result['added']) + len(duplicate_keys)
+                    if success_count == 0 and add_result.get('error'):
                         # 所有密钥都失败了，抛出异常
                         error_messages = [err.get('error', 'Unknown error') for err in add_result.get('error', [])]
                         error_msg = f"所有密钥添加失败: {', '.join(error_messages)}"
                         logger.error(error_msg)
                         raise ClientManagementError(error_msg)
                     
-                    logger.info(f"通过 Remote Validator API 添加了 {len(result['added'])} 个密钥 (URL: {remote_api_url})")
+                    logger.info(
+                        f"通过 Remote Validator API 添加了 {len(result['added'])} 个密钥，"
+                        f"{len(duplicate_keys)} 个密钥已存在 (URL: {remote_api_url})"
+                    )
                 except ClientManagementError:
                     # 重新抛出 ClientManagementError
                     raise
