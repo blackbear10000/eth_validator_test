@@ -193,8 +193,8 @@ class ExitService:
                 current_epoch = None
             
             # 获取验证者的 activation_epoch 和 exit_epoch
-            activation_epoch = validator_info.get('activation_epoch')
-            exit_epoch = validator_info.get('exit_epoch')
+            activation_epoch_raw = validator_info.get('activation_epoch')
+            exit_epoch_raw = validator_info.get('exit_epoch')
             
             # 计算 earliest_exit_epoch
             # 根据 Ethereum 规范，验证者必须激活至少 256 epochs 后才能退出
@@ -202,8 +202,28 @@ class ExitService:
             # 如果还未激活，则不能退出
             FAR_FUTURE_EPOCH = 18446744073709551615
             
-            if activation_epoch and activation_epoch != FAR_FUTURE_EPOCH:
-                activation_epoch = int(activation_epoch)
+            # 处理 activation_epoch
+            activation_epoch = None
+            if activation_epoch_raw is not None:
+                try:
+                    activation_epoch_int = int(activation_epoch_raw)
+                    if activation_epoch_int != FAR_FUTURE_EPOCH:
+                        activation_epoch = activation_epoch_int
+                except (ValueError, TypeError):
+                    pass
+            
+            # 处理 exit_epoch
+            exit_epoch = None
+            if exit_epoch_raw is not None:
+                try:
+                    exit_epoch_int = int(exit_epoch_raw)
+                    if exit_epoch_int != FAR_FUTURE_EPOCH:
+                        exit_epoch = exit_epoch_int
+                except (ValueError, TypeError):
+                    pass
+            
+            # 计算 earliest_exit_epoch
+            if activation_epoch is not None:
                 earliest_exit_epoch = activation_epoch + 256
             else:
                 earliest_exit_epoch = None
@@ -212,10 +232,11 @@ class ExitService:
             can_exit = False
             reason = None
             
-            if exit_epoch and exit_epoch != FAR_FUTURE_EPOCH:
+            # 首先检查是否已退出或正在退出
+            if exit_epoch is not None:
                 can_exit = False
                 reason = f"验证者已退出或正在退出 (exit_epoch: {exit_epoch})"
-            elif not activation_epoch or activation_epoch == FAR_FUTURE_EPOCH:
+            elif activation_epoch is None:
                 can_exit = False
                 reason = "验证者尚未激活"
             elif current_epoch is None:
@@ -234,7 +255,7 @@ class ExitService:
                 'current_epoch': current_epoch,
                 'activation_epoch': activation_epoch,
                 'earliest_exit_epoch': earliest_exit_epoch,
-                'exit_epoch': exit_epoch if exit_epoch and exit_epoch != FAR_FUTURE_EPOCH else None
+                'exit_epoch': exit_epoch
             }
             
         except Exception as e:
