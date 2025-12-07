@@ -196,9 +196,12 @@ class ExitService:
             activation_epoch_raw = validator_info.get('activation_epoch')
             exit_epoch_raw = validator_info.get('exit_epoch')
             
+            # 获取 MIN_VALIDATOR_WITHDRAWABILITY_DELAY 参数（动态获取，支持自定义网络配置）
+            min_withdrawability_delay = self.beacon_api.get_min_validator_withdrawability_delay()
+            
             # 计算 earliest_exit_epoch
-            # 根据 Ethereum 规范，验证者必须激活至少 256 epochs 后才能退出
-            # earliest_exit_epoch = activation_epoch + 256 (如果已激活)
+            # 根据 Ethereum 规范，验证者必须激活至少 MIN_VALIDATOR_WITHDRAWABILITY_DELAY epochs 后才能退出
+            # earliest_exit_epoch = activation_epoch + min_withdrawability_delay (如果已激活)
             # 如果还未激活，则不能退出
             FAR_FUTURE_EPOCH = 18446744073709551615
             
@@ -222,9 +225,9 @@ class ExitService:
                 except (ValueError, TypeError):
                     pass
             
-            # 计算 earliest_exit_epoch
+            # 计算 earliest_exit_epoch（使用动态获取的参数）
             if activation_epoch is not None:
-                earliest_exit_epoch = activation_epoch + 256
+                earliest_exit_epoch = activation_epoch + min_withdrawability_delay
             else:
                 earliest_exit_epoch = None
             
@@ -248,9 +251,9 @@ class ExitService:
                 reason = (
                     f"验证者太年轻，还不能退出。"
                     f"当前 epoch: {current_epoch}, "
-                    f"最早退出 epoch: {earliest_exit_epoch} (激活于 epoch {activation_epoch} + 256 epochs 等待期), "
+                    f"最早退出 epoch: {earliest_exit_epoch} (激活于 epoch {activation_epoch} + {min_withdrawability_delay} epochs 等待期), "
                     f"还需要等待约 {epochs_remaining} 个 epochs 才能退出。"
-                    f"根据 Ethereum 规范，验证者必须激活至少 256 epochs 后才能退出。"
+                    f"根据网络配置，验证者必须激活至少 {min_withdrawability_delay} epochs 后才能退出。"
                 )
             else:
                 can_exit = True
@@ -262,7 +265,8 @@ class ExitService:
                 'current_epoch': current_epoch,
                 'activation_epoch': activation_epoch,
                 'earliest_exit_epoch': earliest_exit_epoch,
-                'exit_epoch': exit_epoch
+                'exit_epoch': exit_epoch,
+                'min_withdrawability_delay': min_withdrawability_delay  # 添加参数值，便于前端显示
             }
             
         except Exception as e:
