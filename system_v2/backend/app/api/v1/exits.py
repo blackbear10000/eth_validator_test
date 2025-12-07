@@ -36,6 +36,19 @@ def get_exit_service(db: Session = Depends(get_db)) -> ExitService:
     )
 
 
+@router.get("/exits/check-eligibility")
+async def check_exit_eligibility(
+    pubkey: str = Query(..., description="验证者公钥"),
+    exit_service: ExitService = Depends(get_exit_service)
+):
+    """检查验证者是否满足退出条件"""
+    try:
+        eligibility = exit_service.check_exit_eligibility(pubkey)
+        return eligibility
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 @router.post("/exits/generate")
 async def generate_exit_signature(
     pubkey: str = Query(..., description="验证者公钥"),

@@ -244,7 +244,14 @@ class ExitService:
                 reason = "无法确定当前 epoch，将尝试提交"
             elif current_epoch < earliest_exit_epoch:
                 can_exit = False
-                reason = f"验证者太年轻，还不能退出 (当前 epoch: {current_epoch}, 最早退出 epoch: {earliest_exit_epoch})"
+                epochs_remaining = earliest_exit_epoch - current_epoch
+                reason = (
+                    f"验证者太年轻，还不能退出。"
+                    f"当前 epoch: {current_epoch}, "
+                    f"最早退出 epoch: {earliest_exit_epoch} (激活于 epoch {activation_epoch} + 256 epochs 等待期), "
+                    f"还需要等待约 {epochs_remaining} 个 epochs 才能退出。"
+                    f"根据 Ethereum 规范，验证者必须激活至少 256 epochs 后才能退出。"
+                )
             else:
                 can_exit = True
                 reason = f"验证者满足退出条件 (当前 epoch: {current_epoch}, 最早退出 epoch: {earliest_exit_epoch})"
