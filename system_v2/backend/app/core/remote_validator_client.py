@@ -103,6 +103,8 @@ class RemoteValidatorClient:
             # 使用 Remote Key Manager API 端点（符合标准规范）
             response = self._request("GET", "/eth/v1/remotekeys")
             
+            logger.debug(f"Remote Validator API 响应类型: {type(response)}, 内容: {response}")
+            
             # 处理不同的响应格式
             # Remote Key Manager API 标准格式: {"data": {"remote_keys": [...]}}
             # 每个 remote_key 包含: {"pubkey": "0x...", "url": "http://..."}
@@ -110,6 +112,7 @@ class RemoteValidatorClient:
             if isinstance(response, list):
                 # 如果响应直接是列表，直接返回
                 logger.debug(f"API 响应是列表格式，包含 {len(response)} 个密钥")
+                logger.debug(f"密钥详情: {response}")
                 return response
             elif isinstance(response, dict):
                 # 标准格式，从 data.remote_keys 获取（Remote Key Manager API）
@@ -117,19 +120,25 @@ class RemoteValidatorClient:
                 if isinstance(data, list):
                     # 某些实现可能 data 直接是列表
                     logger.debug(f"API 响应 data 是列表格式，包含 {len(data)} 个密钥")
+                    logger.debug(f"密钥详情: {data}")
                     return data
                 else:
                     # 优先尝试 Remote Key Manager API 格式
                     remote_keys = data.get('remote_keys', [])
                     if remote_keys:
                         logger.debug(f"API 响应包含 {len(remote_keys)} 个远程密钥")
+                        logger.debug(f"远程密钥详情: {remote_keys}")
                         return remote_keys
                     # 回退到标准 keystores 格式（兼容性）
                     keystores = data.get('keystores', [])
-                    logger.debug(f"API 响应包含 {len(keystores)} 个密钥")
-                    return keystores
+                    if keystores:
+                        logger.debug(f"API 响应包含 {len(keystores)} 个密钥 (兼容旧格式)")
+                        logger.debug(f"密钥详情: {keystores}")
+                        return keystores
+                    logger.debug("API 响应 data 中未找到 remote_keys 或 keystores，返回空列表")
+                    return []
             else:
-                logger.warning(f"意外的响应格式: {type(response)}")
+                logger.warning(f"意外的响应格式: {type(response)}, 值: {response}")
                 return []
         except RemoteValidatorAPIError:
             raise

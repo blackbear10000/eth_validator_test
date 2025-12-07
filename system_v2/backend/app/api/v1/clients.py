@@ -395,15 +395,22 @@ async def compare_keys(
                 from app.core.remote_validator_client import RemoteValidatorClient
                 # 获取 auth token（从容器中读取）
                 auth_token = client_service._get_auth_token_from_container(client)
-                remote_client = RemoteValidatorClient(remote_api_url, auth_token=auth_token)
-                actual_pubkeys_list = remote_client.get_public_keys()
-                actual_pubkeys = set([pubkey.lower() for pubkey in actual_pubkeys_list])
-                keystores_info = remote_client.get_keystores()
-                logger.info(f"成功获取 validator client 实际密钥列表: {len(actual_pubkeys)} 个密钥 (URL: {remote_api_url})")
+                if not auth_token:
+                    logger.warning(f"无法获取 auth token，跳过 Remote Validator API 查询 (客户端: {client.name})")
+                    api_error = "无法获取 auth token"
+                else:
+                    remote_client = RemoteValidatorClient(remote_api_url, auth_token=auth_token)
+                    actual_pubkeys_list = remote_client.get_public_keys()
+                    actual_pubkeys = set([pubkey.lower() for pubkey in actual_pubkeys_list])
+                    keystores_info = remote_client.get_keystores()
+                    logger.info(f"成功获取 validator client 实际密钥列表: {len(actual_pubkeys)} 个密钥 (URL: {remote_api_url})")
+                    logger.debug(f"Validator client 实际密钥列表: {list(actual_pubkeys)}")
+                    logger.debug(f"数据库密钥列表: {list(db_pubkeys)}")
             except Exception as e:
                 api_error = str(e)
-                logger.warning(f"无法获取 validator client 实际密钥列表: {e}")
+                logger.warning(f"无法获取 validator client 实际密钥列表: {e}", exc_info=True)
                 # 继续执行，actual_pubkeys 保持为空集合
+                # 注意：如果 API 调用失败，actual_pubkeys 为空，不会误判为"在 validator 中"
         elif not is_running:
             logger.info(f"客户端容器未运行，跳过 Remote Validator API 查询 (客户端: {client.name})")
         elif not remote_api_url:
@@ -489,7 +496,7 @@ async def sync_orphaned_keys(
             raise HTTPException(status_code=404, detail="客户端不存在")
         
         # 获取要同步的公钥列表（如果提供）
-        pubkeys = request.pubkeys if request else None
+        pubkeys = request.pubkeys if request and request.pubkeys else None
         
         # 同步孤儿密钥到数据库
         result = client_service.sync_orphaned_keys_from_validator_client(client, pubkeys=pubkeys)
@@ -531,7 +538,7 @@ async def remove_orphaned_keys(
             raise HTTPException(status_code=404, detail="客户端不存在")
         
         # 获取要删除的公钥列表（如果提供）
-        pubkeys = request.pubkeys if request else None
+        pubkeys = request.pubkeys if request and request.pubkeys else None
         
         # 从 Validator Client 删除孤儿密钥
         result = client_service.remove_orphaned_keys_from_validator_client(client, pubkeys=pubkeys)

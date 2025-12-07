@@ -202,7 +202,7 @@ class ClientInstanceResponse(BaseModel):
 
 class ClientKeyAssignment(BaseModel):
     """客户端密钥分配"""
-    pubkeys: List[str] = Field(..., description="要分配的验证者公钥列表")
+    pubkeys: Optional[List[str]] = Field(default=None, description="要分配的验证者公钥列表（可选）")
 
 
 # ==================== 监控相关 Schemas ====================
