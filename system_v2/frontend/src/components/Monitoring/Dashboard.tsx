@@ -15,6 +15,7 @@ const Dashboard: React.FC = () => {
   const [overview, setOverview] = useState<SystemOverview | null>(null)
   const [networkStatus, setNetworkStatus] = useState<NetworkStatus | null>(null)
   const [clients, setClients] = useState<ClientInstance[]>([])
+  const [clientStatuses, setClientStatuses] = useState<Record<number, { status: string; is_running: boolean }>>({})
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
@@ -57,13 +58,38 @@ const Dashboard: React.FC = () => {
   const loadClients = async () => {
     try {
       const response = await clientsApi.list() as any
-      setClients(response || [])
+      const clientsList = response || []
+      setClients(clientsList)
+      
+      // 为每个客户端加载实际状态
+      const statusPromises = clientsList.map(async (client: ClientInstance) => {
+        try {
+          const statusResponse = await clientsApi.getStatus(client.id) as any
+          return { clientId: client.id, status: statusResponse }
+        } catch (error) {
+          console.error(`获取客户端 ${client.id} 状态失败:`, error)
+          return { clientId: client.id, status: { status: 'unknown', is_running: false } }
+        }
+      })
+      
+      const statusResults = await Promise.all(statusPromises)
+      const statusMap: Record<number, { status: string; is_running: boolean }> = {}
+      statusResults.forEach(({ clientId, status }) => {
+        statusMap[clientId] = {
+          status: status.status || 'unknown',
+          is_running: status.is_running || false
+        }
+      })
+      setClientStatuses(statusMap)
     } catch (error) {
       console.error('加载客户端列表失败:', error)
     }
   }
 
-  const getHealthTag = (healthy: boolean) => {
+  const getHealthTag = (healthy: boolean | null) => {
+    if (healthy === null) {
+      return <Tag color="default">未知</Tag>
+    }
     return healthy ? (
       <Tag color="success" icon={<CheckCircleOutlined />}>正常</Tag>
     ) : (
@@ -130,7 +156,7 @@ const Dashboard: React.FC = () => {
             <Col span={4}>
               <Space direction="vertical" align="center">
                 <Text>Kurtosis Manager</Text>
-                {getHealthTag(networkStatus ? !networkStatus.error : false)}
+                {getHealthTag(networkStatus ? (!networkStatus.error ? true : false) : null)}
               </Space>
             </Col>
           </Row>
@@ -203,10 +229,14 @@ const Dashboard: React.FC = () => {
               <Text strong>Kurtosis Manager</Text>
               <div>
                 <Text>状态: </Text>
-                {networkStatus && !networkStatus.error ? (
-                  getHealthTag(true)
+                {networkStatus ? (
+                  !networkStatus.error ? (
+                    getHealthTag(true)
+                  ) : (
+                    getHealthTag(false)
+                  )
                 ) : (
-                  getHealthTag(false)
+                  getHealthTag(null)
                 )}
               </div>
               {networkStatus?.error && (
@@ -241,7 +271,16 @@ const Dashboard: React.FC = () => {
                     </div>
                     <div>
                       <Text type="secondary">状态: </Text>
-                      <Tag>{client.status}</Tag>
+                      {clientStatuses[client.id] ? (
+                        <Tag color={clientStatuses[client.id].is_running ? 'success' : 'default'}>
+                          {clientStatuses[client.id].status === 'running' ? '运行中' : 
+                           clientStatuses[client.id].status === 'stopped' ? '已停止' : 
+                           clientStatuses[client.id].status === 'paused' ? '已暂停' : 
+                           '未知'}
+                        </Tag>
+                      ) : (
+                        <Tag>加载中...</Tag>
+                      )}
                     </div>
                   </Space>
                 </Card>
