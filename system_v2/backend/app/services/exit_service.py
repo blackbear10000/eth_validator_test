@@ -363,8 +363,32 @@ class ExitService:
             if exit_data is None:
                 exit_data = self.generate_exit_signature(pubkey, epoch)
             
+            # 记录提交的数据（用于调试）
+            logger.info(f"准备提交退出请求:")
+            logger.info(f"  - pubkey: {pubkey}")
+            logger.info(f"  - validator_index: {exit_data['message']['validator_index']}")
+            logger.info(f"  - epoch: {exit_data['message']['epoch']}")
+            logger.info(f"  - signature: {exit_data['signature'][:20]}...{exit_data['signature'][-20:]}")
+            logger.info(f"  - signature_length: {len(exit_data['signature'].replace('0x', ''))}")
+            
+            # 查询 Beacon API 获取当前 fork 信息（用于对比）
+            try:
+                fork_data = self.beacon_api._get("/eth/v1/beacon/states/head/fork")
+                if isinstance(fork_data, dict) and 'data' in fork_data:
+                    fork_info = fork_data['data']
+                    logger.info(f"Beacon Chain 当前 fork 信息:")
+                    logger.info(f"  - current_version: {fork_info.get('current_version')}")
+                    logger.info(f"  - previous_version: {fork_info.get('previous_version')}")
+                    logger.info(f"  - epoch: {fork_info.get('epoch')}")
+            except Exception as e:
+                logger.warning(f"无法获取 Beacon Chain fork 信息: {e}")
+            
             # 提交到 Beacon Chain API
             import requests
+            import json
+            logger.info(f"提交退出请求到: {self.beacon_api.base_url}/eth/v1/beacon/pool/voluntary_exits")
+            logger.debug(f"请求体: {json.dumps(exit_data, indent=2)}")
+            
             response = requests.post(
                 f"{self.beacon_api.base_url}/eth/v1/beacon/pool/voluntary_exits",
                 json=exit_data,

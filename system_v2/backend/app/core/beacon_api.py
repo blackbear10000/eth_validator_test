@@ -155,6 +155,25 @@ class BeaconAPIClient:
         """
         return self._get("/eth/v1/config/fork_schedule")
     
+    def get_current_fork(self, state_id: str = "head") -> Optional[Dict[str, Any]]:
+        """
+        获取指定状态的 fork 信息
+        
+        Args:
+            state_id: 状态 ID (head, finalized, genesis, 或 slot/epoch)
+            
+        Returns:
+            Fork 信息字典，包含 current_version, previous_version, epoch
+        """
+        try:
+            fork_data = self._get(f"/eth/v1/beacon/states/{state_id}/fork")
+            if isinstance(fork_data, dict) and 'data' in fork_data:
+                return fork_data['data']
+            return fork_data
+        except Exception as e:
+            logger.warning(f"无法获取 fork 信息 (state_id: {state_id}): {e}")
+            return None
+    
     def get_spec(self) -> Optional[Dict[str, Any]]:
         """
         获取网络规范参数

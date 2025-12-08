@@ -101,12 +101,36 @@ class ExitGenerator:
                 logger.warning(f"获取 genesis_validators_root 失败: {e}，使用 None")
                 genesis_validators_root = None
             
-            logger.info(f"使用 fork_version: {fork_version_hex}, genesis_validators_root: {genesis_validators_root[:20] if genesis_validators_root else 'None'}...")
+            # 获取当前 fork version 作为 EXIT_FORK_VERSION
+            # 注意：EXIT_FORK_VERSION 应该使用当前的 fork version（通常是 Capella），而不是 genesis fork version
+            exit_fork_version_hex = fork_version_hex  # 默认使用 genesis fork version
+            try:
+                from app.core.beacon_api import BeaconAPIClient
+                beacon_api = BeaconAPIClient()
+                current_fork = beacon_api.get_current_fork("head")
+                if current_fork and current_fork.get('current_version'):
+                    current_fork_version = current_fork['current_version']
+                    # 移除 0x 前缀并格式化
+                    current_fork_version_clean = current_fork_version.replace('0x', '').lower()
+                    if len(current_fork_version_clean) == 8:
+                        exit_fork_version_hex = '0x' + current_fork_version_clean
+                        logger.info(f"从 Beacon API 获取当前 fork version: {exit_fork_version_hex}，用作 EXIT_FORK_VERSION")
+                    else:
+                        logger.warning(f"当前 fork version 格式不正确: {current_fork_version}，使用 genesis fork version")
+                else:
+                    logger.info(f"无法获取当前 fork version，使用 genesis fork version 作为 EXIT_FORK_VERSION")
+            except Exception as e:
+                logger.warning(f"获取当前 fork version 失败: {e}，使用 genesis fork version 作为 EXIT_FORK_VERSION")
+            
+            logger.info(
+                f"使用 fork_version - GENESIS: {fork_version_hex}, EXIT: {exit_fork_version_hex}, "
+                f"genesis_validators_root: {genesis_validators_root[:20] if genesis_validators_root else 'None'}..."
+            )
             
             return get_devnet_chain_setting(
                 network_name='kurtosis',
                 genesis_fork_version=fork_version_hex,  # 传入格式化后的字符串
-                exit_fork_version=fork_version_hex,      # 传入格式化后的字符串
+                exit_fork_version=exit_fork_version_hex,  # 使用当前 fork version
                 genesis_validator_root=genesis_validators_root,
                 multiplier=1,
                 min_activation_amount=32,
