@@ -223,14 +223,16 @@ class ExitGenerator:
             try:
                 from ethstaker_deposit.utils.validation import validate_signed_exit
                 
-                # 确保 pubkey 有 0x 前缀
-                pubkey_with_prefix = pubkey if pubkey.startswith('0x') else '0x' + pubkey
+                # validate_signed_exit 使用 bytes.fromhex()，不接受 0x 前缀
+                # 但 signature 使用 decode_hex()，可以接受 0x 前缀
+                pubkey_no_prefix = pubkey.replace('0x', '').lower()
+                signature_with_prefix = exit_data['signature']  # decode_hex 可以处理 0x 前缀
                 
                 is_valid = validate_signed_exit(
                     validator_index=str(validator_index),
                     epoch=str(epoch),
-                    signature=exit_data['signature'],
-                    pubkey=pubkey_with_prefix,
+                    signature=signature_with_prefix,
+                    pubkey=pubkey_no_prefix,
                     chain_setting=self.chain_setting
                 )
                 
