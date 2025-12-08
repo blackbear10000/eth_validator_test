@@ -1,6 +1,7 @@
 """
 验证者退出 API
 """
+import logging
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 from typing import List, Optional
@@ -14,6 +15,7 @@ from app.core.beacon_api import BeaconAPIClient
 from app.core.web3signer_client import Web3SignerClient
 from app.core.vault_client import VaultClient
 
+logger = logging.getLogger(__name__)
 router = APIRouter()
 
 
@@ -23,7 +25,24 @@ def get_exit_service(db: Session = Depends(get_db)) -> ExitService:
     key_service = KeyManagementService(db, vault_client)
     web3signer_client = Web3SignerClient()
     beacon_api = BeaconAPIClient()
-    exit_generator = ExitGenerator(vault_client)
+    
+    # 从 Beacon API 获取 fork_version 和 network 信息，用于初始化 ExitGenerator
+    fork_version = None
+    network = 'mainnet'
+    try:
+        fork_version = beacon_api.get_fork_version()
+        if fork_version:
+            # 如果成功获取到 fork_version，说明是自定义网络（如 kurtosis）
+            network = 'kurtosis'
+            logger.info(f"从 Beacon API 获取 fork_version: {fork_version}，使用 kurtosis 网络")
+    except Exception as e:
+        logger.warning(f"无法从 Beacon API 获取 fork_version: {e}，使用默认 mainnet 网络")
+    
+    exit_generator = ExitGenerator(
+        vault_client=vault_client,
+        network=network,
+        fork_version=fork_version
+    )
     client_service = ClientManagementService(db, web3signer_client)
     
     return ExitService(

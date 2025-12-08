@@ -57,8 +57,36 @@ class ExitGenerator:
         if get_chain_setting is None:
             raise DepositGenerationError("ethstaker-deposit-cli 未正确导入")
         
-        if self.network == 'kurtosis' and self.fork_version:
+        if self.network in ['kurtosis', 'devnet'] and self.fork_version:
             from ethstaker_deposit.settings import get_devnet_chain_setting
+            
+            # fork_version 格式化处理（与 deposit_generator.py 保持一致）
+            if isinstance(self.fork_version, str):
+                fork_version_str = self.fork_version.strip()
+                # 移除 0x 前缀（如果有）
+                if fork_version_str.startswith('0x'):
+                    fork_version_str = fork_version_str[2:]
+                # 确保是有效的十六进制字符串
+                if not fork_version_str:
+                    raise DepositGenerationError(f"无效的 fork_version: {self.fork_version}")
+                # 补齐到 8 个字符（4 bytes），如果不足则前面补0
+                if len(fork_version_str) < 8:
+                    fork_version_str = fork_version_str.zfill(8)
+                elif len(fork_version_str) > 8:
+                    fork_version_str = fork_version_str[:8]
+                # 验证是否为有效的十六进制字符串
+                try:
+                    int(fork_version_str, 16)
+                except ValueError as e:
+                    raise DepositGenerationError(f"无效的 fork_version 格式（不是有效的十六进制）: {self.fork_version}, 错误: {e}")
+                # 添加 0x 前缀
+                fork_version_hex = '0x' + fork_version_str
+            elif isinstance(self.fork_version, bytes):
+                # 如果是 bytes，转换为十六进制字符串
+                fork_version_hex = '0x' + self.fork_version.hex()
+            else:
+                raise DepositGenerationError(f"fork_version 必须是字符串或 bytes，收到: {type(self.fork_version)}")
+            
             # 获取 genesis_validators_root（如果未提供，尝试从 Beacon API 获取）
             genesis_validators_root = None
             try:
@@ -73,10 +101,12 @@ class ExitGenerator:
                 logger.warning(f"获取 genesis_validators_root 失败: {e}，使用 None")
                 genesis_validators_root = None
             
+            logger.info(f"使用 fork_version: {fork_version_hex}, genesis_validators_root: {genesis_validators_root[:20] if genesis_validators_root else 'None'}...")
+            
             return get_devnet_chain_setting(
                 network_name='kurtosis',
-                genesis_fork_version=self.fork_version,
-                exit_fork_version=self.fork_version,
+                genesis_fork_version=fork_version_hex,  # 传入格式化后的字符串
+                exit_fork_version=fork_version_hex,      # 传入格式化后的字符串
                 genesis_validator_root=genesis_validators_root,
                 multiplier=1,
                 min_activation_amount=32,
@@ -129,6 +159,26 @@ class ExitGenerator:
                     logger.warning(f"无法从 Beacon API 获取当前 epoch: {e}，使用默认值 0")
                     epoch = 0
             
+            # 记录 chain_setting 信息（用于调试）
+            try:
+                fork_version = self.chain_setting.EXIT_FORK_VERSION
+                if isinstance(fork_version, bytes):
+                    fork_version_hex = '0x' + fork_version.hex()
+                else:
+                    fork_version_hex = fork_version
+                genesis_validators_root = self.chain_setting.GENESIS_VALIDATORS_ROOT
+                if isinstance(genesis_validators_root, bytes):
+                    genesis_validators_root_hex = '0x' + genesis_validators_root.hex()
+                else:
+                    genesis_validators_root_hex = genesis_validators_root
+                logger.info(
+                    f"生成退出签名 - epoch: {epoch}, validator_index: {validator_index}, "
+                    f"fork_version: {fork_version_hex}, "
+                    f"genesis_validators_root: {genesis_validators_root_hex[:20] if genesis_validators_root_hex else 'None'}..."
+                )
+            except Exception as e:
+                logger.debug(f"无法记录 chain_setting 信息: {e}")
+            
             # 生成退出签名
             signed_exit = exit_transaction_generation(
                 chain_setting=self.chain_setting,
@@ -146,7 +196,7 @@ class ExitGenerator:
                 'signature': '0x' + signed_exit.signature.hex()
             }
             
-            logger.info(f"退出签名生成成功: {pubkey[:10]}... (validator_index: {validator_index})")
+            logger.info(f"退出签名生成成功: {pubkey[:10]}... (validator_index: {validator_index}, epoch: {epoch})")
             return exit_data
             
         except Exception as e:
