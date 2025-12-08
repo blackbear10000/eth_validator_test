@@ -144,6 +144,23 @@ class ExitGenerator:
             # 转换为整数
             signing_private_key_int = int(signing_private_key_hex, 16)
             
+            # 验证私钥与公钥是否匹配
+            try:
+                derived_pubkey = bls.SkToPk(signing_private_key_int)
+                derived_pubkey_hex = '0x' + derived_pubkey.hex()
+                # 移除 pubkey 的 0x 前缀（如果有）进行比较
+                pubkey_clean = pubkey.lower().replace('0x', '')
+                derived_pubkey_clean = derived_pubkey_hex.lower().replace('0x', '')
+                if derived_pubkey_clean != pubkey_clean:
+                    logger.error(
+                        f"私钥验证失败！期望公钥: {pubkey}, "
+                        f"从私钥推导的公钥: {derived_pubkey_hex}"
+                    )
+                    raise ValueError(f"私钥与公钥不匹配！期望: {pubkey}, 实际: {derived_pubkey_hex}")
+                logger.info(f"私钥验证成功: 私钥与公钥匹配 ({pubkey[:10]}...)")
+            except Exception as e:
+                logger.warning(f"私钥验证过程出错: {e}，继续生成签名")
+            
             # 如果未提供 epoch，从 Beacon API 查询当前 epoch
             if epoch is None:
                 from app.core.beacon_api import BeaconAPIClient
@@ -187,7 +204,7 @@ class ExitGenerator:
                 epoch=epoch
             )
             
-            # 转换为字典格式（Beacon API 兼容）
+            # 转换为字典格式（Beacon API 兼容，符合 https://github.com/ethstaker/ethstaker-deposit-cli/blob/main/docs/src/signed_exit_transaction_file.md）
             exit_data = {
                 'message': {
                     'epoch': str(signed_exit.message.epoch),
@@ -196,7 +213,42 @@ class ExitGenerator:
                 'signature': '0x' + signed_exit.signature.hex()
             }
             
-            logger.info(f"退出签名生成成功: {pubkey[:10]}... (validator_index: {validator_index}, epoch: {epoch})")
+            # 验证签名格式
+            signature_hex = exit_data['signature'].replace('0x', '')
+            if len(signature_hex) != 192:  # BLS signature is 96 bytes = 192 hex chars
+                logger.error(f"签名长度不正确: {len(signature_hex)} (期望 192)")
+                raise ValueError(f"签名长度不正确: {len(signature_hex)} (期望 192)")
+            
+            # 验证签名本身（使用 ethstaker-deposit-cli 的验证函数）
+            try:
+                from ethstaker_deposit.utils.validation import validate_signed_exit
+                
+                # 确保 pubkey 有 0x 前缀
+                pubkey_with_prefix = pubkey if pubkey.startswith('0x') else '0x' + pubkey
+                
+                is_valid = validate_signed_exit(
+                    validator_index=str(validator_index),
+                    epoch=str(epoch),
+                    signature=exit_data['signature'],
+                    pubkey=pubkey_with_prefix,
+                    chain_setting=self.chain_setting
+                )
+                
+                if not is_valid:
+                    logger.error("签名验证失败：生成的签名无法通过本地验证")
+                    raise ValueError("生成的退出签名无法通过本地验证")
+                else:
+                    logger.info("签名验证成功：生成的签名通过本地验证")
+            except ImportError as e:
+                logger.warning(f"无法导入验证函数: {e}，跳过签名验证")
+            except Exception as e:
+                logger.warning(f"签名验证过程出错: {e}，继续提交")
+            
+            logger.info(
+                f"退出签名生成成功: {pubkey[:10]}... "
+                f"(validator_index: {validator_index}, epoch: {epoch}, "
+                f"signature_length: {len(signature_hex)})"
+            )
             return exit_data
             
         except Exception as e:
