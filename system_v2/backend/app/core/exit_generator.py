@@ -106,33 +106,51 @@ class ExitGenerator:
                 logger.warning(f"获取 genesis_validators_root 失败: {e}，使用 None")
                 genesis_validators_root = None
             
-            # 获取当前 fork version 作为 EXIT_FORK_VERSION
-            # 注意：EXIT_FORK_VERSION 应该使用当前的 fork version（通常是 Capella），而不是 genesis fork version
-            # 重要：应该使用 finalized 状态的 fork version，因为退出签名使用 finalized epoch
+            # 获取 EXIT_FORK_VERSION
+            # 根据 Ethereum 规范和 mainnet 的做法，EXIT_FORK_VERSION 应该使用 Capella fork version
+            # 对于 devnet，尝试从 fork schedule 获取 Capella fork version
+            # 如果无法获取，则根据 genesis fork version 构造 Capella fork version（通常是 0x4...）
             exit_fork_version_hex = fork_version_hex  # 默认使用 genesis fork version
             try:
                 from app.core.beacon_api import BeaconAPIClient
                 beacon_api = BeaconAPIClient()
-                # 优先使用 finalized 状态的 fork version（因为退出签名使用 finalized epoch）
-                current_fork = beacon_api.get_current_fork("finalized")
-                if not current_fork or not current_fork.get('current_version'):
-                    # 如果 finalized 状态不可用，尝试 head 状态
-                    current_fork = beacon_api.get_current_fork("head")
                 
-                if current_fork and current_fork.get('current_version'):
-                    current_fork_version = current_fork['current_version']
-                    # 移除 0x 前缀并格式化
-                    current_fork_version_clean = current_fork_version.replace('0x', '').lower()
-                    if len(current_fork_version_clean) == 8:
-                        exit_fork_version_hex = '0x' + current_fork_version_clean
-                        fork_state = current_fork.get('epoch', 'unknown')
-                        logger.info(f"从 Beacon API 获取 fork version: {exit_fork_version_hex} (state: {fork_state})，用作 EXIT_FORK_VERSION")
+                # 方法1：尝试从 fork schedule 获取 Capella fork version
+                try:
+                    fork_schedule = beacon_api.get_fork_schedule()
+                    if isinstance(fork_schedule, dict) and 'data' in fork_schedule:
+                        fork_schedule_data = fork_schedule['data']
+                        # 查找 Capella fork（按名称或版本格式）
+                        for fork in fork_schedule_data:
+                            fork_version_val = fork.get('version')
+                            fork_name = fork.get('name', '').lower()
+                            if fork_version_val:
+                                # 检查是否是 Capella fork（名称包含 capella 或版本是 0x4...）
+                                if 'capella' in fork_name or (fork_version_val.startswith('0x4') and len(fork_version_val.replace('0x', '')) == 8):
+                                    capella_version_clean = fork_version_val.replace('0x', '').lower()
+                                    if len(capella_version_clean) == 8:
+                                        exit_fork_version_hex = '0x' + capella_version_clean
+                                        logger.info(f"从 fork schedule 获取 Capella fork version: {exit_fork_version_hex}，用作 EXIT_FORK_VERSION")
+                                        break
+                except Exception as e:
+                    logger.debug(f"无法从 fork schedule 获取 Capella fork version: {e}")
+                
+                # 方法2：如果方法1失败，尝试根据 genesis fork version 构造 Capella fork version
+                # 对于这个网络，Capella fork version 应该是 0x40000038（根据 network-config.yaml）
+                if exit_fork_version_hex == fork_version_hex:
+                    # 从 genesis fork version (0x10000038) 构造 Capella fork version (0x40000038)
+                    # 规则：将第一个数字改为 4
+                    genesis_clean = fork_version_hex.replace('0x', '').lower()
+                    if len(genesis_clean) == 8 and genesis_clean[0] == '1':
+                        # 将第一个字符从 '1' 改为 '4'
+                        capella_clean = '4' + genesis_clean[1:]
+                        exit_fork_version_hex = '0x' + capella_clean
+                        logger.info(f"根据 genesis fork version ({fork_version_hex}) 构造 Capella fork version: {exit_fork_version_hex}，用作 EXIT_FORK_VERSION")
                     else:
-                        logger.warning(f"当前 fork version 格式不正确: {current_fork_version}，使用 genesis fork version")
-                else:
-                    logger.info(f"无法获取当前 fork version，使用 genesis fork version 作为 EXIT_FORK_VERSION")
+                        logger.warning(f"无法根据 genesis fork version 构造 Capella fork version，使用 genesis fork version: {fork_version_hex}")
+                
             except Exception as e:
-                logger.warning(f"获取当前 fork version 失败: {e}，使用 genesis fork version 作为 EXIT_FORK_VERSION")
+                logger.warning(f"获取 Capella fork version 失败: {e}，使用 genesis fork version 作为 EXIT_FORK_VERSION")
             
             logger.info(
                 f"使用 fork_version - GENESIS: {fork_version_hex}, EXIT: {exit_fork_version_hex}, "
