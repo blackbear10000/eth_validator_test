@@ -94,7 +94,12 @@ class ExitGenerator:
                 beacon_api = BeaconAPIClient()
                 genesis_validators_root = beacon_api.get_genesis_validators_root()
                 if genesis_validators_root:
-                    logger.info(f"从 Beacon API 获取 genesis_validators_root: {genesis_validators_root[:20]}...")
+                    # 验证格式：应该是 32 字节（64 个十六进制字符）
+                    root_clean = genesis_validators_root.replace('0x', '')
+                    if len(root_clean) != 64:
+                        logger.error(f"genesis_validators_root 长度不正确: {len(root_clean)} (期望 64)")
+                        raise ValueError(f"genesis_validators_root 长度不正确: {len(root_clean)} (期望 64)")
+                    logger.info(f"从 Beacon API 获取 genesis_validators_root: {genesis_validators_root[:20]}... (长度: {len(root_clean)})")
                 else:
                     logger.warning("无法从 Beacon API 获取 genesis_validators_root，使用 None")
             except Exception as e:
@@ -103,18 +108,25 @@ class ExitGenerator:
             
             # 获取当前 fork version 作为 EXIT_FORK_VERSION
             # 注意：EXIT_FORK_VERSION 应该使用当前的 fork version（通常是 Capella），而不是 genesis fork version
+            # 重要：应该使用 finalized 状态的 fork version，因为退出签名使用 finalized epoch
             exit_fork_version_hex = fork_version_hex  # 默认使用 genesis fork version
             try:
                 from app.core.beacon_api import BeaconAPIClient
                 beacon_api = BeaconAPIClient()
-                current_fork = beacon_api.get_current_fork("head")
+                # 优先使用 finalized 状态的 fork version（因为退出签名使用 finalized epoch）
+                current_fork = beacon_api.get_current_fork("finalized")
+                if not current_fork or not current_fork.get('current_version'):
+                    # 如果 finalized 状态不可用，尝试 head 状态
+                    current_fork = beacon_api.get_current_fork("head")
+                
                 if current_fork and current_fork.get('current_version'):
                     current_fork_version = current_fork['current_version']
                     # 移除 0x 前缀并格式化
                     current_fork_version_clean = current_fork_version.replace('0x', '').lower()
                     if len(current_fork_version_clean) == 8:
                         exit_fork_version_hex = '0x' + current_fork_version_clean
-                        logger.info(f"从 Beacon API 获取当前 fork version: {exit_fork_version_hex}，用作 EXIT_FORK_VERSION")
+                        fork_state = current_fork.get('epoch', 'unknown')
+                        logger.info(f"从 Beacon API 获取 fork version: {exit_fork_version_hex} (state: {fork_state})，用作 EXIT_FORK_VERSION")
                     else:
                         logger.warning(f"当前 fork version 格式不正确: {current_fork_version}，使用 genesis fork version")
                 else:
@@ -202,23 +214,53 @@ class ExitGenerator:
             
             # 记录 chain_setting 信息（用于调试）
             try:
-                fork_version = self.chain_setting.EXIT_FORK_VERSION
-                if isinstance(fork_version, bytes):
-                    fork_version_hex = '0x' + fork_version.hex()
+                exit_fork_version = self.chain_setting.EXIT_FORK_VERSION
+                genesis_fork_version = self.chain_setting.GENESIS_FORK_VERSION
+                if isinstance(exit_fork_version, bytes):
+                    exit_fork_version_hex = '0x' + exit_fork_version.hex()
                 else:
-                    fork_version_hex = fork_version
+                    exit_fork_version_hex = exit_fork_version
+                if isinstance(genesis_fork_version, bytes):
+                    genesis_fork_version_hex = '0x' + genesis_fork_version.hex()
+                else:
+                    genesis_fork_version_hex = genesis_fork_version
                 genesis_validators_root = self.chain_setting.GENESIS_VALIDATORS_ROOT
                 if isinstance(genesis_validators_root, bytes):
                     genesis_validators_root_hex = '0x' + genesis_validators_root.hex()
+                    genesis_validators_root_length = len(genesis_validators_root_hex.replace('0x', ''))
                 else:
-                    genesis_validators_root_hex = genesis_validators_root
+                    genesis_validators_root_hex = genesis_validators_root or 'None'
+                    genesis_validators_root_length = len(genesis_validators_root_hex.replace('0x', '')) if genesis_validators_root_hex != 'None' else 0
+                
                 logger.info(
-                    f"生成退出签名 - epoch: {epoch}, validator_index: {validator_index}, "
-                    f"fork_version: {fork_version_hex}, "
-                    f"genesis_validators_root: {genesis_validators_root_hex[:20] if genesis_validators_root_hex else 'None'}..."
+                    f"生成退出签名参数:"
                 )
+                logger.info(f"  - epoch: {epoch}")
+                logger.info(f"  - validator_index: {validator_index}")
+                logger.info(f"  - EXIT_FORK_VERSION: {exit_fork_version_hex}")
+                logger.info(f"  - GENESIS_FORK_VERSION: {genesis_fork_version_hex}")
+                logger.info(f"  - GENESIS_VALIDATORS_ROOT: {genesis_validators_root_hex[:20] if genesis_validators_root_hex != 'None' else 'None'}... (长度: {genesis_validators_root_length})")
             except Exception as e:
                 logger.debug(f"无法记录 chain_setting 信息: {e}")
+            
+            # 手动计算签名域和签名根（用于调试）
+            try:
+                from ethstaker_deposit.utils.ssz import compute_voluntary_exit_domain, compute_signing_root
+                from ethstaker_deposit.utils.ssz import VoluntaryExit
+                
+                message = VoluntaryExit(epoch=epoch, validator_index=validator_index)
+                domain = compute_voluntary_exit_domain(
+                    fork_version=self.chain_setting.EXIT_FORK_VERSION,
+                    genesis_validators_root=self.chain_setting.GENESIS_VALIDATORS_ROOT
+                )
+                signing_root = compute_signing_root(message, domain)
+                
+                logger.info(f"签名域计算:")
+                logger.info(f"  - Domain: 0x{domain.hex()}")
+                logger.info(f"  - Signing root: 0x{signing_root.hex()}")
+                logger.info(f"  - Message epoch: {epoch}, validator_index: {validator_index}")
+            except Exception as e:
+                logger.debug(f"无法计算签名域: {e}")
             
             # 生成退出签名
             signed_exit = exit_transaction_generation(
