@@ -301,12 +301,26 @@ class ExitService:
             
             logger.info(f"验证者满足退出条件: {eligibility['reason']} (pubkey: {pubkey[:10]}...)")
             
-            # 如果未提供 epoch，使用 earliest_exit_epoch 或当前 epoch
+            # 确定退出 epoch
+            # 注意：退出签名的 epoch 应该使用当前 epoch 或未来的 epoch，不能使用过去的 epoch
+            # earliest_exit_epoch 只用于判断是否可以退出，不应用于签名
+            if exit_data is not None:
+                # 如果 exit_data 已提供，使用其中的 epoch
+                exit_epoch_from_data = exit_data.get('message', {}).get('epoch')
+                if exit_epoch_from_data:
+                    try:
+                        epoch = int(exit_epoch_from_data)
+                        logger.info(f"使用 exit_data 中的 epoch: {epoch}")
+                    except (ValueError, TypeError):
+                        epoch = None
+                else:
+                    epoch = None
+            
+            # 如果未提供 epoch，使用当前 epoch（不是 earliest_exit_epoch）
             if epoch is None:
-                if eligibility['earliest_exit_epoch']:
-                    epoch = eligibility['earliest_exit_epoch']
-                elif eligibility['current_epoch']:
+                if eligibility['current_epoch']:
                     epoch = eligibility['current_epoch']
+                    logger.info(f"使用当前 epoch: {epoch}")
                 else:
                     # 如果无法确定，使用当前 epoch（从 Beacon API 查询）
                     try:
@@ -316,10 +330,36 @@ class ExitService:
                         epoch = int(state_data.get('finalized', {}).get('epoch', 0))
                         logger.info(f"从 Beacon API 获取当前 epoch: {epoch}")
                     except Exception as e:
-                        logger.warning(f"无法从 Beacon API 获取当前 epoch: {e}，使用 earliest_exit_epoch")
-                        epoch = eligibility['earliest_exit_epoch'] or 0
+                        logger.warning(f"无法从 Beacon API 获取当前 epoch: {e}，尝试使用 head state")
+                        try:
+                            # 尝试从 head state 获取
+                            state_data = self.beacon_api._get("/eth/v1/beacon/states/head/finality_checkpoints")
+                            if isinstance(state_data, dict) and 'data' in state_data:
+                                state_data = state_data['data']
+                            epoch = int(state_data.get('current_justified', {}).get('epoch', 0))
+                            logger.info(f"从 Beacon API head state 获取当前 epoch: {epoch}")
+                        except Exception as e2:
+                            logger.error(f"无法获取当前 epoch: {e2}，使用 earliest_exit_epoch 作为后备")
+                            epoch = eligibility['earliest_exit_epoch'] or 0
             
-            # 生成退出签名（如果未提供）
+            # 如果 exit_data 已提供，检查其 epoch 是否与确定的 epoch 匹配
+            # 如果不匹配，重新生成签名
+            if exit_data is not None:
+                exit_epoch_from_data = exit_data.get('message', {}).get('epoch')
+                if exit_epoch_from_data:
+                    try:
+                        exit_epoch_int = int(exit_epoch_from_data)
+                        if exit_epoch_int != epoch:
+                            logger.warning(
+                                f"exit_data 中的 epoch ({exit_epoch_int}) 与确定的 epoch ({epoch}) 不匹配，"
+                                f"重新生成签名"
+                            )
+                            exit_data = None  # 重新生成
+                    except (ValueError, TypeError):
+                        logger.warning("exit_data 中的 epoch 格式无效，重新生成签名")
+                        exit_data = None  # 重新生成
+            
+            # 生成退出签名（如果未提供或需要重新生成）
             if exit_data is None:
                 exit_data = self.generate_exit_signature(pubkey, epoch)
             

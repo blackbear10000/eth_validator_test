@@ -59,11 +59,25 @@ class ExitGenerator:
         
         if self.network == 'kurtosis' and self.fork_version:
             from ethstaker_deposit.settings import get_devnet_chain_setting
+            # 获取 genesis_validators_root（如果未提供，尝试从 Beacon API 获取）
+            genesis_validators_root = None
+            try:
+                from app.core.beacon_api import BeaconAPIClient
+                beacon_api = BeaconAPIClient()
+                genesis_validators_root = beacon_api.get_genesis_validators_root()
+                if genesis_validators_root:
+                    logger.info(f"从 Beacon API 获取 genesis_validators_root: {genesis_validators_root[:20]}...")
+                else:
+                    logger.warning("无法从 Beacon API 获取 genesis_validators_root，使用 None")
+            except Exception as e:
+                logger.warning(f"获取 genesis_validators_root 失败: {e}，使用 None")
+                genesis_validators_root = None
+            
             return get_devnet_chain_setting(
                 network_name='kurtosis',
                 genesis_fork_version=self.fork_version,
                 exit_fork_version=self.fork_version,
-                genesis_validator_root=None,
+                genesis_validator_root=genesis_validators_root,
                 multiplier=1,
                 min_activation_amount=32,
                 min_deposit_amount=1
