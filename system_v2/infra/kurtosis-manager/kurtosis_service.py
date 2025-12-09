@@ -517,18 +517,26 @@ class KurtosisService:
         is_actually_running = False
         if enclave_status:
             enclave_status_upper = enclave_status.upper()
+            logger.info(f"解析到 enclave 状态: {enclave_status}, 是否有服务: {has_services}")
             # 状态为 RUNNING 且有服务，才认为真正在运行
             if enclave_status_upper == 'RUNNING' and has_services:
                 is_actually_running = True
+                logger.info(f"Enclave 状态为 RUNNING 且有服务，判定为运行中")
             elif enclave_status_upper in ['EMPTY', 'STOPPED']:
                 is_actually_running = False
+                logger.info(f"Enclave 状态为 {enclave_status_upper}，判定为已停止")
             else:
                 # 其他状态（如未知状态），如果没有服务，认为未运行
                 is_actually_running = has_services
+                logger.info(f"Enclave 状态为未知 ({enclave_status_upper})，根据是否有服务判定: {is_actually_running}")
+        else:
+            logger.warning(f"未能解析到 enclave 状态，根据是否有服务判定: {has_services}")
         
         # 如果没有解析到状态，但有服务在运行，认为是在运行
         if enclave_status is None and has_services:
             is_actually_running = True
+        
+        logger.info(f"最终判定结果: is_running={is_actually_running}, enclave_status={enclave_status}")
         
         # 根据实际运行状态返回结果
         if is_actually_running:

@@ -36,6 +36,13 @@ const NetworkManager: React.FC = () => {
     setLoading(true)
     try {
       const response = await networkApi.getStatus() as any
+      console.log('后端返回的原始状态:', {
+        status: response.status,
+        is_running: response.is_running,
+        message: response.message,
+        error: response.error
+      })
+      
       // 确保状态一致性：如果 status 不是 'running'，则 is_running 应该为 false
       const normalizedStatus: NetworkStatus = {
         ...response,
@@ -45,6 +52,12 @@ const NetworkManager: React.FC = () => {
         status: response.is_running === true && response.status === 'running' ? 'running' : 
                 response.status === 'error' ? 'error' : 'stopped'
       }
+      
+      console.log('规范化后的状态:', {
+        status: normalizedStatus.status,
+        is_running: normalizedStatus.is_running
+      })
+      
       setStatus(normalizedStatus)
       // 如果状态是 error，但 is_running 为 false，可能是 dev net 未启动（正常情况）
       if (normalizedStatus.status === 'error' && !normalizedStatus.is_running) {

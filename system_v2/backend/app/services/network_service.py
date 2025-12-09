@@ -109,13 +109,36 @@ class NetworkService:
         """
         result = self._call_api("/status")
         
+        # 记录原始返回结果（用于调试）
+        logger.debug(f"Kurtosis manager 返回的原始状态: status={result.get('status')}, is_running={result.get('is_running')}")
+        
         # 确保包含必要字段
         if "enclave_name" not in result:
             result["enclave_name"] = self.enclave_name
-        if "status" not in result:
-            result["status"] = "stopped" if not result.get("is_running") else "running"
+        
+        # 确保 is_running 字段存在
         if "is_running" not in result:
             result["is_running"] = False
+        
+        # 确保状态一致性：is_running 和 status 必须一致
+        is_running = result.get("is_running", False)
+        current_status = result.get("status", "")
+        
+        # 如果 is_running 为 False，确保 status 不是 "running"
+        if not is_running:
+            if current_status == "running":
+                logger.warning(f"状态不一致：is_running=False 但 status=running，修正为 stopped")
+                result["status"] = "stopped"
+            elif not current_status or current_status not in ["stopped", "error"]:
+                logger.debug(f"状态字段为空或无效：'{current_status}'，设置为 stopped")
+                result["status"] = "stopped"
+        else:
+            # 如果 is_running 为 True，确保 status 是 "running"
+            if current_status != "running":
+                logger.warning(f"状态不一致：is_running=True 但 status={current_status}，修正为 running")
+                result["status"] = "running"
+        
+        logger.debug(f"最终返回的状态: status={result.get('status')}, is_running={result.get('is_running')}")
         
         return result
     
