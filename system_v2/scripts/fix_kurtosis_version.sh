@@ -31,8 +31,18 @@ echo ""
 
 # 1. 检查当前版本
 echo "1. 检查当前版本..."
-CLI_VERSION=$($KURTOSIS_CMD --version 2>&1 | head -1 || echo "未知")
-echo "   CLI 版本: $CLI_VERSION"
+VERSION_OUTPUT=$($KURTOSIS_CMD version 2>&1 || echo "")
+if [ -n "$VERSION_OUTPUT" ]; then
+    # 提取 CLI 版本（格式：CLI Version:   1.13.2）
+    CLI_VERSION=$(echo "$VERSION_OUTPUT" | grep -i "CLI Version" | sed 's/.*CLI Version:[[:space:]]*//' | head -1)
+    if [ -z "$CLI_VERSION" ]; then
+        CLI_VERSION=$(echo "$VERSION_OUTPUT" | head -1)
+    fi
+    echo "   CLI 版本: $CLI_VERSION"
+else
+    echo "   CLI 版本: 未知（无法获取）"
+    CLI_VERSION="未知"
+fi
 
 ENGINE_STATUS=$($KURTOSIS_CMD engine status 2>&1 || echo "")
 if echo "$ENGINE_STATUS" | grep -q "API version mismatch\|version.*doesn't match"; then

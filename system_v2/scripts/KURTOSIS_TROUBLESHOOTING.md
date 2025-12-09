@@ -98,7 +98,7 @@ docker ps | grep kurtosis-manager
 # 通过容器执行诊断脚本
 docker exec kurtosis-manager bash -c "
   cd /app && \
-  kurtosis --version && \
+  kurtosis version && \
   kurtosis enclave ls && \
   kurtosis enclave inspect eth-devnet
 "

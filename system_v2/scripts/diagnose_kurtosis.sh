@@ -54,9 +54,15 @@ echo ""
 
 # 1. 检查 Kurtosis CLI
 echo "1. 检查 Kurtosis CLI..."
-if $KURTOSIS_CMD --version &>/dev/null; then
+VERSION_OUTPUT=$($KURTOSIS_CMD version 2>&1 || echo "")
+if [ -n "$VERSION_OUTPUT" ]; then
     echo "   ✓ Kurtosis CLI 可用"
-    CLI_VERSION=$($KURTOSIS_CMD --version 2>&1 | head -1)
+    # 提取 CLI 版本（格式：CLI Version:   1.13.2）
+    CLI_VERSION=$(echo "$VERSION_OUTPUT" | grep -i "CLI Version" | sed 's/.*CLI Version:[[:space:]]*//' | head -1)
+    if [ -z "$CLI_VERSION" ]; then
+        # 如果没有找到，使用第一行
+        CLI_VERSION=$(echo "$VERSION_OUTPUT" | head -1)
+    fi
     echo "   CLI 版本: $CLI_VERSION"
 else
     echo "   ✗ Kurtosis CLI 不可用"
