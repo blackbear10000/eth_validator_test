@@ -463,24 +463,98 @@ class KurtosisService:
         )
         
         if not success:
+            # 如果无法获取详细信息，但 enclave 存在于列表中，可能是状态异常
+            # 保守起见，返回 stopped 状态
+            logger.warning(f"无法获取 enclave 详细信息: {stderr}")
+            return {
+                "enclave_name": self.enclave_name,
+                "status": "stopped",
+                "is_running": False,
+                "error": stderr or "无法获取 enclave 详细信息"
+            }
+        
+        # 解析 enclave inspect 输出，检查实际状态
+        # Kurtosis enclave 状态可能是：RUNNING, EMPTY, STOPPED 等
+        enclave_status = None
+        lines = stdout.split('\n')
+        for line in lines:
+            # 查找 Status: 行
+            if 'Status:' in line or 'status:' in line.lower():
+                # 提取状态值（去除前后空格）
+                parts = line.split(':', 1)
+                if len(parts) > 1:
+                    enclave_status = parts[1].strip()
+                    break
+        
+        # 检查是否有服务在运行（通过检查 User Services 部分是否有内容）
+        has_services = False
+        in_user_services = False
+        for line in lines:
+            if 'User Services' in line or 'user services' in line.lower():
+                in_user_services = True
+                continue
+            if in_user_services:
+                # 跳过表头行（包含 UUID, Name, Ports, Status）
+                if 'UUID' in line and ('Name' in line or 'Ports' in line):
+                    continue
+                # 检查是否有服务行（包含 UUID 和 Name）
+                if line.strip() and not line.strip().startswith('='):
+                    # 如果有非空行且不是分隔符，检查是否是有效的服务行
+                    # 服务行通常以 UUID（12个十六进制字符）开头
+                    parts = line.split()
+                    if len(parts) >= 2:
+                        # 检查第一个部分是否是 UUID 格式（12个十六进制字符）
+                        first_part = parts[0].strip()
+                        if len(first_part) == 12 and all(c in '0123456789abcdef' for c in first_part.lower()):
+                            has_services = True
+                            break
+                # 如果遇到新的部分（以 = 开头），停止检查
+                if line.strip().startswith('=') and in_user_services:
+                    break
+        
+        # 判断 enclave 是否真正在运行
+        # 只有当状态是 RUNNING 且有服务在运行时，才认为是在运行
+        is_actually_running = False
+        if enclave_status:
+            enclave_status_upper = enclave_status.upper()
+            # 状态为 RUNNING 且有服务，才认为真正在运行
+            if enclave_status_upper == 'RUNNING' and has_services:
+                is_actually_running = True
+            elif enclave_status_upper in ['EMPTY', 'STOPPED']:
+                is_actually_running = False
+            else:
+                # 其他状态（如未知状态），如果没有服务，认为未运行
+                is_actually_running = has_services
+        
+        # 如果没有解析到状态，但有服务在运行，认为是在运行
+        if enclave_status is None and has_services:
+            is_actually_running = True
+        
+        # 根据实际运行状态返回结果
+        if is_actually_running:
             return {
                 "enclave_name": self.enclave_name,
                 "status": "running",
                 "is_running": True,
-                "error": stderr or "无法获取 enclave 详细信息"
-            }
-        
-        # Kurtosis CLI 输出是文本格式，不是 JSON
-        # 返回原始输出，让调用者根据需要解析
-        return {
-            "enclave_name": self.enclave_name,
-            "status": "running",
-            "is_running": True,
-            "enclave_info": {
+                "enclave_info": {
+                    "raw_output": stdout,
+                    "enclave_status": enclave_status
+                },
                 "raw_output": stdout
-            },
-            "raw_output": stdout
-        }
+            }
+        else:
+            # Enclave 存在但未运行（EMPTY 状态）
+            return {
+                "enclave_name": self.enclave_name,
+                "status": "stopped",
+                "is_running": False,
+                "message": f"Enclave 存在但未运行 (Status: {enclave_status or 'Unknown'})",
+                "enclave_info": {
+                    "raw_output": stdout,
+                    "enclave_status": enclave_status
+                },
+                "raw_output": stdout
+            }
     
     def start(self) -> Dict[str, Any]:
         """

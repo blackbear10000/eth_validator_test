@@ -36,9 +36,18 @@ const NetworkManager: React.FC = () => {
     setLoading(true)
     try {
       const response = await networkApi.getStatus() as any
-      setStatus(response as NetworkStatus)
+      // 确保状态一致性：如果 status 不是 'running'，则 is_running 应该为 false
+      const normalizedStatus: NetworkStatus = {
+        ...response,
+        // 如果 status 字段不是 'running'，强制设置 is_running 为 false
+        is_running: response.status === 'running' && response.is_running === true,
+        // 如果 is_running 为 false，确保 status 不是 'running'
+        status: response.is_running === true && response.status === 'running' ? 'running' : 
+                response.status === 'error' ? 'error' : 'stopped'
+      }
+      setStatus(normalizedStatus)
       // 如果状态是 error，但 is_running 为 false，可能是 dev net 未启动（正常情况）
-      if (response.status === 'error' && !response.is_running) {
+      if (normalizedStatus.status === 'error' && !normalizedStatus.is_running) {
         // 不显示错误消息，因为 dev net 未启动是正常状态
         console.log('Dev net 未启动或 engine 未就绪:', response.message || response.error)
       }
@@ -71,15 +80,57 @@ const NetworkManager: React.FC = () => {
     setActionLoading(true)
     try {
       await networkApi.start()
-      message.success('网络启动成功')
-      setTimeout(() => {
-        loadStatus()
-        loadInfo()
-      }, 2000)
+      message.success('网络启动中，请稍候...')
+      
+      // 轮询状态直到网络真正启动或超时
+      const maxAttempts = 30 // 最多尝试30次（30秒）
+      let attempts = 0
+      
+      const pollStatus = async (): Promise<void> => {
+        attempts++
+        try {
+          const response = await networkApi.getStatus() as any
+          const isRunning = response.status === 'running' && response.is_running === true
+          
+          if (isRunning) {
+            // 网络已启动，更新状态
+            const normalizedStatus: NetworkStatus = {
+              ...response,
+              is_running: true,
+              status: 'running'
+            }
+            setStatus(normalizedStatus)
+            await loadInfo()
+            message.success('网络启动成功')
+            setActionLoading(false)
+          } else if (attempts < maxAttempts) {
+            // 继续轮询
+            setTimeout(pollStatus, 1000)
+          } else {
+            // 超时，刷新状态但不显示错误（可能还在启动中）
+            await loadStatus()
+            await loadInfo()
+            message.warning('网络启动可能需要更长时间，请稍后刷新状态')
+            setActionLoading(false)
+          }
+        } catch (error: any) {
+          // 轮询失败，刷新状态
+          await loadStatus()
+          await loadInfo()
+          if (attempts >= maxAttempts) {
+            message.warning('网络启动可能需要更长时间，请稍后刷新状态')
+          }
+          setActionLoading(false)
+        }
+      }
+      
+      // 延迟2秒后开始轮询（给启动一些时间）
+      setTimeout(pollStatus, 2000)
     } catch (error: any) {
       message.error(`启动网络失败: ${error.message}`)
-    } finally {
       setActionLoading(false)
+      // 刷新状态以反映当前实际情况
+      await loadStatus()
     }
   }
 
@@ -87,21 +138,63 @@ const NetworkManager: React.FC = () => {
     setActionLoading(true)
     try {
       await networkApi.stop()
-      message.success('网络已停止')
-      setTimeout(() => {
-        loadStatus()
-        loadInfo()
-      }, 1000)
+      message.success('网络停止中，请稍候...')
+      
+      // 轮询状态直到网络真正停止或超时
+      const maxAttempts = 20 // 最多尝试20次（20秒）
+      let attempts = 0
+      
+      const pollStatus = async (): Promise<void> => {
+        attempts++
+        try {
+          const response = await networkApi.getStatus() as any
+          const isRunning = response.status === 'running' && response.is_running === true
+          
+          if (!isRunning) {
+            // 网络已停止，更新状态
+            const normalizedStatus: NetworkStatus = {
+              ...response,
+              is_running: false,
+              status: response.status === 'error' ? 'error' : 'stopped'
+            }
+            setStatus(normalizedStatus)
+            setInfo(null) // 清除网络信息
+            message.success('网络已停止')
+            setActionLoading(false)
+          } else if (attempts < maxAttempts) {
+            // 继续轮询
+            setTimeout(pollStatus, 1000)
+          } else {
+            // 超时，刷新状态但不显示错误（可能还在停止中）
+            await loadStatus()
+            message.warning('网络停止可能需要更长时间，请稍后刷新状态')
+            setActionLoading(false)
+          }
+        } catch (error: any) {
+          // 轮询失败，刷新状态
+          await loadStatus()
+          if (attempts >= maxAttempts) {
+            message.warning('网络停止可能需要更长时间，请稍后刷新状态')
+          }
+          setActionLoading(false)
+        }
+      }
+      
+      // 延迟1秒后开始轮询（给停止一些时间）
+      setTimeout(pollStatus, 1000)
     } catch (error: any) {
       message.error(`停止网络失败: ${error.message}`)
-    } finally {
       setActionLoading(false)
+      // 刷新状态以反映当前实际情况
+      await loadStatus()
     }
   }
 
   const getStatusTag = () => {
     if (!status) return <Tag>未知</Tag>
-    if (status.is_running) {
+    // 确保状态一致性：只有当 status 为 'running' 且 is_running 为 true 时才显示运行中
+    const isRunning = status.status === 'running' && status.is_running === true
+    if (isRunning) {
       return <Tag color="success" icon={<CheckCircleOutlined />}>运行中</Tag>
     }
     return <Tag color="default" icon={<CloseCircleOutlined />}>已停止</Tag>
@@ -126,13 +219,14 @@ const NetworkManager: React.FC = () => {
             >
               刷新
             </Button>
-            {status?.is_running ? (
+            {status?.status === 'running' && status?.is_running === true ? (
               <Button
                 type="primary"
                 danger
                 icon={<StopOutlined />}
                 onClick={handleStop}
                 loading={actionLoading}
+                disabled={actionLoading}
               >
                 停止网络
               </Button>
@@ -142,6 +236,7 @@ const NetworkManager: React.FC = () => {
                 icon={<PlayCircleOutlined />}
                 onClick={handleStart}
                 loading={actionLoading}
+                disabled={actionLoading}
               >
                 启动网络
               </Button>
@@ -167,7 +262,7 @@ const NetworkManager: React.FC = () => {
       </Card>
 
       {/* 网络信息卡片 */}
-      {status?.is_running && info && (
+      {status?.status === 'running' && status?.is_running === true && info && (
         <>
           <Divider />
           <Card title="网络信息">
@@ -219,7 +314,7 @@ const NetworkManager: React.FC = () => {
       )}
 
       {/* Enclave 详细信息 */}
-      {status?.is_running && status.enclave_info && (
+      {status?.status === 'running' && status?.is_running === true && status.enclave_info && (
         <>
           <Divider />
           <Card title="Enclave 详细信息">
