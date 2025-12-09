@@ -50,8 +50,6 @@ const DepositList: React.FC = () => {
   const [networkInfo, setNetworkInfo] = useState<NetworkInfo | null>(null)
   const [form] = Form.useForm()
   const [submitForm] = Form.useForm()
-  const [selectedRowKeys, setSelectedRowKeys] = useState<React.Key[]>([])
-  const [batchSelectCount, setBatchSelectCount] = useState<number>(0)
   
   // MetaMask 状态
   const { isConnected, account } = useMetaMaskStore()

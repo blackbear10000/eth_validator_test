@@ -11,12 +11,10 @@ import {
   Upload,
   message,
   Tag,
-  Modal,
 } from 'antd'
 import {
   DownloadOutlined,
   UploadOutlined,
-  FileTextOutlined,
   HistoryOutlined,
 } from '@ant-design/icons'
 import apiClient from '../../api/client'

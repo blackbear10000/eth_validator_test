@@ -8,7 +8,6 @@ import {
   Tabs,
   Typography,
   Space,
-  Divider,
 } from 'antd'
 import {
   WalletOutlined,
