@@ -477,8 +477,24 @@ class KurtosisService:
         # Kurtosis enclave 状态可能是：RUNNING, EMPTY, STOPPED 等
         enclave_status = None
         lines = stdout.split('\n')
+        
+        # 如果输出为空或太短，可能是异常状态
+        if not stdout.strip() or len(stdout.strip()) < 50:
+            logger.warning(f"Enclave inspect 输出异常（内容过短或为空），判定为已停止")
+            return {
+                "enclave_name": self.enclave_name,
+                "status": "stopped",
+                "is_running": False,
+                "message": "Enclave 状态异常（输出不完整），建议手动清理",
+                "enclave_info": {
+                    "raw_output": stdout,
+                    "enclave_status": None
+                },
+                "raw_output": stdout
+            }
+        
         for line in lines:
-            # 查找 Status: 行
+            # 查找 Status: 行（支持多种格式）
             if 'Status:' in line or 'status:' in line.lower():
                 # 提取状态值（去除前后空格）
                 parts = line.split(':', 1)
@@ -536,7 +552,12 @@ class KurtosisService:
         if enclave_status is None and has_services:
             is_actually_running = True
         
-        logger.info(f"最终判定结果: is_running={is_actually_running}, enclave_status={enclave_status}")
+        # 如果没有解析到状态且没有服务，保守起见判定为已停止
+        if enclave_status is None and not has_services:
+            logger.warning(f"无法解析 enclave 状态且没有服务，判定为已停止（可能是异常状态）")
+            is_actually_running = False
+        
+        logger.info(f"最终判定结果: is_running={is_actually_running}, enclave_status={enclave_status}, has_services={has_services}")
         
         # 根据实际运行状态返回结果
         if is_actually_running:
