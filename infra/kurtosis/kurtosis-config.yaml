@@ -41,7 +41,7 @@ network_params:
   min_validator_withdrawability_delay: 2
 
   # ===== 创世与验证者基数 =====
-  num_validator_keys_per_node: 64
+  num_validator_keys_per_node: 128
   withdrawal_type: "0x01"
 
   # ===== 预设与网络标识 =====
