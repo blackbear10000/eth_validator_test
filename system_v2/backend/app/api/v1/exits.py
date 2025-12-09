@@ -8,6 +8,7 @@ from typing import List, Optional
 
 from app.dependencies import get_db
 from app.services.exit_service import ExitService
+from app.models.database import ExitRecord
 from app.services.key_management import KeyManagementService
 from app.services.client_management import ClientManagementService
 from app.core.exit_generator import ExitGenerator
@@ -137,4 +138,46 @@ async def remove_exited_key(
         return result
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/exits/records")
+async def get_exit_records(
+    pubkey: Optional[str] = Query(None, description="验证者公钥（可选）"),
+    status: Optional[str] = Query(None, description="状态筛选"),
+    limit: int = Query(100, ge=1, le=1000),
+    offset: int = Query(0, ge=0),
+    db: Session = Depends(get_db)
+):
+    """获取退出记录列表"""
+    try:
+        query = db.query(ExitRecord)
+        
+        if pubkey:
+            query = query.filter(ExitRecord.pubkey == pubkey.lower())
+        if status:
+            query = query.filter(ExitRecord.status == status)
+        
+        total = query.count()
+        records = query.order_by(ExitRecord.submitted_at.desc()).offset(offset).limit(limit).all()
+        
+        return {
+            "total": total,
+            "items": [
+                {
+                    "id": record.id,
+                    "pubkey": record.pubkey,
+                    "validator_index": record.validator_index,
+                    "exit_epoch": record.exit_epoch,
+                    "withdrawable_epoch": record.withdrawable_epoch,
+                    "balance_before_exit_eth": float(record.balance_before_exit_eth) if record.balance_before_exit_eth else None,
+                    "status": record.status,
+                    "submitted_at": record.submitted_at.isoformat() if record.submitted_at else None,
+                    "confirmed_at": record.confirmed_at.isoformat() if record.confirmed_at else None,
+                }
+                for record in records
+            ]
+        }
+    except Exception as e:
+        logger.error(f"获取退出记录失败: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"获取退出记录失败: {str(e)}")
 

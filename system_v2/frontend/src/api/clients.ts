@@ -114,5 +114,11 @@ export const clientsApi = {
   // 从 Validator Client 删除孤儿密钥（Validator Client 中有但数据库中没有的密钥）
   removeOrphanedKeys: (clientId: number, pubkeys?: string[]) =>
     apiClient.post(`/clients/${clientId}/keys/remove-orphaned`, pubkeys ? { pubkeys } : {}),
+
+  // 获取可用密钥列表（排除已被其他运行中客户端使用的密钥）
+  getAvailableKeys: (clientId: number, status?: string, limit?: number) =>
+    apiClient.get(`/clients/${clientId}/keys/available`, {
+      params: { status, limit }
+    }),
 }
 

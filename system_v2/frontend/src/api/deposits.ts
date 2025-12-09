@@ -150,6 +150,12 @@ export const depositsApi = {
   // 获取 Batch Deposit 合约统计数据
   getBatchContractStatistics: (contractId: number) =>
     apiClient.get(`/deposits/batch-contract/${contractId}/statistics`),
+
+  // 获取合约存款记录
+  getContractDeposits: (contractId: number, limit?: number, offset?: number) =>
+    apiClient.get(`/deposits/batch-contract/${contractId}/deposits`, {
+      params: { limit, offset }
+    }),
 }
 
 export interface BatchContractStatistics {

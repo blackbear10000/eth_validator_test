@@ -12,6 +12,7 @@ import {
   Alert,
   Typography,
   Divider,
+  InputNumber,
 } from 'antd'
 import {
   PlusOutlined,
@@ -65,6 +66,7 @@ const ClientKeyManagementModal: React.FC<ClientKeyManagementModalProps> = ({
     warning?: string
     api_error?: string
   }>({})
+  const [batchSelectCount, setBatchSelectCount] = useState<number>(0)
 
   useEffect(() => {
     if (visible && client) {
@@ -93,18 +95,24 @@ const ClientKeyManagementModal: React.FC<ClientKeyManagementModalProps> = ({
       })
 
       // 加载可用密钥列表（用于添加）
-      const keysResult = await keysApi.list() as any
-      // keysApi.list() 返回格式是 {total: number, items: [...]}
-      const allKeys = keysResult?.items || []
-      
-      // 过滤出可以分配的密钥（不在当前客户端中的）
-      const currentPubkeys = new Set(
-        comparisonArray.filter((k: KeyComparison) => k.in_database).map((k: KeyComparison) => k.pubkey.toLowerCase())
-      )
-      const available = allKeys.filter(
-        (key: any) => !currentPubkeys.has(key.pubkey.toLowerCase())
-      )
-      setAvailableKeys(available)
+      // 使用新的 API，自动排除已被其他运行中客户端使用的密钥
+      try {
+        const availableResult = await clientsApi.getAvailableKeys(client.id, 'deposited', 1000) as any
+        setAvailableKeys(availableResult.items || [])
+      } catch (error: any) {
+        // 如果新 API 失败，降级使用旧方法
+        console.warn('获取可用密钥失败，使用降级方案:', error)
+        const keysResult = await keysApi.list() as any
+        const allKeys = keysResult?.items || []
+        
+        const currentPubkeys = new Set(
+          comparisonArray.filter((k: KeyComparison) => k.in_database).map((k: KeyComparison) => k.pubkey.toLowerCase())
+        )
+        const available = allKeys.filter(
+          (key: any) => !currentPubkeys.has(key.pubkey.toLowerCase())
+        )
+        setAvailableKeys(available)
+      }
     } catch (error: any) {
       message.error(`加载数据失败: ${error.message}`)
       // 确保即使出错也设置空数组
@@ -403,34 +411,62 @@ const ClientKeyManagementModal: React.FC<ClientKeyManagementModalProps> = ({
 
         {/* 添加密钥 */}
         <div style={{ marginBottom: 16 }}>
-          <Space>
-            <Select
-              mode="multiple"
-              placeholder="选择要添加的密钥"
-              style={{ width: 400 }}
-              value={selectedKeys}
-              onChange={setSelectedKeys}
-              showSearch
-              filterOption={(input, option) => {
-                const children = option?.children as string | undefined
-                return children ? children.toLowerCase().includes(input.toLowerCase()) : false
-              }}
-            >
-              {availableKeys.map((key) => (
-                <Option key={key.pubkey} value={key.pubkey}>
-                  {key.pubkey.slice(0, 20)}... ({key.status})
-                </Option>
-              ))}
-            </Select>
-            <Button
-              type="primary"
-              icon={<PlusOutlined />}
-              onClick={handleAddKeys}
-              loading={addingKeys}
-              disabled={selectedKeys.length === 0}
-            >
-              添加密钥
-            </Button>
+          <Space direction="vertical" style={{ width: '100%' }}>
+            <Space wrap>
+              <Select
+                mode="multiple"
+                placeholder="选择要添加的密钥"
+                style={{ width: 400 }}
+                value={selectedKeys}
+                onChange={setSelectedKeys}
+                showSearch
+                filterOption={(input, option) => {
+                  const children = option?.children as string | undefined
+                  return children ? children.toLowerCase().includes(input.toLowerCase()) : false
+                }}
+              >
+                {availableKeys.map((key) => (
+                  <Option key={key.pubkey} value={key.pubkey}>
+                    {key.pubkey.slice(0, 20)}... ({key.status})
+                  </Option>
+                ))}
+              </Select>
+              <Button
+                type="primary"
+                icon={<PlusOutlined />}
+                onClick={handleAddKeys}
+                loading={addingKeys}
+                disabled={selectedKeys.length === 0}
+              >
+                添加密钥
+              </Button>
+            </Space>
+            <Space>
+              <InputNumber
+                min={0}
+                max={availableKeys.filter((k: any) => k.status === 'deposited' || k.status === 'pending').length}
+                value={batchSelectCount}
+                onChange={(value) => setBatchSelectCount(value || 0)}
+                placeholder="输入数量"
+                style={{ width: 150 }}
+              />
+              <Button
+                onClick={() => {
+                  const depositedKeys = availableKeys
+                    .filter((k: any) => k.status === 'deposited' || k.status === 'pending')
+                    .slice(0, batchSelectCount)
+                    .map((k: any) => k.pubkey)
+                  setSelectedKeys(depositedKeys)
+                  message.success(`已自动选择 ${depositedKeys.length} 个已提交存款的密钥`)
+                }}
+                disabled={batchSelectCount <= 0}
+              >
+                批量导入已提交存款的密钥
+              </Button>
+              <span style={{ color: '#999', fontSize: '12px' }}>
+                可用密钥: {availableKeys.length} 个（已排除被其他运行中客户端使用的密钥）
+              </span>
+            </Space>
           </Space>
         </div>
 

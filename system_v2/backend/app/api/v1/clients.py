@@ -559,6 +559,76 @@ async def remove_orphaned_keys(
         raise HTTPException(status_code=500, detail=str(e))
 
 
+@router.get("/clients/{client_id}/keys/available")
+async def get_available_keys(
+    client_id: int,
+    status: Optional[str] = Query(None, description="密钥状态筛选，如: deposited, pending"),
+    limit: int = Query(1000, ge=1, le=10000),
+    db: Session = Depends(get_db),
+    client_service: ClientManagementService = Depends(get_client_service)
+):
+    """
+    获取可用于分配给该客户端的密钥列表
+    排除已被其他运行中客户端使用的密钥
+    """
+    try:
+        from app.models.database import ClientInstance, ValidatorKey, ValidatorClientKey
+        
+        client = db.query(ClientInstance).filter(ClientInstance.id == client_id).first()
+        if not client:
+            raise HTTPException(status_code=404, detail="客户端不存在")
+        
+        # 获取所有密钥
+        query = db.query(ValidatorKey)
+        
+        if status:
+            query = query.filter(ValidatorKey.status == status)
+        
+        all_keys = query.limit(limit).all()
+        
+        # 获取当前客户端已分配的密钥
+        current_client_keys = db.query(ValidatorClientKey).filter(
+            ValidatorClientKey.client_id == client_id
+        ).all()
+        current_pubkeys = set([k.pubkey.lower() for k in current_client_keys])
+        
+        # 获取已被其他运行中客户端使用的密钥
+        other_running_client_keys = db.query(ValidatorClientKey).join(ClientInstance).filter(
+            ValidatorClientKey.status == "active",
+            ValidatorClientKey.client_id != client_id,
+            ClientInstance.is_active == True,
+            ClientInstance.status == "running"
+        ).all()
+        other_running_pubkeys = set([k.pubkey.lower() for k in other_running_client_keys])
+        
+        # 过滤可用密钥
+        available_keys = []
+        for key in all_keys:
+            pubkey_lower = key.pubkey.lower()
+            # 排除当前客户端已分配的
+            if pubkey_lower in current_pubkeys:
+                continue
+            # 排除已被其他运行中客户端使用的
+            if pubkey_lower in other_running_pubkeys:
+                continue
+            available_keys.append({
+                "pubkey": key.pubkey,
+                "status": key.status,
+                "withdrawal_address": key.withdrawal_address,
+                "batch_id": key.batch_id,
+            })
+        
+        return {
+            "total": len(available_keys),
+            "items": available_keys
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"获取可用密钥列表失败: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 @router.post("/clients/{client_id}/start", response_model=dict)
 async def start_client(
     client_id: int,

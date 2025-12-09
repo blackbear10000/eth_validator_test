@@ -16,6 +16,7 @@ import {
   Divider,
   Radio,
   Collapse,
+  Tooltip,
 } from 'antd'
 import {
   PlusOutlined,
@@ -49,6 +50,8 @@ const DepositList: React.FC = () => {
   const [networkInfo, setNetworkInfo] = useState<NetworkInfo | null>(null)
   const [form] = Form.useForm()
   const [submitForm] = Form.useForm()
+  const [selectedRowKeys, setSelectedRowKeys] = useState<React.Key[]>([])
+  const [batchSelectCount, setBatchSelectCount] = useState<number>(0)
   
   // MetaMask 状态
   const { isConnected, account } = useMetaMaskStore()
@@ -389,11 +392,25 @@ const DepositList: React.FC = () => {
       render: (status: string) => getStatusTag(status),
     },
     {
-      title: '金额 (ETH)',
+      title: '存款金额 (ETH)',
       dataIndex: 'amount_eth',
       key: 'amount_eth',
-      width: 120,
-      render: (amount: number) => amount.toFixed(4),
+      width: 130,
+      render: (amount: number) => amount ? amount.toFixed(4) : '32.0000',
+    },
+    {
+      title: '提款地址',
+      dataIndex: 'withdrawal_address',
+      key: 'withdrawal_address',
+      width: 180,
+      render: (address: string) => {
+        if (!address) return '-'
+        return (
+          <Text copyable={{ text: address }} style={{ fontFamily: 'monospace', fontSize: '12px' }}>
+            {address.substring(0, 6)}...{address.substring(address.length - 4)}
+          </Text>
+        )
+      },
     },
     {
       title: '交易哈希',
@@ -476,15 +493,18 @@ const DepositList: React.FC = () => {
       title: '收益 (ETH)',
       dataIndex: 'earnings_eth',
       key: 'earnings_eth',
-      width: 120,
-      render: (earnings: number | null | undefined) => {
+      width: 150,
+      render: (earnings: number | null | undefined, record: any) => {
         if (earnings !== null && earnings !== undefined) {
           const color = earnings >= 0 ? '#3f8600' : '#cf1322'
           const prefix = earnings >= 0 ? '+' : ''
+          const totalWithdrawn = record.total_withdrawn_eth || 0
           return (
-            <span style={{ color, fontWeight: 'bold' }}>
-              {prefix}{earnings.toFixed(4)}
-            </span>
+            <Tooltip title={`当前余额 - 32 ETH + 已取款 ${totalWithdrawn.toFixed(4)} ETH`}>
+              <span style={{ color, fontWeight: 'bold', cursor: 'help' }}>
+                {prefix}{earnings.toFixed(4)}
+              </span>
+            </Tooltip>
           )
         }
         return '-'
@@ -567,7 +587,10 @@ const DepositList: React.FC = () => {
               {showBalance ? '隐藏余额' : '显示余额'}
             </Button>
             <Button icon={<SyncOutlined />} onClick={() => handleSync()} loading={syncing}>
-              同步状态
+              同步链上数据
+            </Button>
+            <Button icon={<ReloadOutlined />} onClick={loadDeposits}>
+              刷新列表
             </Button>
             <Button
               type="primary"
@@ -578,9 +601,6 @@ const DepositList: React.FC = () => {
               }}
             >
               生成 Deposit Data
-            </Button>
-            <Button icon={<ReloadOutlined />} onClick={loadDeposits}>
-              刷新
             </Button>
           </Space>
         }

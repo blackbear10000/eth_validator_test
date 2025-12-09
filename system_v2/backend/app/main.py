@@ -9,7 +9,7 @@ import time
 
 from app.config import settings
 from app.utils.logger import configure_logging
-from app.api.v1 import keys, deposits, clients, monitoring, exits, withdrawals, network, web3signer
+from app.api.v1 import keys, deposits, clients, monitoring, exits, withdrawals, network, web3signer, auth, admin
 from app.core.background_tasks import start_background_tasks, stop_background_tasks
 
 # 配置日志
@@ -55,6 +55,14 @@ async def log_requests(request: Request, call_next):
     return response
 
 
+# 中间件：审计日志
+@app.middleware("http")
+async def audit_log_middleware(request: Request, call_next):
+    """审计日志中间件"""
+    from app.middleware.audit_middleware import audit_middleware
+    return await audit_middleware(request, call_next)
+
+
 # 异常处理
 @app.exception_handler(Exception)
 async def global_exception_handler(request: Request, exc: Exception):
@@ -71,6 +79,8 @@ async def global_exception_handler(request: Request, exc: Exception):
 
 
 # 注册路由
+app.include_router(auth.router, prefix=settings.api_v1_prefix, tags=["auth"])
+app.include_router(admin.router, prefix=settings.api_v1_prefix, tags=["admin"])
 app.include_router(keys.router, prefix=settings.api_v1_prefix, tags=["keys"])
 app.include_router(deposits.router, prefix=settings.api_v1_prefix, tags=["deposits"])
 app.include_router(clients.router, prefix=settings.api_v1_prefix, tags=["clients"])

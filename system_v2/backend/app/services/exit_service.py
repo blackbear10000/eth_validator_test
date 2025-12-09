@@ -7,7 +7,7 @@ from datetime import datetime
 from typing import List, Dict, Any, Optional
 from sqlalchemy.orm import Session
 
-from app.models.database import ValidatorKey, ValidatorClientKey
+from app.models.database import ValidatorKey, ValidatorClientKey, ExitRecord
 from app.models.enums import ValidatorKeyStatus
 from app.core.exit_generator import ExitGenerator
 from app.core.beacon_api import BeaconAPIClient
@@ -404,6 +404,36 @@ class ExitService:
                 if validator_key:
                     validator_key.status = ValidatorKeyStatus.PENDING_EXIT.value
                 
+                # 获取验证者索引和余额
+                validator_index = self.get_validator_index(pubkey)
+                balance_before_exit_eth = None
+                try:
+                    validator_data = self.beacon_api.get_validator(pubkey)
+                    if validator_data:
+                        if isinstance(validator_data, dict) and 'data' in validator_data:
+                            validator_data = validator_data['data']
+                        balance_gwei = validator_data.get('balance', '0')
+                        balance_before_exit_eth = float(balance_gwei) / 1e9 if balance_gwei else None
+                except Exception as e:
+                    logger.warning(f"获取退出前余额失败: {e}")
+                
+                # 计算预计可取款 epoch（退出后约 7 天，假设每个 epoch 约 6.4 分钟）
+                # withdrawable_epoch = exit_epoch + (7 * 24 * 60 / 6.4) ≈ exit_epoch + 1575
+                withdrawable_epoch = epoch + 1575 if epoch else None
+                
+                # 创建退出记录
+                exit_record = ExitRecord(
+                    pubkey=pubkey.lower(),
+                    validator_index=validator_index,
+                    exit_epoch=epoch,
+                    withdrawable_epoch=withdrawable_epoch,
+                    balance_before_exit_eth=balance_before_exit_eth,
+                    signature=exit_data.get('signature'),
+                    status='submitted',
+                    submitted_at=datetime.utcnow()
+                )
+                self.db.add(exit_record)
+                
                 self.db.commit()
                 
                 logger.info(f"退出提交成功: {pubkey[:10]}...")
@@ -411,7 +441,8 @@ class ExitService:
                     'pubkey': pubkey,
                     'status': 'submitted',
                     'exit_data': exit_data,
-                    'eligibility': eligibility
+                    'eligibility': eligibility,
+                    'exit_record_id': exit_record.id
                 }
             else:
                 error_text = response.text

@@ -16,6 +16,38 @@ from .enums import ValidatorKeyStatus, ValidatorClientType, DepositStatus, Withd
 Base = declarative_base()
 
 
+class User(Base):
+    """
+    用户表
+    支持普通用户（钱包登录）和管理员（用户名密码登录）
+    """
+    __tablename__ = "users"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    wallet_address = Column(String(42), unique=True, nullable=True, index=True, comment="钱包地址（普通用户）")
+    username = Column(String(50), unique=True, nullable=True, index=True, comment="用户名（管理员）")
+    password_hash = Column(String(255), nullable=True, comment="密码哈希（管理员）")
+    role = Column(String(20), nullable=False, default="user", index=True, comment="用户角色: admin/user")
+    created_at = Column(DateTime, nullable=False, default=datetime.utcnow, comment="创建时间")
+    last_login = Column(DateTime, nullable=True, comment="最后登录时间")
+
+    # 关系
+    deposits = relationship("DepositTransaction", back_populates="user")
+    audit_logs = relationship("AuditLog", back_populates="user")
+
+    # 约束：wallet_address 和 username 至少有一个不为空
+    __table_args__ = (
+        Index('idx_user_wallet', 'wallet_address'),
+        Index('idx_user_username', 'username'),
+        Index('idx_user_role', 'role'),
+    )
+
+    def __repr__(self):
+        if self.wallet_address:
+            return f"<User(wallet={self.wallet_address[:10]}..., role={self.role})>"
+        return f"<User(username={self.username}, role={self.role})>"
+
+
 class ValidatorKey(Base):
     """
     验证者密钥元数据表
@@ -151,14 +183,19 @@ class DepositTransaction(Base):
     # 备注
     notes = Column(Text, nullable=True, comment="备注信息")
 
+    # 用户关联
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=True, index=True, comment="用户ID（存款发起者）")
+
     # 关系
     validator_key = relationship("ValidatorKey", back_populates="deposits")
+    user = relationship("User", back_populates="deposits")
 
     # 唯一约束：同一个验证者不应该有重复的交易记录
     # 但不同的验证者可以共享同一个交易哈希（Batch Deposit 的情况）
     __table_args__ = (
         UniqueConstraint('pubkey', 'tx_hash', name='uq_deposit_pubkey_tx_hash'),
         Index('idx_deposit_pubkey_tx_hash', 'pubkey', 'tx_hash'),
+        Index('idx_deposit_user_id', 'user_id'),
     )
 
     def __repr__(self):
@@ -285,4 +322,64 @@ class BatchDepositContract(Base):
 
     def __repr__(self):
         return f"<BatchDepositContract(address={self.contract_address[:10]}..., network={self.network_name})>"
+
+
+class AuditLog(Base):
+    """
+    审计日志表
+    记录所有写操作（create, update, delete）用于审计
+    """
+    __tablename__ = "audit_logs"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=True, index=True, comment="用户ID")
+    action = Column(String(50), nullable=False, index=True, comment="操作类型: create/update/delete")
+    resource_type = Column(String(50), nullable=False, index=True, comment="资源类型: validator_key/deposit/client/exit...")
+    resource_id = Column(String(100), nullable=True, index=True, comment="资源ID")
+    details = Column(JSON, nullable=True, comment="变更详情（变更前后的值等）")
+    ip_address = Column(String(45), nullable=True, comment="IP地址")
+    created_at = Column(DateTime, nullable=False, default=datetime.utcnow, index=True, comment="操作时间")
+
+    # 关系
+    user = relationship("User", back_populates="audit_logs")
+
+    __table_args__ = (
+        Index('idx_audit_user_action', 'user_id', 'action'),
+        Index('idx_audit_resource', 'resource_type', 'resource_id'),
+        Index('idx_audit_created_at', 'created_at'),
+    )
+
+    def __repr__(self):
+        return f"<AuditLog(action={self.action}, resource={self.resource_type}, user_id={self.user_id})>"
+
+
+class ExitRecord(Base):
+    """
+    退出记录表
+    记录验证者退出操作的详细信息
+    """
+    __tablename__ = "exit_records"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    pubkey = Column(String(98), ForeignKey("validator_keys.pubkey"), nullable=False, index=True, comment="验证者公钥")
+    validator_index = Column(Integer, nullable=True, index=True, comment="验证者索引")
+    exit_epoch = Column(Integer, nullable=False, comment="退出 epoch")
+    withdrawable_epoch = Column(Integer, nullable=True, comment="预计可取款 epoch")
+    balance_before_exit_eth = Column(Numeric(20, 9), nullable=True, comment="退出前余额（ETH）")
+    signature = Column(Text, nullable=True, comment="退出签名")
+    submitted_at = Column(DateTime, nullable=False, default=datetime.utcnow, index=True, comment="提交时间")
+    confirmed_at = Column(DateTime, nullable=True, comment="确认时间")
+    status = Column(String(20), nullable=False, default="submitted", index=True, comment="状态: submitted/confirmed/withdrawable/completed")
+
+    # 关系
+    validator_key = relationship("ValidatorKey")
+
+    __table_args__ = (
+        Index('idx_exit_pubkey', 'pubkey'),
+        Index('idx_exit_status', 'status'),
+        Index('idx_exit_submitted_at', 'submitted_at'),
+    )
+
+    def __repr__(self):
+        return f"<ExitRecord(pubkey={self.pubkey[:10]}..., status={self.status}, exit_epoch={self.exit_epoch})>"
 

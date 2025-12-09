@@ -373,9 +373,11 @@ const ClientList: React.FC = () => {
   const loadClientLogs = async (clientId: number) => {
     setLoadingLogs(true)
     try {
-      const result = await clientsApi.getLogs(clientId, 100) as any
-      if (result.logs) {
-        setClientLogs(result.logs)
+      const result = await clientsApi.getLogs(clientId, 500) as any  // 增加日志行数
+      if (result.logs && Array.isArray(result.logs)) {
+        // 过滤空行，但保留至少一些内容
+        const filteredLogs = result.logs.filter((log: string) => log && log.trim().length > 0)
+        setClientLogs(filteredLogs.length > 0 ? filteredLogs : ['暂无日志'])
       } else if (result.error) {
         setClientLogs([`错误: ${result.error}`])
       } else {
@@ -388,6 +390,17 @@ const ClientList: React.FC = () => {
       setLoadingLogs(false)
     }
   }
+  
+  // 自动刷新日志（如果模态框打开）
+  useEffect(() => {
+    if (logsModalVisible && selectedClientForLogs) {
+      loadClientLogs(selectedClientForLogs) // 立即加载一次
+      const interval = setInterval(() => {
+        loadClientLogs(selectedClientForLogs)
+      }, 5000) // 每5秒刷新一次
+      return () => clearInterval(interval)
+    }
+  }, [logsModalVisible, selectedClientForLogs])
 
   const columns = [
     {
@@ -776,11 +789,21 @@ const ClientList: React.FC = () => {
             }}
           >
             {clientLogs.length > 0 ? (
-              clientLogs.map((log, index) => (
-                <div key={index} style={{ marginBottom: 2, lineHeight: '1.5', whiteSpace: 'pre-wrap' }}>
-                  {log || '\u00A0'}
-                </div>
-              ))
+              <>
+                {clientLogs.map((log, index) => (
+                  <div key={index} style={{ marginBottom: 2, lineHeight: '1.5', whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>
+                    {log || '\u00A0'}
+                  </div>
+                ))}
+                {/* 自动滚动到底部 */}
+                <div ref={(el) => {
+                  if (el) {
+                    setTimeout(() => {
+                      el.scrollIntoView({ behavior: 'smooth', block: 'end' })
+                    }, 100)
+                  }
+                }} />
+              </>
             ) : (
               <div style={{ color: '#888' }}>暂无日志</div>
             )}

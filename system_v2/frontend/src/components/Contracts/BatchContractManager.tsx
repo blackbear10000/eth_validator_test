@@ -16,6 +16,7 @@ import {
   Statistic,
   Typography,
   Tooltip,
+  Tabs,
 } from 'antd'
 import {
   PlusOutlined,
@@ -42,6 +43,8 @@ const BatchContractManager: React.FC = () => {
   const [statisticsLoading, setStatisticsLoading] = useState(false)
   const [rpcEndpoints, setRpcEndpoints] = useState<any>(null)
   const [networkInfo, setNetworkInfo] = useState<NetworkInfo | null>(null)
+  const [depositRecords, setDepositRecords] = useState<any[]>([])
+  const [depositRecordsLoading, setDepositRecordsLoading] = useState(false)
   
   // MetaMask 状态
   const { isConnected, account, signer, provider } = useMetaMaskStore()
@@ -111,6 +114,20 @@ const BatchContractManager: React.FC = () => {
       setStatistics(null)
     } finally {
       setStatisticsLoading(false)
+    }
+  }
+
+  // 加载存款记录
+  const loadDepositRecords = async (contractId: number) => {
+    setDepositRecordsLoading(true)
+    try {
+      const response = await depositsApi.getContractDeposits(contractId, 100, 0) as any
+      setDepositRecords(response.items || [])
+    } catch (error: any) {
+      message.error(`加载存款记录失败: ${error.message}`)
+      setDepositRecords([])
+    } finally {
+      setDepositRecordsLoading(false)
     }
   }
 
@@ -211,6 +228,7 @@ const BatchContractManager: React.FC = () => {
     setSelectedContract(contract)
     setDetailModalVisible(true)
     await loadStatistics(contract.id)
+    await loadDepositRecords(contract.id)
   }
 
   // 复制地址
@@ -465,21 +483,25 @@ const BatchContractManager: React.FC = () => {
           setDetailModalVisible(false)
           setSelectedContract(null)
           setStatistics(null)
+          setDepositRecords([])
         }}
         footer={[
           <Button key="close" onClick={() => {
             setDetailModalVisible(false)
             setSelectedContract(null)
             setStatistics(null)
+            setDepositRecords([])
           }}>
             关闭
           </Button>,
         ]}
-        width={800}
+        width={1000}
       >
         {selectedContract && (
           <div>
-            <Descriptions title="基本信息" bordered column={2} style={{ marginBottom: 24 }}>
+            <Tabs defaultActiveKey="info">
+              <Tabs.TabPane tab="基本信息" key="info">
+                <Descriptions title="基本信息" bordered column={2} style={{ marginBottom: 24 }}>
               <Descriptions.Item label="合约地址" span={2}>
                 <Space>
                   <span style={{ fontFamily: 'monospace' }}>{selectedContract.contract_address}</span>
@@ -578,6 +600,79 @@ const BatchContractManager: React.FC = () => {
                 </Descriptions.Item>
               )}
             </Descriptions>
+              </Tabs.TabPane>
+              <Tabs.TabPane tab="存款记录" key="deposits">
+                <Table
+                  columns={[
+                    {
+                      title: '交易哈希',
+                      dataIndex: 'tx_hash',
+                      key: 'tx_hash',
+                      render: (text: string) => (
+                        <Typography.Text copyable={{ text }} style={{ fontFamily: 'monospace' }}>
+                          {text.substring(0, 20)}...
+                        </Typography.Text>
+                      ),
+                    },
+                    {
+                      title: '批次ID',
+                      dataIndex: 'batch_id',
+                      key: 'batch_id',
+                    },
+                    {
+                      title: '验证者数量',
+                      dataIndex: 'validator_count',
+                      key: 'validator_count',
+                    },
+                    {
+                      title: '总金额 (ETH)',
+                      dataIndex: 'total_amount_eth',
+                      key: 'total_amount_eth',
+                      render: (amount: number) => amount.toFixed(4),
+                    },
+                    {
+                      title: '状态',
+                      dataIndex: 'status',
+                      key: 'status',
+                      render: (status: string) => {
+                        const colorMap: Record<string, string> = {
+                          submitted: 'blue',
+                          confirmed: 'green',
+                          validated: 'green',
+                          activated: 'green',
+                        }
+                        return <Tag color={colorMap[status] || 'default'}>{status}</Tag>
+                      },
+                    },
+                    {
+                      title: '提交时间',
+                      dataIndex: 'submitted_at',
+                      key: 'submitted_at',
+                      render: (time: string) => time ? dayjs(time).format('YYYY-MM-DD HH:mm:ss') : '-',
+                    },
+                    {
+                      title: '确认时间',
+                      dataIndex: 'confirmed_at',
+                      key: 'confirmed_at',
+                      render: (time: string) => time ? dayjs(time).format('YYYY-MM-DD HH:mm:ss') : '-',
+                    },
+                    {
+                      title: '区块号',
+                      dataIndex: 'block_number',
+                      key: 'block_number',
+                    },
+                  ]}
+                  dataSource={depositRecords}
+                  rowKey="tx_hash"
+                  loading={depositRecordsLoading}
+                  pagination={{
+                    pageSize: 20,
+                    showSizeChanger: true,
+                    showTotal: (total) => `共 ${total} 条记录`,
+                  }}
+                />
+              </Tabs.TabPane>
+            </Tabs>
           </div>
         )}
       </Modal>

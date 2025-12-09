@@ -4,7 +4,7 @@
 import logging
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
-from typing import List
+from typing import List, Dict
 
 from app.dependencies import get_db
 from app.services.deposit_management import DepositManagementService
@@ -22,7 +22,7 @@ from app.models.schemas import (
     BatchDepositContractResponse,
     BatchContractStatistics
 )
-from app.models.database import BatchDepositContract, DepositTransaction
+from app.models.database import BatchDepositContract, DepositTransaction, WithdrawalEvent
 from web3 import Web3
 from typing import Optional
 
@@ -419,6 +419,14 @@ async def list_deposits(
         for t in transactions:
             tx_dict = DepositTransactionResponse.model_validate(t).model_dump()
             
+            # 获取 withdrawal_address（从 ValidatorKey）
+            from app.models.database import ValidatorKey
+            validator_key = db.query(ValidatorKey).filter(
+                ValidatorKey.pubkey == t.pubkey
+            ).first()
+            if validator_key:
+                tx_dict['withdrawal_address'] = validator_key.withdrawal_address
+            
             # 如果请求包含余额信息，且验证者已注册（有 validator_index）
             if include_balance and t.validator_index is not None:
                 try:
@@ -446,13 +454,26 @@ async def list_deposits(
                             balance_eth = float(balance_gwei) / 1e9
                             effective_balance_eth = float(effective_balance_gwei) / 1e9
                             
-                            # 计算收益（当前余额 - 初始存款 32 ETH）
+                            # 计算总收益：当前余额 - 32 ETH + 已取款金额累计
                             initial_deposit = 32.0
-                            earnings = balance_eth - initial_deposit
+                            
+                            # 查询已取款金额累计
+                            from app.models.database import WithdrawalEvent
+                            total_withdrawn = db.query(
+                                func.sum(WithdrawalEvent.amount_eth)
+                            ).filter(
+                                WithdrawalEvent.pubkey == t.pubkey
+                            ).scalar() or 0.0
+                            
+                            total_withdrawn_eth = float(total_withdrawn)
+                            
+                            # 综合收益计算：当前余额 - 32 + 已取款金额
+                            earnings = balance_eth - initial_deposit + total_withdrawn_eth
                             
                             tx_dict['balance_eth'] = balance_eth
                             tx_dict['effective_balance_eth'] = effective_balance_eth
                             tx_dict['earnings_eth'] = earnings
+                            tx_dict['total_withdrawn_eth'] = total_withdrawn_eth
                         except (ValueError, TypeError) as e:
                             logger.warning(f"解析余额失败 {t.pubkey[:10]}...: balance={balance_gwei_str}, effective={effective_balance_gwei_str}, error={e}")
                             tx_dict['balance_eth'] = None
@@ -1033,5 +1054,99 @@ async def get_batch_contract_statistics(
         raise
     except Exception as e:
         logger.error(f"获取 Batch Deposit 合约统计数据失败: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/deposits/batch-contract/{contract_id}/deposits")
+async def get_contract_deposits(
+    contract_id: int,
+    limit: int = Query(100, ge=1, le=1000),
+    offset: int = Query(0, ge=0),
+    db: Session = Depends(get_db)
+):
+    """
+    获取通过该 Batch 合约进行的存款记录列表
+    """
+    try:
+        # 获取合约信息
+        contract = db.query(BatchDepositContract).filter(
+            BatchDepositContract.id == contract_id
+        ).first()
+        
+        if not contract:
+            raise HTTPException(status_code=404, detail=f"合约不存在: {contract_id}")
+        
+        contract_address = contract.contract_address.lower()
+        
+        # 查询通过该合约的存款交易
+        from app.services.network_service import NetworkService
+        
+        # 获取 RPC URL
+        network_service = NetworkService()
+        rpc_endpoints = network_service.get_rpc_endpoints()
+        rpc_url = rpc_endpoints.get("rpc_url") or contract.rpc_url
+        
+        if not rpc_url:
+            from app.config import settings
+            rpc_url = settings.execution_rpc_url
+        
+        deposit_records = []
+        
+        # 查询所有有 batch_id 的交易
+        deposits = db.query(DepositTransaction).filter(
+            DepositTransaction.batch_id.isnot(None)
+        ).order_by(
+            DepositTransaction.submitted_at.desc()
+        ).limit(limit * 2).all()
+        
+        # 如果有 RPC URL，验证哪些交易确实是发送到该合约的
+        if rpc_url:
+            try:
+                web3 = Web3(Web3.HTTPProvider(rpc_url))
+                if web3.is_connected():
+                    verified_tx_hashes = set()
+                    for deposit in deposits:
+                        try:
+                            tx = web3.eth.get_transaction(deposit.tx_hash)
+                            if tx and tx.to and tx.to.lower() == contract_address:
+                                verified_tx_hashes.add(deposit.tx_hash)
+                        except Exception:
+                            # 如果无法验证，假设是（为了兼容性）
+                            verified_tx_hashes.add(deposit.tx_hash)
+                    
+                    deposits = [d for d in deposits if d.tx_hash in verified_tx_hashes]
+            except Exception as e:
+                logger.warning(f"无法通过 Web3 验证交易: {e}")
+        
+        # 按交易哈希分组
+        tx_groups: Dict[str, List[DepositTransaction]] = {}
+        for deposit in deposits[offset:offset+limit]:
+            if deposit.tx_hash not in tx_groups:
+                tx_groups[deposit.tx_hash] = []
+            tx_groups[deposit.tx_hash].append(deposit)
+        
+        # 构建返回数据
+        for tx_hash, deposit_list in tx_groups.items():
+            total_amount = sum(float(d.amount_eth) for d in deposit_list)
+            deposit_records.append({
+                "tx_hash": tx_hash,
+                "batch_id": deposit_list[0].batch_id,
+                "validator_count": len(deposit_list),
+                "total_amount_eth": total_amount,
+                "submitted_at": deposit_list[0].submitted_at.isoformat() if deposit_list[0].submitted_at else None,
+                "confirmed_at": deposit_list[0].confirmed_at.isoformat() if deposit_list[0].confirmed_at else None,
+                "block_number": deposit_list[0].block_number,
+                "status": deposit_list[0].status,
+            })
+        
+        return {
+            "total": len(deposit_records),
+            "items": deposit_records
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"获取合约存款记录失败: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
 

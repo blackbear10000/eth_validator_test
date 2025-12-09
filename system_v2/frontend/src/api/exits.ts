@@ -43,5 +43,10 @@ export const exitsApi = {
   // 移除已退出密钥
   removeKey: (pubkey: string) =>
     apiClient.delete(`/exits/${pubkey}/remove-key`),
+
+  // 获取退出记录列表
+  getExitRecords: async (params?: { pubkey?: string; status?: string; limit?: number; offset?: number }) => {
+    return apiClient.get('/exits/records', { params })
+  },
 }
 

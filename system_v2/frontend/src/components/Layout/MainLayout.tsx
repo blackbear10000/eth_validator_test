@@ -1,5 +1,5 @@
 import React from 'react'
-import { Layout, Menu } from 'antd'
+import { Layout, Menu, Dropdown, Button, Space } from 'antd'
 import { useNavigate, useLocation } from 'react-router-dom'
 import {
   DashboardOutlined,
@@ -11,7 +11,10 @@ import {
   CloudServerOutlined,
   FileTextOutlined,
   SafetyOutlined,
+  UserOutlined,
+  LogoutOutlined,
 } from '@ant-design/icons'
+import { useAuthStore } from '../../stores/authStore'
 import MetaMaskConnect from '../MetaMask/MetaMaskConnect'
 
 const { Sider, Header } = Layout
@@ -23,13 +26,35 @@ interface MainLayoutProps {
 const MainLayout: React.FC<MainLayoutProps> = ({ children }) => {
   const navigate = useNavigate()
   const location = useLocation()
+  const { user, logout } = useAuthStore()
+  const isAdmin = user?.role === 'admin'
 
-  const menuItems = [
+  // 所有用户都可以访问的菜单
+  const commonMenuItems = [
     {
       key: '/',
       icon: <DashboardOutlined />,
       label: '仪表板',
     },
+    {
+      key: '/deposits',
+      icon: <BankOutlined />,
+      label: '存款管理',
+    },
+    {
+      key: '/exits',
+      icon: <ExportOutlined />,
+      label: '退出管理',
+    },
+    {
+      key: '/withdrawals',
+      icon: <WalletOutlined />,
+      label: '取款管理',
+    },
+  ]
+
+  // 仅管理员可以访问的菜单
+  const adminMenuItems = [
     {
       key: '/keys',
       icon: <KeyOutlined />,
@@ -39,11 +64,6 @@ const MainLayout: React.FC<MainLayoutProps> = ({ children }) => {
       key: '/contracts',
       icon: <FileTextOutlined />,
       label: '合约管理',
-    },
-    {
-      key: '/deposits',
-      icon: <BankOutlined />,
-      label: '存款管理',
     },
     {
       key: '/clients',
@@ -61,14 +81,42 @@ const MainLayout: React.FC<MainLayoutProps> = ({ children }) => {
       label: 'Web3Signer 监控',
     },
     {
-      key: '/exits',
-      icon: <ExportOutlined />,
-      label: '退出管理',
+      key: '/admin',
+      icon: <UserOutlined />,
+      label: '管理员面板',
+    },
+  ]
+
+  const menuItems = isAdmin 
+    ? [...commonMenuItems, ...adminMenuItems]
+    : commonMenuItems
+
+  const handleLogout = () => {
+    logout()
+    navigate('/login')
+  }
+
+  const userMenuItems = [
+    {
+      key: 'user-info',
+      label: (
+        <div>
+          <div>{user?.username || user?.wallet_address?.substring(0, 10) + '...'}</div>
+          <div style={{ fontSize: '12px', color: '#999' }}>
+            {user?.role === 'admin' ? '管理员' : '普通用户'}
+          </div>
+        </div>
+      ),
+      disabled: true,
     },
     {
-      key: '/withdrawals',
-      icon: <WalletOutlined />,
-      label: '取款管理',
+      type: 'divider' as const,
+    },
+    {
+      key: 'logout',
+      icon: <LogoutOutlined />,
+      label: '登出',
+      onClick: handleLogout,
     },
   ]
 
@@ -86,8 +134,13 @@ const MainLayout: React.FC<MainLayoutProps> = ({ children }) => {
         />
       </Sider>
       <Layout>
-        <Header style={{ background: '#fff', padding: '0 24px', display: 'flex', justifyContent: 'flex-end', alignItems: 'center' }}>
-          <MetaMaskConnect />
+        <Header style={{ background: '#fff', padding: '0 24px', display: 'flex', justifyContent: 'flex-end', alignItems: 'center', gap: '16px' }}>
+          {!isAdmin && <MetaMaskConnect />}
+          <Dropdown menu={{ items: userMenuItems }} placement="bottomRight">
+            <Button type="text" icon={<UserOutlined />} style={{ display: 'flex', alignItems: 'center' }}>
+              {user?.username || user?.wallet_address?.substring(0, 10) + '...'}
+            </Button>
+          </Dropdown>
         </Header>
         {children}
       </Layout>
