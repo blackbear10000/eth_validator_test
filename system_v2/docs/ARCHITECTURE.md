@@ -11,35 +11,48 @@
 
 ## 核心组件
 
-### 1. 密钥管理
+### 1. 用户认证与权限控制
+- **认证方式**: 
+  - 普通用户：MetaMask 钱包签名（Web3 签名验证）
+  - 管理员：用户名密码（bcrypt 哈希）
+- **Token 管理**: JWT Token，存储在 HTTP-only Cookie
+- **权限控制**: 基于角色的访问控制（RBAC）
+  - `admin`: 管理员，可访问所有功能
+  - `user`: 普通用户，仅可访问部分功能
+- **审计日志**: 自动记录所有写操作（POST/PUT/DELETE）
+
+### 2. 密钥管理
 - **存储架构**: 私钥存储在 Vault，元数据存储在 PostgreSQL
 - **密钥生成**: 使用 ethstaker-deposit-cli 官方工具
 - **状态管理**: 完整的状态流转机制
 
-### 2. 存款管理
+### 3. 存款管理
 - **Deposit Data 生成**: 支持动态绑定 0x01 类型提款地址
 - **批量提交**: 集成 Batch Deposit Contract，自动分批处理
+- **用户绑定**: 存款记录关联用户 ID，支持用户维度的收益查询
 
-### 3. Web3Signer 集成
+### 4. Web3Signer 集成
 - **高可用架构**: 双实例 + HAProxy
 - **零停机更新**: 轮转更新机制
 
-### 4. 状态同步
+### 5. 状态同步
 - **定期同步**: 每 1 个 epoch 从 Beacon Chain API 同步
 - **实时同步**: 存款提交后立即查询
 
-### 5. 端点发现
+### 6. 端点发现
 - **动态端点发现**: 从 Kurtosis 网络自动解析 RPC、WebSocket 和 Beacon API 端点
 - **端口映射**: 通过 `host.docker.internal` 访问主机端口映射
 - **降级策略**: 端点不可用时回退到配置的默认值
 
 ## 数据流
 
-1. **密钥生成** → Vault (私钥) + PostgreSQL (元数据)
-2. **激活密钥** → 更新 PostgreSQL 状态
-3. **生成 Deposit Data** → 从 Vault 读取私钥签名
-4. **提交存款** → Batch Deposit Contract
-5. **状态同步** → Beacon Chain API → PostgreSQL
+1. **用户认证** → JWT Token → Cookie 存储
+2. **密钥生成** → Vault (私钥) + PostgreSQL (元数据)
+3. **激活密钥** → 更新 PostgreSQL 状态
+4. **生成 Deposit Data** → 从 Vault 读取私钥签名
+5. **提交存款** → Batch Deposit Contract → 关联用户 ID
+6. **状态同步** → Beacon Chain API → PostgreSQL
+7. **操作审计** → 所有写操作自动记录到 audit_logs 表
 
 ## 端点发现流程
 

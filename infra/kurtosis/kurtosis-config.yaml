@@ -15,17 +15,17 @@ participants:
     vc_type: lighthouse
     # 不加 geth 专参
 
-  # # 3) Geth × Lighthouse —— 常规 HTTP API
-  # - el_type: geth
-  #   cl_type: lighthouse
-  #   vc_type: lighthouse
-  #   el_extra_params:
-  #     - "--http.api=admin,engine,net,eth,web3,debug,txpool"
+  # 3) Erigon × Lighthouse —— 新增，给 Blockscout / 调试用
+  - el_type: erigon
+    cl_type: lighthouse
+    vc_type: lighthouse
+    # 如果只想要“全节点”而不是完整 archive，可显式改成 full
+    # el_storage_type: "full"     # 默认 erigon 是 archive，比较吃盘
 
-  # # 4) Reth × Prysm —— 常规
-  # - el_type: reth
-  #   cl_type: prysm
-  #   vc_type: prysm
+    # 暴露 JSON-RPC 能力，适配 erigon 的参数
+    el_extra_params:
+      - "--http.addr=0.0.0.0"
+      - "--http.api=eth,debug,net,trace,web3,erigon,txpool"
 
 # ⬆️ 不固定镜像：省略 el_image/cl_image/vc_image，让包使用其测试过的默认镜像组合
 # ⬆️ 不加 el_extra_params：避免把 geth 专属参数误用到 reth
@@ -72,4 +72,10 @@ mev_type: null
 additional_services:
   - prometheus_grafana
   - forkmon
-  - dora
+  - dora  
+  - blockscout
+
+blockscout_params:
+  image: "ghcr.io/blockscout/blockscout:latest"
+  verif_image: "ghcr.io/blockscout/smart-contract-verifier:latest"
+  frontend_image: "ghcr.io/blockscout/frontend:latest"
