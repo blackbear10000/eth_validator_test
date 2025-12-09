@@ -6,10 +6,28 @@ import os
 import subprocess
 import json
 import logging
+import re
 from typing import Dict, Any, Optional, Tuple
 from pathlib import Path
 
 logger = logging.getLogger(__name__)
+
+
+def strip_ansi_codes(text: str) -> str:
+    """
+    移除 ANSI 颜色代码
+    
+    Args:
+        text: 包含 ANSI 代码的文本
+        
+    Returns:
+        清理后的文本
+    """
+    if not text:
+        return text
+    # 移除 ANSI 转义序列（颜色代码等）
+    ansi_escape = re.compile(r'\x1B(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])')
+    return ansi_escape.sub('', text)
 
 
 class KurtosisService:
@@ -611,8 +629,28 @@ class KurtosisService:
                 "error": f"Config file not found: {self.config_file}"
             }
         
+        # 如果 enclave 存在但未运行（EMPTY 或 STOPPED 状态），先清理
+        if status.get("status") in ["stopped", "empty"] and status.get("enclave_name") == self.enclave_name:
+            logger.info(f"检测到 enclave '{self.enclave_name}' 存在但未运行，先清理...")
+            cleanup_success, cleanup_stdout, cleanup_stderr = self._run_kurtosis_command([
+                "enclave", "rm", self.enclave_name
+            ], timeout=60)
+            
+            if not cleanup_success:
+                # 尝试强制移除
+                logger.warning(f"普通移除失败，尝试强制移除: {cleanup_stderr[:200]}")
+                cleanup_success, cleanup_stdout, cleanup_stderr = self._run_kurtosis_command([
+                    "enclave", "rm", self.enclave_name, "--force"
+                ], timeout=60)
+            
+            if cleanup_success:
+                logger.info(f"Enclave '{self.enclave_name}' 已清理，准备重新创建")
+            else:
+                logger.warning(f"清理 enclave 失败，但继续尝试启动: {cleanup_stderr[:200]}")
+        
         # 启动 enclave
         # 注意：kurtosis run 命令可能需要较长时间（几分钟）
+        logger.info(f"执行 kurtosis run 命令，这可能需要几分钟...")
         success, stdout, stderr = self._run_kurtosis_command([
             "run",
             "github.com/ethpandaops/ethereum-package",
@@ -621,17 +659,35 @@ class KurtosisService:
         ], timeout=600)  # 10 分钟超时
         
         if success:
+            logger.info(f"Enclave '{self.enclave_name}' 启动成功")
             return {
                 "success": True,
                 "message": f"Enclave '{self.enclave_name}' 启动成功",
                 "output": stdout
             }
         else:
+            # 清理 ANSI 颜色代码
+            clean_stdout = strip_ansi_codes(stdout) if stdout else ""
+            clean_stderr = strip_ansi_codes(stderr) if stderr else ""
+            
+            # 改进错误信息显示，包含完整的 stdout 和 stderr
+            error_msg = f"启动失败"
+            if clean_stderr:
+                error_msg += f": {clean_stderr[-1000:]}"  # 显示最后 1000 字符
+            elif clean_stdout:
+                # 如果 stderr 为空，可能错误信息在 stdout 中
+                error_msg += f": {clean_stdout[-1000:]}"  # 显示最后 1000 字符
+            
+            logger.error(f"启动失败 - stdout (最后 1000 字符): {clean_stdout[-1000:]}")
+            logger.error(f"启动失败 - stderr (最后 1000 字符): {clean_stderr[-1000:]}")
+            
             return {
                 "success": False,
-                "message": f"启动失败: {stderr}",
-                "error": stderr,
-                "output": stdout
+                "message": error_msg,
+                "error": clean_stderr[-2000:] if clean_stderr else clean_stdout[-2000:],  # 显示最后 2000 字符
+                "output": clean_stdout[-2000:],  # 保留 stdout 的最后 2000 字符
+                "full_stderr": clean_stderr,  # 保留完整的 stderr（已清理 ANSI 代码）
+                "full_stdout": clean_stdout[-5000:]  # 保留 stdout 的最后 5000 字符
             }
     
     def stop(self) -> Dict[str, Any]:

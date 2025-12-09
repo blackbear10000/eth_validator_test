@@ -92,7 +92,14 @@ async def start_network():
     try:
         result = kurtosis_service.start()
         if not result.get("success"):
-            raise HTTPException(status_code=500, detail=result.get("message", "启动失败"))
+            # 改进错误信息，包含更多详细信息
+            error_detail = result.get("message", "启动失败")
+            if result.get("error"):
+                error_detail += f"\n错误详情: {result.get('error')[:500]}"
+            if result.get("full_stderr"):
+                error_detail += f"\n完整错误输出: {result.get('full_stderr')[-1000:]}"
+            logger.error(f"启动失败: {error_detail}")
+            raise HTTPException(status_code=500, detail=error_detail)
         return result
     except HTTPException:
         raise
