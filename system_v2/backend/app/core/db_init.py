@@ -51,11 +51,23 @@ def init_database(force_recreate: bool = False) -> bool:
                         'validator_client_keys',
                         'deposit_transactions',
                         'withdrawal_events',
-                        'batch_deposit_contracts'
+                        'batch_deposit_contracts',
+                        'users',  # 用户表
+                        'audit_logs',  # 审计日志表
+                        'exit_records'  # 退出记录表
                     ]
                     missing_tables = [t for t in required_tables if t not in existing_tables]
                     if not missing_tables:
-                        logger.info("所有关键表已存在，无需初始化")
+                        logger.info("所有关键表已存在，检查是否有新表需要创建...")
+                        # 即使所有关键表都存在，也调用 create_all 以确保新表被创建
+                        # create_all 只会创建不存在的表，不会影响已存在的表
+                        Base.metadata.create_all(engine)
+                        # 再次检查是否有新表被创建
+                        inspector = inspect(engine)
+                        updated_tables = inspector.get_table_names()
+                        if len(updated_tables) > len(existing_tables):
+                            new_tables = [t for t in updated_tables if t not in existing_tables]
+                            logger.info(f"创建了新表: {', '.join(new_tables)}")
                         return True
                     else:
                         logger.info(f"缺少表: {', '.join(missing_tables)}，将创建缺失的表")
@@ -76,7 +88,10 @@ def init_database(force_recreate: bool = False) -> bool:
                 'validator_client_keys',
                 'deposit_transactions',
                 'withdrawal_events',
-                'batch_deposit_contracts'
+                'batch_deposit_contracts',
+                'users',  # 用户表
+                'audit_logs',  # 审计日志表
+                'exit_records'  # 退出记录表
             ]
             missing_tables = [t for t in required_tables if t not in created_tables]
             if missing_tables:
@@ -116,7 +131,10 @@ def check_database_schema() -> dict:
             'validator_client_keys',
             'deposit_transactions',
             'withdrawal_events',
-            'batch_deposit_contracts'
+            'batch_deposit_contracts',
+            'users',  # 用户表
+            'audit_logs',  # 审计日志表
+            'exit_records'  # 退出记录表
         ]
         
         return {
