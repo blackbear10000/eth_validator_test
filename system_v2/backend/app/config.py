@@ -70,8 +70,8 @@ class Settings(BaseSettings):
     jwt_access_token_expire_minutes: int = 60 * 24 * 7  # 7 days
     
     # 管理员账户配置
-    admin_username: str = os.getenv("ADMIN_USERNAME", "admin")
-    admin_password: str = os.getenv("ADMIN_PASSWORD", "admin123456")
+    admin_username: str = os.getenv("ADMIN_USERNAME", "admin").strip()
+    admin_password: str = os.getenv("ADMIN_PASSWORD", "admin123456").strip()
     
     class Config:
         env_file = ".env"

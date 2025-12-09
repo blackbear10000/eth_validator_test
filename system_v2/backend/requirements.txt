@@ -43,6 +43,7 @@ structlog>=23.2.0
 
 # Authentication & Security
 passlib[bcrypt]>=1.7.4
+bcrypt>=3.2.0,<4.0.0  # 固定 bcrypt 版本，避免与 passlib 不兼容
 python-jose[cryptography]>=3.3.0
 python-multipart>=0.0.6
 
