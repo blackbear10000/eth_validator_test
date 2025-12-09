@@ -10,7 +10,8 @@
 #      ./cleanup_kurtosis_enclave.sh eth-devnet
 #
 
-set -e
+# 不使用 set -e，因为某些命令可能会失败（如停止 EMPTY 状态的 enclave）
+# set -e
 
 ENCLAVE_NAME="${1:-eth-devnet}"
 USE_DOCKER="${2:-}"
@@ -57,20 +58,42 @@ echo "1. 检查 enclave 状态..."
 if $KURTOSIS_CMD enclave ls | grep -q "$ENCLAVE_NAME"; then
     echo "   ✓ Enclave '$ENCLAVE_NAME' 存在于列表中"
     
-    # 显示详细信息
+    # 显示详细信息并检查状态
     echo ""
     echo "2. Enclave 详细信息:"
     echo "----------------------------------------"
-    $KURTOSIS_CMD enclave inspect "$ENCLAVE_NAME" || echo "   ⚠ 无法获取详细信息（可能是异常状态）"
+    INSPECT_OUTPUT=$($KURTOSIS_CMD enclave inspect "$ENCLAVE_NAME" 2>&1 || echo "")
+    echo "$INSPECT_OUTPUT"
     echo "----------------------------------------"
     echo ""
     
-    # 2. 尝试停止 enclave
-    echo "3. 尝试停止 enclave..."
-    if $KURTOSIS_CMD enclave stop "$ENCLAVE_NAME" 2>/dev/null; then
-        echo "   ✓ Enclave 已停止"
+    # 检查 enclave 状态
+    ENCLAVE_STATUS=""
+    if echo "$INSPECT_OUTPUT" | grep -q "Status:"; then
+        ENCLAVE_STATUS=$(echo "$INSPECT_OUTPUT" | grep "Status:" | head -1 | sed 's/.*Status:[[:space:]]*//' | tr -d '[:space:]')
+        echo "   检测到状态: $ENCLAVE_STATUS"
+    fi
+    
+    # 2. 根据状态决定操作
+    echo ""
+    echo "3. 处理 enclave..."
+    if [ "$ENCLAVE_STATUS" = "EMPTY" ] || [ "$ENCLAVE_STATUS" = "STOPPED" ]; then
+        echo "   ℹ Enclave 状态为 $ENCLAVE_STATUS，跳过停止步骤（无法停止非运行状态的 enclave）"
+        echo "   直接尝试移除..."
     else
-        echo "   ⚠ 停止失败或 enclave 已经停止"
+        echo "   尝试停止 enclave..."
+        STOP_OUTPUT=$($KURTOSIS_CMD enclave stop "$ENCLAVE_NAME" 2>&1)
+        STOP_EXIT_CODE=$?
+        
+        if [ $STOP_EXIT_CODE -eq 0 ]; then
+            echo "   ✓ Enclave 已停止"
+        elif echo "$STOP_OUTPUT" | grep -q "EnclaveContainersStatus_EMPTY\|can't create an enclave context from a non-running enclave"; then
+            echo "   ℹ Enclave 状态为 EMPTY，无法停止（这是正常的）"
+            echo "   直接尝试移除..."
+        else
+            echo "   ⚠ 停止失败: $STOP_OUTPUT"
+            echo "   尝试继续移除..."
+        fi
     fi
     echo ""
     

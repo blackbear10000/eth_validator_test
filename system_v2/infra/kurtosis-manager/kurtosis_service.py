@@ -644,11 +644,42 @@ class KurtosisService:
         # 检查是否在运行
         status = self.get_status()
         if not status.get("is_running"):
-            return {
-                "success": True,
-                "message": f"Enclave '{self.enclave_name}' 未运行",
-                "status": status
-            }
+            # 如果 enclave 未运行（EMPTY 或 STOPPED 状态），直接尝试移除
+            logger.info(f"Enclave '{self.enclave_name}' 未运行，直接尝试移除")
+            
+            # 尝试移除 enclave
+            success, stdout, stderr = self._run_kurtosis_command([
+                "enclave", "rm", self.enclave_name
+            ], timeout=60)
+            
+            if success:
+                return {
+                    "success": True,
+                    "message": f"Enclave '{self.enclave_name}' 已移除（状态: {status.get('status', 'unknown')}）",
+                    "output": stdout
+                }
+            else:
+                # 检查是否是"无法停止 EMPTY 状态"的错误
+                if "EnclaveContainersStatus_EMPTY" in stderr or "can't create an enclave context from a non-running enclave" in stderr:
+                    # 尝试强制移除
+                    logger.info(f"Enclave 状态为 EMPTY，尝试强制移除")
+                    success, stdout, stderr = self._run_kurtosis_command([
+                        "enclave", "rm", self.enclave_name, "--force"
+                    ], timeout=60)
+                    
+                    if success:
+                        return {
+                            "success": True,
+                            "message": f"Enclave '{self.enclave_name}' 已强制移除",
+                            "output": stdout
+                        }
+                
+                return {
+                    "success": False,
+                    "message": f"移除失败: {stderr}",
+                    "error": stderr,
+                    "status": status
+                }
         
         logger.info(f"停止 Kurtosis enclave: {self.enclave_name}")
         
@@ -658,6 +689,21 @@ class KurtosisService:
         ], timeout=120)
         
         if not success:
+            # 检查是否是 EMPTY 状态的错误
+            if "EnclaveContainersStatus_EMPTY" in stderr or "can't create an enclave context from a non-running enclave" in stderr:
+                logger.warning(f"无法停止 EMPTY 状态的 enclave，直接尝试移除")
+                # 直接尝试移除
+                success, stdout, stderr = self._run_kurtosis_command([
+                    "enclave", "rm", self.enclave_name
+                ], timeout=60)
+                
+                if success:
+                    return {
+                        "success": True,
+                        "message": f"Enclave '{self.enclave_name}' 已移除（状态为 EMPTY，跳过停止步骤）",
+                        "output": stdout
+                    }
+            
             return {
                 "success": False,
                 "message": f"停止失败: {stderr}",

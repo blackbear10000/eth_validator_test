@@ -52,7 +52,31 @@ docker exec kurtosis-manager kurtosis enclave ls
 docker exec kurtosis-manager kurtosis enclave inspect eth-devnet
 ```
 
-### 问题 2: Enclave 异常状态
+### 问题 2: 无法停止 EMPTY 状态的 Enclave
+
+**错误信息**：
+```
+Error: Enclave containers status was 'EnclaveContainersStatus_EMPTY', 
+but we can't create an enclave context from a non-running enclave
+```
+
+**原因**：Kurtosis 无法停止状态为 `EMPTY` 的 enclave，因为无法从非运行的 enclave 创建上下文。
+
+**解决方案**：
+
+对于 `EMPTY` 状态的 enclave，应该直接移除，而不是停止：
+
+```bash
+# 直接移除 EMPTY 状态的 enclave（跳过停止步骤）
+kurtosis enclave rm eth-devnet
+
+# 如果移除失败，尝试强制移除
+kurtosis enclave rm eth-devnet --force
+```
+
+**注意**：清理脚本和 Python 服务已自动处理这种情况，会检测状态并跳过停止步骤。
+
+### 问题 3: Enclave 异常状态
 
 当 Kurtosis enclave 处于异常状态（如非正常关闭）时，可能会出现以下情况：
 - `kurtosis enclave ls` 能查到 enclave
