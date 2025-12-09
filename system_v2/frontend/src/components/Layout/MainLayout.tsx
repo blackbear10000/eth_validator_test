@@ -135,7 +135,8 @@ const MainLayout: React.FC<MainLayoutProps> = ({ children }) => {
       </Sider>
       <Layout>
         <Header style={{ background: '#fff', padding: '0 24px', display: 'flex', justifyContent: 'flex-end', alignItems: 'center', gap: '16px' }}>
-          {!isAdmin && <MetaMaskConnect />}
+          {/* 所有用户（包括管理员）都可以连接 MetaMask */}
+          <MetaMaskConnect />
           <Dropdown menu={{ items: userMenuItems }} placement="bottomRight">
             <Button type="text" icon={<UserOutlined />} style={{ display: 'flex', alignItems: 'center' }}>
               {user?.username || user?.wallet_address?.substring(0, 10) + '...'}
