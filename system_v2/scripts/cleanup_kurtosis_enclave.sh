@@ -3,33 +3,71 @@
 # Kurtosis Enclave 清理脚本
 # 用于清理异常状态的 Kurtosis enclave
 #
+# 使用说明：
+#   1. 如果 kurtosis-manager 在 Docker 容器中运行，可以通过容器执行：
+#      docker exec kurtosis-manager bash /path/to/cleanup_kurtosis_enclave.sh eth-devnet
+#   2. 或者在主机上直接运行（推荐）：
+#      ./cleanup_kurtosis_enclave.sh eth-devnet
+#
 
 set -e
 
 ENCLAVE_NAME="${1:-eth-devnet}"
+USE_DOCKER="${2:-}"
 
 echo "=========================================="
 echo "Kurtosis Enclave 清理脚本"
 echo "Enclave 名称: $ENCLAVE_NAME"
+if [ -n "$USE_DOCKER" ]; then
+    echo "执行方式: 通过 Docker 容器 ($USE_DOCKER)"
+else
+    echo "执行方式: 主机直接执行"
+fi
 echo "=========================================="
+echo ""
+
+# 检查是否在容器内或需要通过容器执行
+if [ -n "$USE_DOCKER" ]; then
+    KURTOSIS_CMD="docker exec $USE_DOCKER kurtosis"
+    DOCKER_CMD="docker"
+    echo "使用 Docker 容器执行命令..."
+else
+    # 检查 kurtosis 命令是否可用
+    if ! command -v kurtosis &> /dev/null; then
+        echo "⚠ Kurtosis CLI 未在主机上安装"
+        echo "尝试通过 kurtosis-manager 容器执行..."
+        if docker ps | grep -q kurtosis-manager; then
+            echo "找到 kurtosis-manager 容器，使用容器执行..."
+            KURTOSIS_CMD="docker exec kurtosis-manager kurtosis"
+            DOCKER_CMD="docker"
+        else
+            echo "❌ 无法找到 kurtosis-manager 容器，请手动指定容器名称"
+            echo "用法: $0 $ENCLAVE_NAME <container_name>"
+            exit 1
+        fi
+    else
+        KURTOSIS_CMD="kurtosis"
+        DOCKER_CMD="docker"
+    fi
+fi
 echo ""
 
 # 1. 检查 enclave 是否存在
 echo "1. 检查 enclave 状态..."
-if kurtosis enclave ls | grep -q "$ENCLAVE_NAME"; then
+if $KURTOSIS_CMD enclave ls | grep -q "$ENCLAVE_NAME"; then
     echo "   ✓ Enclave '$ENCLAVE_NAME' 存在于列表中"
     
     # 显示详细信息
     echo ""
     echo "2. Enclave 详细信息:"
     echo "----------------------------------------"
-    kurtosis enclave inspect "$ENCLAVE_NAME" || echo "   ⚠ 无法获取详细信息（可能是异常状态）"
+    $KURTOSIS_CMD enclave inspect "$ENCLAVE_NAME" || echo "   ⚠ 无法获取详细信息（可能是异常状态）"
     echo "----------------------------------------"
     echo ""
     
     # 2. 尝试停止 enclave
     echo "3. 尝试停止 enclave..."
-    if kurtosis enclave stop "$ENCLAVE_NAME" 2>/dev/null; then
+    if $KURTOSIS_CMD enclave stop "$ENCLAVE_NAME" 2>/dev/null; then
         echo "   ✓ Enclave 已停止"
     else
         echo "   ⚠ 停止失败或 enclave 已经停止"
@@ -38,22 +76,26 @@ if kurtosis enclave ls | grep -q "$ENCLAVE_NAME"; then
     
     # 3. 移除 enclave
     echo "4. 移除 enclave..."
-    if kurtosis enclave rm "$ENCLAVE_NAME" 2>/dev/null; then
+    if $KURTOSIS_CMD enclave rm "$ENCLAVE_NAME" 2>/dev/null; then
         echo "   ✓ Enclave 已移除"
     else
         echo "   ⚠ 移除失败，尝试强制移除..."
         # 尝试强制移除
-        kurtosis enclave rm "$ENCLAVE_NAME" --force 2>/dev/null || echo "   ✗ 强制移除也失败"
+        $KURTOSIS_CMD enclave rm "$ENCLAVE_NAME" --force 2>/dev/null || echo "   ✗ 强制移除也失败"
     fi
     echo ""
     
     # 4. 验证移除结果
     echo "5. 验证移除结果..."
-    if kurtosis enclave ls | grep -q "$ENCLAVE_NAME"; then
+    if $KURTOSIS_CMD enclave ls | grep -q "$ENCLAVE_NAME"; then
         echo "   ⚠ Enclave 仍在列表中，可能需要手动清理 Docker 容器"
         echo ""
         echo "   尝试查找相关的 Docker 容器:"
-        docker ps -a | grep -i kurtosis | grep -i "$ENCLAVE_NAME" || echo "   未找到相关容器"
+        $DOCKER_CMD ps -a | grep -i kurtosis | grep -i "$ENCLAVE_NAME" || echo "   未找到相关容器"
+        echo ""
+        echo "   提示：如果 enclave 仍然存在，可以尝试："
+        echo "   1. 重启 kurtosis-manager 容器: docker restart kurtosis-manager"
+        echo "   2. 手动清理相关容器（见文档）"
     else
         echo "   ✓ Enclave 已成功移除"
     fi
