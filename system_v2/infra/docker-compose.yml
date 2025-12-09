@@ -191,6 +191,8 @@ services:
     container_name: backend
     ports:
       - "8001:8000"
+    env_file:
+      - .env
     environment:
       - DATABASE_URL=postgresql://postgres:password@postgres:5432/validator_db
       - VAULT_URL=http://vault-1:8200
@@ -204,6 +206,9 @@ services:
       - KURTOSIS_MANAGER_URL=http://host.docker.internal:8002
       # INFRA_DIR: docker-compose.yml 所在目录的绝对路径（用于解析客户端配置文件路径）
       - INFRA_DIR=${PWD}
+      # 管理员账户配置（从 .env 文件读取）
+      - ADMIN_USERNAME=${ADMIN_USERNAME:-admin}
+      - ADMIN_PASSWORD=${ADMIN_PASSWORD:-admin123456}
     volumes:
       - ../backend:/app
       - ../code/external:/app/external:ro

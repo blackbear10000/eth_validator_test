@@ -53,39 +53,51 @@ docker logs vault-1 -f
 - **数据库创建**：PostgreSQL healthcheck 会自动创建 `validator_db` 数据库
 - **Vault 初始化**：Vault 容器启动时会自动初始化并解锁，KV v2 引擎会在后端首次连接时自动启用
 
-### 4. 创建管理员账户
+### 4. 配置管理员账户
 
-首次部署后，需要创建管理员账户才能访问管理功能：
+管理员账户可以通过环境变量自动创建。编辑 `infra/.env` 文件：
 
-```python
-# 方法1: 使用 Python 脚本
-cd backend
-python3 -c "
-from app.services.auth_service import AuthService
-from app.dependencies import SessionLocal
-from app.utils.auth import get_password_hash
+```bash
+# 管理员账户配置
+ADMIN_USERNAME=admin
+ADMIN_PASSWORD=your_secure_password_here
 
-db = SessionLocal()
-from app.models.database import User
-admin = User(
-    username='admin',
-    password_hash=get_password_hash('your_password'),
-    role='admin'
-)
-db.add(admin)
-db.commit()
-print('管理员账户创建成功')
-db.close()
-"
+# JWT 配置（生产环境建议修改）
+# JWT_SECRET_KEY=your-secret-key-change-in-production
 ```
 
-或者使用 SQL：
+**重要说明**：
+- 首次启动时，如果管理员账户不存在，系统会自动创建
+- 默认用户名：`admin`，默认密码：`admin123456`
+- **生产环境请务必修改默认密码！**
+- `.env` 文件已添加到 `.gitignore`，不会被提交到 Git
 
-```sql
--- 方法2: 直接使用 SQL（需要先获取密码哈希）
--- 密码哈希可以使用 Python 生成: from app.utils.auth import get_password_hash
-INSERT INTO users (username, password_hash, role)
-VALUES ('admin', '$2b$12$...', 'admin');
+如果 `.env` 文件不存在，可以复制 `.env.example`：
+```bash
+cd infra
+cp .env.example .env
+# 然后编辑 .env 文件修改密码
+```
+
+**手动创建管理员账户（可选）**：
+
+如果环境变量配置失败，也可以手动创建：
+
+```python
+# 使用 Python 脚本
+docker exec -it backend python3 -c "
+from app.services.auth_service import AuthService
+from app.dependencies import SessionLocal
+
+db = SessionLocal()
+auth_service = AuthService(db)
+admin = auth_service.create_admin_user('admin', 'your_password')
+if admin:
+    print('管理员账户创建成功')
+else:
+    print('管理员账户已存在或创建失败')
+db.close()
+"
 ```
 
 ### 5. 验证服务（可选）

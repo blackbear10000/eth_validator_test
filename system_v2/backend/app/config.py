@@ -64,6 +64,15 @@ class Settings(BaseSettings):
     log_level: str = "INFO"
     log_format: str = "json"
     
+    # JWT 配置
+    jwt_secret_key: str = os.getenv("JWT_SECRET_KEY", "super-secret-key-change-in-production")
+    jwt_algorithm: str = "HS256"
+    jwt_access_token_expire_minutes: int = 60 * 24 * 7  # 7 days
+    
+    # 管理员账户配置
+    admin_username: str = os.getenv("ADMIN_USERNAME", "admin")
+    admin_password: str = os.getenv("ADMIN_PASSWORD", "admin123456")
+    
     class Config:
         env_file = ".env"
         env_file_encoding = "utf-8"

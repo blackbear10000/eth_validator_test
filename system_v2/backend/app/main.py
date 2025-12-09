@@ -206,6 +206,42 @@ async def startup_event():
         logger.error(traceback.format_exc())
         raise
     
+    # 4. 确保管理员账户存在
+    logger.info("检查管理员账户...")
+    try:
+        from app.services.auth_service import AuthService
+        from app.dependencies import SessionLocal
+        from app.models.database import User
+        
+        db = SessionLocal()
+        auth_service = AuthService(db)
+        
+        # 检查管理员账户是否存在
+        existing_admin = db.query(User).filter(
+            User.username == settings.admin_username,
+            User.role == "admin"
+        ).first()
+        
+        if not existing_admin:
+            logger.info(f"管理员账户不存在，正在创建: {settings.admin_username}")
+            admin = auth_service.create_admin_user(
+                settings.admin_username,
+                settings.admin_password
+            )
+            if admin:
+                logger.info(f"✓ 管理员账户创建成功: {settings.admin_username}")
+            else:
+                logger.warning(f"管理员账户创建失败（可能已存在）")
+        else:
+            logger.info(f"管理员账户已存在: {settings.admin_username}")
+        
+        db.close()
+    except Exception as e:
+        logger.error(f"检查/创建管理员账户失败: {e}")
+        import traceback
+        logger.error(traceback.format_exc())
+        # 不抛出异常，允许应用继续启动
+    
     logger.info("初始化后台任务...")
     try:
         await start_background_tasks()
