@@ -3,9 +3,13 @@
 
 participants:
   # 1) Geth × Prysm —— 作为归档 + 调试/追踪节点（便于接 Blockscout）
+  # 指定兼容的 Geth 版本（支持 --override.genesis 参数）
+  # 新版本的 Geth 可能移除了该参数，所以需要指定旧版本
   - el_type: geth
     cl_type: prysm
     vc_type: prysm
+    # 指定兼容的 Geth 版本（v1.13.x 系列支持 override.genesis）
+    el_image: ethereum/client-go:v1.13.15
     el_extra_params:
       - "--http.api=admin,engine,net,eth,web3,debug,txpool"
 
