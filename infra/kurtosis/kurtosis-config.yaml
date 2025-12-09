@@ -27,8 +27,12 @@ participants:
 
     # 暴露 JSON-RPC 能力，适配 erigon 的参数
     el_extra_params:
+      - "--http"                    # 确保 http 开启
       - "--http.addr=0.0.0.0"
-      - "--http.api=eth,debug,net,trace,web3,erigon,txpool"
+      - "--http.port=8545"          # 端口按需要改，不和别的 EL 冲突就行
+      - "--http.vhosts=*"
+      - "--http.corsdomain=*"
+      - "--http.api=eth,net,web3,debug,trace,txpool,erigon,engine,admin"
 
 # ⬆️ 不固定镜像：省略 el_image/cl_image/vc_image，让包使用其测试过的默认镜像组合
 # ⬆️ 不加 el_extra_params：避免把 geth 专属参数误用到 reth
