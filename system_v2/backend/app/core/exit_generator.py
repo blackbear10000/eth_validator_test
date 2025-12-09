@@ -120,18 +120,18 @@ class ExitGenerator:
                     fork_schedule = beacon_api.get_fork_schedule()
                     if isinstance(fork_schedule, dict) and 'data' in fork_schedule:
                         fork_schedule_data = fork_schedule['data']
-                        # 查找 Capella fork（按名称或版本格式）
+                        # 查找 Capella fork
+                        # Capella fork version 通常是 0x40000038（根据 network-config.yaml）
+                        # 在 fork schedule 中，Capella 是 current_version 为 0x40000038 的条目
                         for fork in fork_schedule_data:
-                            fork_version_val = fork.get('version')
-                            fork_name = fork.get('name', '').lower()
-                            if fork_version_val:
-                                # 检查是否是 Capella fork（名称包含 capella 或版本是 0x4...）
-                                if 'capella' in fork_name or (fork_version_val.startswith('0x4') and len(fork_version_val.replace('0x', '')) == 8):
-                                    capella_version_clean = fork_version_val.replace('0x', '').lower()
-                                    if len(capella_version_clean) == 8:
-                                        exit_fork_version_hex = '0x' + capella_version_clean
-                                        logger.info(f"从 fork schedule 获取 Capella fork version: {exit_fork_version_hex}，用作 EXIT_FORK_VERSION")
-                                        break
+                            current_version = fork.get('current_version')
+                            if current_version:
+                                current_version_clean = current_version.replace('0x', '').lower()
+                                # Capella fork version 是 0x40000038（第一个字符是 4）
+                                if len(current_version_clean) == 8 and current_version_clean[0] == '4':
+                                    exit_fork_version_hex = '0x' + current_version_clean
+                                    logger.info(f"从 fork schedule 获取 Capella fork version: {exit_fork_version_hex}，用作 EXIT_FORK_VERSION")
+                                    break
                 except Exception as e:
                     logger.debug(f"无法从 fork schedule 获取 Capella fork version: {e}")
                 
