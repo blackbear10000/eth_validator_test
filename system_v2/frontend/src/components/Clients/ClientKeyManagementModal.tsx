@@ -124,14 +124,18 @@ const ClientKeyManagementModal: React.FC<ClientKeyManagementModalProps> = ({
     }
   }
 
-  const handleAddKeys = async () => {
-    if (!client || selectedKeys.length === 0) return
+  const handleAddKeys = async (keysToAdd?: string[]) => {
+    if (!client) return
+    
+    const keys = keysToAdd || selectedKeys
+    if (keys.length === 0) return
 
     setAddingKeys(true)
     try {
-      await clientsApi.assignKeys(client.id, selectedKeys)
-      message.success(`成功分配 ${selectedKeys.length} 个密钥`)
+      await clientsApi.assignKeys(client.id, keys)
+      message.success(`成功分配 ${keys.length} 个密钥`)
       setSelectedKeys([])
+      setBatchSelectCount(0)
       await loadData()
       onRefresh?.()
     } catch (error: any) {
@@ -445,24 +449,42 @@ const ClientKeyManagementModal: React.FC<ClientKeyManagementModalProps> = ({
             <Space>
               <InputNumber
                 min={0}
-                max={availableKeys.filter((k: any) => k.status === 'deposited' || k.status === 'pending').length}
+                max={availableKeys.length}
                 value={batchSelectCount}
-                onChange={(value) => setBatchSelectCount(value || 0)}
-                placeholder="输入数量"
-                style={{ width: 150 }}
+                onChange={(value) => {
+                  const count = value || 0
+                  setBatchSelectCount(count)
+                  // 自动选择相应数量的可用密钥
+                  if (count > 0 && availableKeys.length > 0) {
+                    const keysToSelect = availableKeys
+                      .slice(0, count)
+                      .map((k: any) => k.pubkey)
+                    setSelectedKeys(keysToSelect)
+                    // 如果选择了密钥，自动提交
+                    if (keysToSelect.length > 0) {
+                      handleAddKeys(keysToSelect)
+                    }
+                  } else {
+                    setSelectedKeys([])
+                  }
+                }}
+                placeholder="输入数量（自动选择并提交）"
+                style={{ width: 200 }}
               />
               <Button
                 onClick={() => {
-                  const depositedKeys = availableKeys
-                    .filter((k: any) => k.status === 'deposited' || k.status === 'pending')
-                    .slice(0, batchSelectCount)
-                    .map((k: any) => k.pubkey)
-                  setSelectedKeys(depositedKeys)
-                  message.success(`已自动选择 ${depositedKeys.length} 个已提交存款的密钥`)
+                  if (selectedKeys.length > 0) {
+                    handleAddKeys()
+                  } else {
+                    message.warning('请先选择密钥')
+                  }
                 }}
-                disabled={batchSelectCount <= 0}
+                type="primary"
+                icon={<PlusOutlined />}
+                disabled={selectedKeys.length === 0}
+                loading={addingKeys}
               >
-                批量导入已提交存款的密钥
+                添加已选择的密钥 ({selectedKeys.length})
               </Button>
               <span style={{ color: '#999', fontSize: '12px' }}>
                 可用密钥: {availableKeys.length} 个（已排除被其他运行中客户端使用的密钥）
