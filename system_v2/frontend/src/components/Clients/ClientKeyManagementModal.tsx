@@ -452,7 +452,17 @@ const ClientKeyManagementModal: React.FC<ClientKeyManagementModalProps> = ({
                 max={availableKeys.length}
                 value={batchSelectCount}
                 onChange={(value) => {
-                  const count = value || 0
+                  // 处理 null 或 undefined 的情况
+                  // 注意：当输入框被清空时，value 可能是 null，但我们不应该立即设置为0
+                  if (value === null || value === undefined) {
+                    // 如果输入框被清空，保持当前值不变（不更新状态）
+                    return
+                  }
+                  const count = Number(value)
+                  // 确保 count 是有效数字
+                  if (isNaN(count) || count < 0) {
+                    return
+                  }
                   setBatchSelectCount(count)
                   // 自动选择相应数量的可用密钥
                   if (count > 0 && availableKeys.length > 0) {
@@ -460,31 +470,64 @@ const ClientKeyManagementModal: React.FC<ClientKeyManagementModalProps> = ({
                       .slice(0, count)
                       .map((k: any) => k.pubkey)
                     setSelectedKeys(keysToSelect)
-                    // 如果选择了密钥，自动提交
-                    if (keysToSelect.length > 0) {
-                      handleAddKeys(keysToSelect)
-                    }
-                  } else {
+                  } else if (count === 0) {
+                    // 明确输入0时清空选择
                     setSelectedKeys([])
                   }
                 }}
-                placeholder="输入数量（自动选择并提交）"
+                onPressEnter={(e) => {
+                  // 按回车键时，如果有输入数量，自动提交
+                  if (batchSelectCount > 0 && availableKeys.length > 0) {
+                    const keysToSelect = availableKeys
+                      .slice(0, batchSelectCount)
+                      .map((k: any) => k.pubkey)
+                    if (keysToSelect.length > 0) {
+                      handleAddKeys(keysToSelect)
+                    }
+                  }
+                }}
+                onBlur={(e) => {
+                  // 失去焦点时，如果当前值为 null 或 undefined，恢复之前的值
+                  // 这样可以防止用户输入数字后，失去焦点时数字变为0
+                  if (batchSelectCount === null || batchSelectCount === undefined) {
+                    // 如果当前值为空，但之前有选择，保持选择状态
+                    if (selectedKeys.length > 0) {
+                      // 根据已选择的密钥数量恢复输入框的值
+                      setBatchSelectCount(selectedKeys.length)
+                    }
+                  } else if (batchSelectCount > 0 && availableKeys.length > 0) {
+                    // 确保选择状态与输入值一致
+                    const keysToSelect = availableKeys
+                      .slice(0, batchSelectCount)
+                      .map((k: any) => k.pubkey)
+                    setSelectedKeys(keysToSelect)
+                  }
+                }}
+                placeholder="输入数量（自动选择）"
                 style={{ width: 200 }}
               />
               <Button
                 onClick={() => {
                   if (selectedKeys.length > 0) {
                     handleAddKeys()
+                  } else if (batchSelectCount > 0 && availableKeys.length > 0) {
+                    // 如果 selectedKeys 为空但 batchSelectCount 有值，先选择再提交
+                    const keysToSelect = availableKeys
+                      .slice(0, batchSelectCount)
+                      .map((k: any) => k.pubkey)
+                    if (keysToSelect.length > 0) {
+                      handleAddKeys(keysToSelect)
+                    }
                   } else {
-                    message.warning('请先选择密钥')
+                    message.warning('请先输入数量或选择密钥')
                   }
                 }}
                 type="primary"
                 icon={<PlusOutlined />}
-                disabled={selectedKeys.length === 0}
+                disabled={selectedKeys.length === 0 && (batchSelectCount === 0 || batchSelectCount === null || batchSelectCount === undefined)}
                 loading={addingKeys}
               >
-                添加已选择的密钥 ({selectedKeys.length})
+                添加密钥 ({selectedKeys.length || batchSelectCount || 0})
               </Button>
               <span style={{ color: '#999', fontSize: '12px' }}>
                 可用密钥: {availableKeys.length} 个（已排除被其他运行中客户端使用的密钥）
@@ -511,4 +554,5 @@ const ClientKeyManagementModal: React.FC<ClientKeyManagementModalProps> = ({
 }
 
 export default ClientKeyManagementModal
+
 
