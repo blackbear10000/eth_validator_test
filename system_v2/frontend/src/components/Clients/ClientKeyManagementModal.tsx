@@ -96,8 +96,9 @@ const ClientKeyManagementModal: React.FC<ClientKeyManagementModalProps> = ({
 
       // 加载可用密钥列表（用于添加）
       // 使用新的 API，自动排除已被其他运行中客户端使用的密钥
+      // 不传 status 参数，返回所有已提交状态的密钥（PENDING, DEPOSITED, ACTIVE_ON_CHAIN）
       try {
-        const availableResult = await clientsApi.getAvailableKeys(client.id, 'deposited', 1000) as any
+        const availableResult = await clientsApi.getAvailableKeys(client.id, undefined, 1000) as any
         setAvailableKeys(availableResult.items || [])
       } catch (error: any) {
         // 如果新 API 失败，降级使用旧方法
