@@ -154,14 +154,11 @@ class DepositManagementService:
             logger.debug(f"未提供 fork_version，使用 chain_setting.GENESIS_FORK_VERSION: {chain_fork_version_hex}")
         
         # 获取要生成 Deposit Data 的密钥
-        # 允许重新生成的状态：ACTIVE, DEPOSIT_DATA_GENERATED, PENDING, DEPOSITED
-        # 不允许的状态：ACTIVE_ON_CHAIN, EXITED, SLASHED, PENDING_EXIT（已激活上链或已退出）
+        # 只允许已激活、未被提交的密钥：ACTIVE, DEPOSIT_DATA_GENERATED
+        # 不允许的状态：PENDING, DEPOSITED, UNKNOWN（已提交）, ACTIVE_ON_CHAIN, EXITED, SLASHED, PENDING_EXIT（已激活上链或已退出）
         allowed_statuses = [
             ValidatorKeyStatus.ACTIVE.value,
             ValidatorKeyStatus.DEPOSIT_DATA_GENERATED.value,
-            ValidatorKeyStatus.PENDING.value,
-            ValidatorKeyStatus.DEPOSITED.value,
-            ValidatorKeyStatus.UNKNOWN.value,  # 交易在内存池中，也可以重新生成
         ]
         
         if pubkeys:

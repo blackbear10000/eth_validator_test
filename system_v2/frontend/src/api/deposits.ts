@@ -58,6 +58,7 @@ export interface DepositTransaction {
 export const depositsApi = {
   // 生成 Deposit Data
   generate: (params: {
+    count?: number
     pubkeys?: string[]
     withdrawal_address: string
     amount_eth?: number

@@ -4,6 +4,7 @@
 import logging
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
+from sqlalchemy import func
 from typing import List, Dict
 
 from app.dependencies import get_db
@@ -55,9 +56,13 @@ async def generate_deposit_data(
 ):
     """生成 Deposit Data"""
     try:
+        # 优先使用 count，如果提供了 pubkeys 则使用 pubkeys
+        count = request.count if request.count else None
+        pubkeys = request.pubkeys if request.pubkeys and len(request.pubkeys) > 0 else None
+        
         deposit_data_list = deposit_service.generate_deposit_data_for_active_keys(
-            count=len(request.pubkeys) if request.pubkeys and len(request.pubkeys) > 0 else None,
-            pubkeys=request.pubkeys if request.pubkeys and len(request.pubkeys) > 0 else None,
+            count=count,
+            pubkeys=pubkeys,
             withdrawal_address=request.withdrawal_address,
             amount_eth=request.amount_eth or 32.0,
             fork_version=request.fork_version if request.fork_version else None,
@@ -409,7 +414,8 @@ async def submit_deposits(
 @router.get("/deposits", response_model=List[DepositTransactionResponse])
 async def list_deposits(
     deposit_service: DepositManagementService = Depends(get_deposit_service),
-    include_balance: bool = Query(False, description="是否包含验证者余额和收益信息")
+    include_balance: bool = Query(False, description="是否包含验证者余额和收益信息"),
+    db: Session = Depends(get_db)
 ):
     """列出存款交易"""
     try:

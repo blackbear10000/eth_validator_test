@@ -569,18 +569,29 @@ async def get_available_keys(
 ):
     """
     获取可用于分配给该客户端的密钥列表
+    只返回已提交的密钥（PENDING, DEPOSITED, ACTIVE_ON_CHAIN）
     排除已被其他运行中客户端使用的密钥
     """
     try:
         from app.models.database import ClientInstance, ValidatorKey, ValidatorClientKey
+        from app.models.enums import ValidatorKeyStatus
         
         client = db.query(ClientInstance).filter(ClientInstance.id == client_id).first()
         if not client:
             raise HTTPException(status_code=404, detail="客户端不存在")
         
-        # 获取所有密钥
-        query = db.query(ValidatorKey)
+        # 只获取已提交的密钥：PENDING, DEPOSITED, ACTIVE_ON_CHAIN
+        allowed_statuses = [
+            ValidatorKeyStatus.PENDING.value,
+            ValidatorKeyStatus.DEPOSITED.value,
+            ValidatorKeyStatus.ACTIVE_ON_CHAIN.value,
+        ]
         
+        query = db.query(ValidatorKey).filter(
+            ValidatorKey.status.in_(allowed_statuses)
+        )
+        
+        # 如果提供了 status 参数，则在此基础上进一步筛选
         if status:
             query = query.filter(ValidatorKey.status == status)
         

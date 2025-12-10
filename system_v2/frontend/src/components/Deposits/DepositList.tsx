@@ -113,6 +113,7 @@ const DepositList: React.FC = () => {
   }
 
   const handleGenerate = async (values: {
+    count?: number
     pubkeys?: string[]
     withdrawal_address: string
     amount_eth?: number
@@ -125,8 +126,10 @@ const DepositList: React.FC = () => {
         withdrawal_address: values.withdrawal_address,
       }
       
-      // 只有当 pubkeys 不为空时才添加
-      if (values.pubkeys && values.pubkeys.length > 0) {
+      // 优先使用 count，如果提供了 pubkeys 则使用 pubkeys
+      if (values.count && values.count > 0) {
+        cleanedValues.count = values.count
+      } else if (values.pubkeys && values.pubkeys.length > 0) {
         cleanedValues.pubkeys = values.pubkeys
       }
       
@@ -460,7 +463,7 @@ const DepositList: React.FC = () => {
       render: (index: number | null) => (index !== null && index !== undefined ? index.toLocaleString() : '-'),
     },
     {
-      title: '余额 (ETH)',
+      title: '当前余额 (ETH)',
       dataIndex: 'balance_eth',
       key: 'balance_eth',
       width: 120,
@@ -471,18 +474,6 @@ const DepositList: React.FC = () => {
               {balance.toFixed(4)}
             </span>
           )
-        }
-        return '-'
-      },
-    },
-    {
-      title: '有效余额 (ETH)',
-      dataIndex: 'effective_balance_eth',
-      key: 'effective_balance_eth',
-      width: 130,
-      render: (effectiveBalance: number | null | undefined) => {
-        if (effectiveBalance !== null && effectiveBalance !== undefined) {
-          return effectiveBalance.toFixed(4)
         }
         return '-'
       },
@@ -628,13 +619,28 @@ const DepositList: React.FC = () => {
       >
         <Form form={form} layout="vertical" onFinish={handleGenerate}>
           <Form.Item
+            name="count"
+            label="生成数量（可选，与选择密钥二选一）"
+            help="输入数量后，系统将自动选择相应数量的、已激活的、未被提交的密钥"
+            rules={[
+              { type: 'number', min: 1, max: 10000, message: '数量必须在 1-10000 之间' },
+            ]}
+          >
+            <InputNumber
+              style={{ width: '100%' }}
+              placeholder="请输入要生成的 Deposit Data 数量"
+              min={1}
+              max={10000}
+            />
+          </Form.Item>
+          <Form.Item
             name="pubkeys"
-            label="选择密钥（可选，不选则使用所有可用的密钥）"
-            help="可以选择已生成存款数据但未提交或未激活上链的密钥，系统将重新生成 Deposit Data"
+            label="选择密钥（可选，与生成数量二选一）"
+            help="可以选择已激活、未被提交的密钥，系统将重新生成 Deposit Data"
           >
             <Select
               mode="multiple"
-              placeholder="请选择密钥，留空则使用所有可用的密钥（未激活上链的密钥）"
+              placeholder="请选择密钥（留空则使用数量输入）"
               showSearch
               filterOption={(input, option) => {
                 const children = option?.children as string | undefined
@@ -650,13 +656,13 @@ const DepositList: React.FC = () => {
                   'unknown': '未知状态',
                 }
                 const statusLabel = statusText[key.status?.toLowerCase()] || key.status
-                const canRegenerate = ['deposit_data_generated', 'pending', 'deposited', 'unknown'].includes(key.status?.toLowerCase())
+                const canRegenerate = ['active', 'deposit_data_generated'].includes(key.status?.toLowerCase())
                 
                 return (
                   <Option key={key.pubkey} value={key.pubkey}>
                     <span>
                       {key.pubkey.slice(0, 20)}... ({statusLabel}
-                      {canRegenerate && <span style={{ color: '#faad14', marginLeft: 4 }}>可重新生成</span>})
+                      {canRegenerate && <span style={{ color: '#faad14', marginLeft: 4 }}>可生成</span>})
                     </span>
                   </Option>
                 )
@@ -1000,21 +1006,11 @@ const DepositList: React.FC = () => {
                 {selectedDeposit.exit_epoch.toLocaleString()}
               </Descriptions.Item>
             )}
-            {selectedDeposit.effective_balance_gwei !== null && selectedDeposit.effective_balance_gwei !== undefined && (
-              <Descriptions.Item label="有效余额">
-                {(selectedDeposit.effective_balance_gwei / 1e9).toFixed(4)} ETH ({selectedDeposit.effective_balance_gwei.toLocaleString()} Gwei)
-              </Descriptions.Item>
-            )}
             {selectedDeposit.balance_eth !== null && selectedDeposit.balance_eth !== undefined && (
               <Descriptions.Item label="当前余额">
                 <span style={{ color: selectedDeposit.balance_eth >= 32 ? '#3f8600' : '#cf1322', fontWeight: 'bold' }}>
                   {selectedDeposit.balance_eth.toFixed(4)} ETH
                 </span>
-              </Descriptions.Item>
-            )}
-            {selectedDeposit.effective_balance_eth !== null && selectedDeposit.effective_balance_eth !== undefined && (
-              <Descriptions.Item label="当前有效余额">
-                {selectedDeposit.effective_balance_eth.toFixed(4)} ETH
               </Descriptions.Item>
             )}
             {selectedDeposit.earnings_eth !== null && selectedDeposit.earnings_eth !== undefined && (

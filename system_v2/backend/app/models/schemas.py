@@ -62,7 +62,8 @@ class BatchActivateKeys(BaseModel):
 
 class DepositDataGenerate(BaseModel):
     """生成 Deposit Data 请求"""
-    pubkeys: Optional[List[str]] = Field(default=None, description="验证者公钥列表（可选，不提供则使用所有激活的密钥）")
+    pubkeys: Optional[List[str]] = Field(default=None, description="验证者公钥列表（可选，与 count 二选一）")
+    count: Optional[int] = Field(default=None, ge=1, description="生成数量（可选，与 pubkeys 二选一，自动选择已激活、未被提交的密钥）")
     withdrawal_address: str = Field(..., description="0x01 类型提款地址")
     fork_version: Optional[str] = Field(default=None, description="Fork version（可选，如果为空则自动检测）")
     network_name: Optional[str] = Field(default="kurtosis", description="网络名称（默认：kurtosis）")
