@@ -106,6 +106,7 @@ services:
     volumes:
       - ./web3signer/config:/config:ro
       - ./web3signer/keys:/keys:ro
+      - ../../infra/kurtosis:/kurtosis-config:ro  # 挂载网络配置文件
     networks:
       - validator_network
     depends_on:
@@ -116,6 +117,7 @@ services:
     command: >
       --config-file=/config/config.yaml
       eth2
+      --network-config=/kurtosis-config/network-config.yaml
       --slashing-protection-db-url=jdbc:postgresql://postgres:5432/web3signer
       --slashing-protection-db-username=postgres
       --slashing-protection-db-password=password
@@ -138,6 +140,7 @@ services:
     volumes:
       - ./web3signer/config:/config:ro
       - ./web3signer/keys:/keys:ro
+      - ../../infra/kurtosis:/kurtosis-config:ro  # 挂载网络配置文件
     networks:
       - validator_network
     depends_on:
@@ -148,6 +151,7 @@ services:
     command: >
       --config-file=/config/config.yaml
       eth2
+      --network-config=/kurtosis-config/network-config.yaml
       --slashing-protection-db-url=jdbc:postgresql://postgres:5432/web3signer
       --slashing-protection-db-username=postgres
       --slashing-protection-db-password=password

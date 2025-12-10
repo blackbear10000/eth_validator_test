@@ -22,7 +22,7 @@ must match signing computed signing root 0xa782346bec9f1b591acdd837875105e6cf364
 
 ### 可能的原因
 
-1. **网络配置不匹配**
+1. **网络配置不匹配** ⚠️ **最可能的原因**
    - Validator Client 和 Web3Signer 使用的网络配置不一致
    - Fork version、genesis_validators_root 等参数不匹配
 
@@ -53,123 +53,114 @@ python scripts/verify_vault_key.py <pubkey> --check-path
 - 验证私钥与公钥是否匹配
 - 检查 Vault 路径和存储格式
 
-### 2. 检查 Web3Signer 配置
+### 2. 检查 Validator Client 网络配置
+
+使用网络配置检查脚本：
+
+```bash
+# 检查所有 Validator Client 的网络配置
+python scripts/check_validator_network_config.py
+
+# 检查特定容器
+python scripts/check_validator_network_config.py --container <container-name>
+```
+
+脚本会检查：
+- `network-config.yaml` 文件是否存在和内容
+- 容器是否正确挂载了网络配置文件
+- 启动命令是否包含 `--chain-config-file` 参数
+- Fork version 是否与 Beacon API 一致
+
+### 3. 手动检查容器配置
+
+```bash
+# 1. 查找 Validator Client 容器
+docker ps | grep -E "validator|prysm|lighthouse|teku"
+
+# 2. 检查容器内的网络配置文件
+docker exec <container-name> ls -la /network-config.yaml
+
+# 3. 查看文件内容
+docker exec <container-name> cat /network-config.yaml | head -50
+
+# 4. 检查启动命令
+docker exec <container-name> ps aux | grep -E "chain-config|network-config"
+
+# 5. 检查挂载点
+docker inspect <container-name> | grep -A 10 "Mounts"
+```
+
+### 4. 检查 Beacon API 网络信息
+
+```bash
+# 检查 fork 信息
+curl http://localhost:5052/eth/v1/beacon/states/head/fork
+
+# 检查 genesis 信息
+curl http://localhost:5052/eth/v1/beacon/genesis
+
+# 检查网络配置
+curl http://localhost:5052/eth/v1/config/spec
+```
+
+### 5. 检查 Web3Signer 配置
 
 ```bash
 # 查看 Web3Signer 中的密钥列表
 curl http://localhost:9002/api/v1/eth2/publicKeys
 
-# 查看特定密钥的配置（如果 Web3Signer 支持）
-curl http://localhost:9002/api/v1/eth2/publicKeys/<pubkey>
+# 查看 Web3Signer 日志
+docker logs web3signer-1 | tail -50
+docker logs web3signer-2 | tail -50
 ```
 
-### 3. 检查 Validator Client 配置
-
-检查 Validator Client 的网络配置：
-- Fork version
-- Genesis validators root
-- 网络类型（mainnet/testnet/kurtosis）
-
-### 4. 检查 Web3Signer 配置文件
+### 6. 检查 network-config.yaml 文件
 
 ```bash
-# 查看 Web3Signer 密钥配置文件
-ls -la infra/web3signer/keys/
+# 查看文件内容
+cat infra/kurtosis/network-config.yaml | head -60
 
-# 查看特定密钥的配置
-cat infra/web3signer/keys/vault-<pubkey前16字符>.yaml
-```
-
-配置文件应该包含：
-- `type: "hashicorp"`
-- `keyType: "BLS"`
-- `keyPath: "/v1/secret/data/web3signer-keys/<pubkey>"`
-- `keyName: "value"`
-- `token: "<vault_token>"`
-
-### 5. 验证 Vault 中的密钥存储
-
-使用 Vault CLI 或 API：
-
-```bash
-# 使用 Vault CLI
-vault kv get secret/web3signer-keys/<pubkey>
-
-# 或使用 HTTP API
-curl \
-  --header "X-Vault-Token: <token>" \
-  http://localhost:8200/v1/secret/data/web3signer-keys/<pubkey>
-```
-
-应该返回：
-```json
-{
-  "data": {
-    "data": {
-      "value": "<64字符的私钥十六进制字符串>"
-    }
-  }
-}
-```
-
-### 6. 测试签名请求
-
-手动构造一个签名请求来测试：
-
-```bash
-curl -X POST http://localhost:9002/api/v1/eth2/sign/<pubkey> \
-  -H "Content-Type: application/json" \
-  -d '{
-    "type": "BLOCK",
-    "fork_info": {
-      "fork": {
-        "previous_version": "0x00000000",
-        "current_version": "0x00000000",
-        "epoch": "0"
-      },
-      "genesis_validators_root": "0x0000000000000000000000000000000000000000000000000000000000000000"
-    },
-    "signingRoot": "0x0000000000000000000000000000000000000000000000000000000000000000"
-  }'
+# 检查关键参数
+grep -E "GENESIS_FORK_VERSION|CONFIG_NAME|PRESET_BASE" infra/kurtosis/network-config.yaml
 ```
 
 ## 常见问题和解决方案
 
-### 问题1: 私钥与公钥不匹配
+### 问题1: network-config.yaml 未挂载
 
-**症状**：验证脚本显示私钥与公钥不匹配
-
-**解决方案**：
-1. 检查密钥生成过程是否正确
-2. 确认 Vault 中存储的是正确的私钥
-3. 重新生成密钥配置
-
-### 问题2: Vault 路径不正确
-
-**症状**：无法从 Vault 读取密钥
+**症状**：容器内 `/network-config.yaml` 文件不存在
 
 **解决方案**：
-1. 检查 Web3Signer 配置文件中的 `keyPath`
-2. 确认 Vault mount point 和 key path prefix 配置正确
-3. 验证 Vault token 是否有效
+1. 检查 `client_process_service.py` 中的挂载逻辑
+2. 确认 `infra/kurtosis/network-config.yaml` 文件存在
+3. 重新启动 Validator Client 容器
 
-### 问题3: 网络配置不匹配
+### 问题2: Fork Version 不匹配
 
-**症状**：签名根不匹配，但密钥验证正常
-
-**解决方案**：
-1. 检查 Validator Client 的网络配置
-2. 检查 Web3Signer 的网络配置
-3. 确认 fork version 和 genesis_validators_root 一致
-
-### 问题4: Vault Token 过期
-
-**症状**：Web3Signer 无法访问 Vault
+**症状**：`network-config.yaml` 中的 fork version 与 Beacon API 不一致
 
 **解决方案**：
-1. 检查 Vault token 是否过期
-2. 重新生成 Web3Signer 配置文件（会自动刷新 token）
-3. 重启 Web3Signer 以加载新配置
+1. 从 Beacon API 获取实际的 fork version
+2. 更新 `network-config.yaml` 文件
+3. 重启 Validator Client
+
+### 问题3: Genesis Validators Root 不匹配
+
+**症状**：签名根不匹配，但 fork version 正确
+
+**解决方案**：
+1. `genesis_validators_root` 在创世时确定，无法修改
+2. 确认 Validator Client 和 Web3Signer 使用相同的网络
+3. 如果网络已启动，可能需要重新启动网络以获取正确的 genesis_validators_root
+
+### 问题4: Validator Client 未使用网络配置文件
+
+**症状**：启动命令中没有 `--chain-config-file` 参数
+
+**解决方案**：
+1. 检查 `client_process_service.py` 中的 `_build_container_command` 方法
+2. 确认 Prysm 启动命令包含 `--chain-config-file /network-config.yaml`
+3. 重新生成客户端配置并重启
 
 ## 调试命令总结
 
@@ -177,17 +168,46 @@ curl -X POST http://localhost:9002/api/v1/eth2/sign/<pubkey> \
 # 1. 验证 Vault 密钥
 python scripts/verify_vault_key.py <pubkey>
 
-# 2. 检查 Web3Signer 密钥列表
+# 2. 检查网络配置
+python scripts/check_validator_network_config.py
+
+# 3. 检查 Web3Signer 密钥列表
 curl http://localhost:9002/api/v1/eth2/publicKeys
 
-# 3. 检查 Vault 存储
-vault kv get secret/web3signer-keys/<pubkey>
+# 4. 检查 Beacon API 网络信息
+curl http://localhost:5052/eth/v1/beacon/states/head/fork
+curl http://localhost:5052/eth/v1/beacon/genesis
 
-# 4. 查看 Web3Signer 日志
-docker logs web3signer-1
-docker logs web3signer-2
+# 5. 检查容器配置
+docker exec <container-name> cat /network-config.yaml | head -30
+docker exec <container-name> ps aux | grep chain-config
 
-# 5. 查看 Validator Client 日志
-docker logs <validator-client-container>
+# 6. 查看日志
+docker logs <validator-container> | tail -100
+docker logs web3signer-1 | tail -100
 ```
 
+## 重点排查项
+
+根据你的情况（Web3Signer 和 Vault 都正常），**最可能的问题是网络配置不匹配**：
+
+1. ✅ **检查 Validator Client 是否加载了 network-config.yaml**
+   ```bash
+   docker exec <container-name> cat /network-config.yaml
+   docker exec <container-name> ps aux | grep chain-config-file
+   ```
+
+2. ✅ **检查 network-config.yaml 中的 fork version**
+   ```bash
+   grep GENESIS_FORK_VERSION infra/kurtosis/network-config.yaml
+   ```
+
+3. ✅ **从 Beacon API 获取实际的网络参数**
+   ```bash
+   curl http://localhost:5052/eth/v1/beacon/states/head/fork
+   curl http://localhost:5052/eth/v1/beacon/genesis
+   ```
+
+4. ✅ **比较两者是否一致**
+
+如果 fork version 或 genesis_validators_root 不匹配，Validator Client 计算出的签名根就会与 Web3Signer 期望的不一致。
