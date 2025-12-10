@@ -84,10 +84,5 @@ additional_services:
 
 blockscout_params:
   image: "ghcr.io/blockscout/blockscout:latest"
-  verif_image: "ghcr.io/blockscout/smart-contract-verifier:latest"
+  # verif_image: "ghcr.io/blockscout/smart-contract-verifier:latest"
   frontend_image: "ghcr.io/blockscout/frontend:latest"
-  env:
-    # 配置 verifier 连接到 Blockscout API
-    # 注意：verifier 服务名是 blockscout-verif，Blockscout 主服务名是 blockscout
-    SMART_CONTRACT_VERIFIER__BLOCKSCOUT__API__URL: "http://blockscout:4000"
-  
