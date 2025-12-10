@@ -439,7 +439,7 @@ const ClientKeyManagementModal: React.FC<ClientKeyManagementModalProps> = ({
               <Button
                 type="primary"
                 icon={<PlusOutlined />}
-                onClick={handleAddKeys}
+                onClick={() => handleAddKeys()}
                 loading={addingKeys}
                 disabled={selectedKeys.length === 0}
               >
@@ -475,7 +475,7 @@ const ClientKeyManagementModal: React.FC<ClientKeyManagementModalProps> = ({
                     setSelectedKeys([])
                   }
                 }}
-                onPressEnter={(e) => {
+                onPressEnter={() => {
                   // 按回车键时，如果有输入数量，自动提交
                   if (batchSelectCount > 0 && availableKeys.length > 0) {
                     const keysToSelect = availableKeys
@@ -486,7 +486,7 @@ const ClientKeyManagementModal: React.FC<ClientKeyManagementModalProps> = ({
                     }
                   }
                 }}
-                onBlur={(e) => {
+                onBlur={() => {
                   // 失去焦点时，如果当前值为 null 或 undefined，恢复之前的值
                   // 这样可以防止用户输入数字后，失去焦点时数字变为0
                   if (batchSelectCount === null || batchSelectCount === undefined) {
