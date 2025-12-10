@@ -117,7 +117,7 @@ services:
     command: >
       --config-file=/config/config.yaml
       eth2
-      --network-config=/kurtosis-config/network-config.yaml
+      --network=/kurtosis-config/network-config.yaml
       --slashing-protection-db-url=jdbc:postgresql://postgres:5432/web3signer
       --slashing-protection-db-username=postgres
       --slashing-protection-db-password=password
@@ -151,7 +151,7 @@ services:
     command: >
       --config-file=/config/config.yaml
       eth2
-      --network-config=/kurtosis-config/network-config.yaml
+      --network=/kurtosis-config/network-config.yaml
       --slashing-protection-db-url=jdbc:postgresql://postgres:5432/web3signer
       --slashing-protection-db-username=postgres
       --slashing-protection-db-password=password

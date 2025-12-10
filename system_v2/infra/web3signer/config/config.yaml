@@ -19,6 +19,6 @@ metrics-host: "0.0.0.0"
 metrics-port: 9001
 
 # Network settings
-# 网络配置通过命令行参数 --network-config 指定，使用 network-config.yaml
+# 网络配置通过命令行参数 --network 指定，使用 network-config.yaml
 # 已删除 eth2.network: "mainnet"，避免与自定义网络配置冲突
 
