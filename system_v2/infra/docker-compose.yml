@@ -4,7 +4,7 @@ services:
     image: hashicorp/consul:1.21.5
     container_name: consul
     ports:
-      - "8500:8500"
+      - "8501:8501"
     environment:
       - CONSUL_BIND_INTERFACE=eth0
     command: >
@@ -36,7 +36,7 @@ services:
       - VAULT_AUTO_RESET=true
       # Optional: Set VAULT_UNSEAL_KEY if you have the unseal key (overrides auto-reset)
       # - VAULT_UNSEAL_KEY=your-unseal-key-here
-      - CONSUL_ADDR=consul:8500
+      - CONSUL_ADDR=consul:8501
     cap_add:
       - IPC_LOCK
     volumes:
