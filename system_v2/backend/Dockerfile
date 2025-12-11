@@ -12,6 +12,7 @@ RUN apt-get update && apt-get install -y \
     ca-certificates \
     gnupg \
     lsb-release \
+    wget \
     && curl -fsSL https://deb.nodesource.com/setup_20.x | bash - \
     && apt-get install -y nodejs \
     && install -m 0755 -d /etc/apt/keyrings \
@@ -24,6 +25,17 @@ RUN apt-get update && apt-get install -y \
     && apt-get install -y docker-cli \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
+
+# 预安装 Solidity 编译器 0.8.29（从 GitHub releases 下载，避免 solc-bin.ethereum.org 的 Cloudflare 403 错误）
+# solcx 会在 ~/.solcx 目录下查找已安装的版本
+RUN SOLC_VERSION="0.8.29" && \
+    SOLCX_DIR="/root/.solcx" && \
+    mkdir -p $SOLCX_DIR && \
+    wget -q "https://github.com/ethereum/solidity/releases/download/v${SOLC_VERSION}/solc-static-linux" -O "${SOLCX_DIR}/solc-v${SOLC_VERSION}" && \
+    chmod +x "${SOLCX_DIR}/solc-v${SOLC_VERSION}" && \
+    # 验证安装
+    "${SOLCX_DIR}/solc-v${SOLC_VERSION}" --version && \
+    echo "✅ Solidity 编译器 ${SOLC_VERSION} 已预安装到 ${SOLCX_DIR}"
 
 # 复制依赖文件
 COPY requirements.txt .

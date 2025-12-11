@@ -45,6 +45,7 @@ class BatchDepositDeployer:
         self.web3 = web3
         self.deployer_account = Account.from_key(deployer_private_key)
         self.deployer_address = self.deployer_account.address
+        self._preinstalled_solc_path = None  # 存储预安装的 solc 路径（如果 solcx 无法识别）
         
         # 注意：solc 版本将在获取源代码后根据 pragma 语句动态安装
     
@@ -95,21 +96,53 @@ class BatchDepositDeployer:
         """
         try:
             if required_version:
+                # 首先检查是否已经安装（包括预安装的版本）
                 try:
+                    from solcx import get_installed_solc_versions, get_executable
+                    versions = get_installed_solc_versions()
+                    
+                    # 检查是否有精确匹配的版本
+                    if required_version in versions:
+                        set_solc_version(required_version)
+                        logger.info(f"使用已安装的 Solidity 编译器 {required_version}")
+                        return
+                    
+                    # 检查是否有匹配的主版本（如 0.8.x）
+                    if versions:
+                        matching_version = None
+                        major_minor = '.'.join(required_version.split('.')[:2])  # 如 '0.8'
+                        for v in sorted(versions, reverse=True):
+                            if v.startswith(major_minor + '.'):
+                                matching_version = v
+                                break
+                        
+                        if matching_version:
+                            set_solc_version(matching_version)
+                            logger.info(f"使用已安装的匹配版本: {matching_version}（需要 {required_version}）")
+                            return
+                except Exception as e_check:
+                    logger.debug(f"检查已安装版本时出错: {e_check}")
+                
+                # 如果没有找到已安装的版本，尝试从 solc-bin 安装
+                try:
+                    logger.info(f"尝试从 solc-bin 安装 Solidity 编译器 {required_version}...")
                     install_solc(required_version)
                     set_solc_version(required_version)
-                    logger.info(f"已安装 Solidity 编译器 {required_version}")
+                    logger.info(f"已从 solc-bin 安装 Solidity 编译器 {required_version}")
                 except Exception as e:
-                    logger.warning(f"安装 Solidity 编译器 {required_version} 失败: {e}，尝试使用已安装的版本")
-                    # 尝试使用已安装的版本
+                    logger.warning(f"从 solc-bin 安装 Solidity 编译器 {required_version} 失败: {e}")
+                    logger.info("这可能是由于网络限制（如 Cloudflare）导致的，将尝试使用预安装的版本")
+                    
+                    # 再次检查已安装的版本（可能 solcx 没有正确识别预安装的版本）
                     try:
                         from solcx import get_installed_solc_versions
                         versions = get_installed_solc_versions()
                         if versions:
                             # 尝试找到匹配的版本
                             matching_version = None
+                            major_minor = '.'.join(required_version.split('.')[:2])
                             for v in sorted(versions, reverse=True):
-                                if v.startswith(required_version.split('.')[0] + '.' + required_version.split('.')[1]):
+                                if v.startswith(major_minor + '.'):
                                     matching_version = v
                                     break
                             
@@ -117,11 +150,27 @@ class BatchDepositDeployer:
                                 set_solc_version(matching_version)
                                 logger.info(f"使用已安装的匹配版本: {matching_version}")
                             else:
-                                set_solc_version(versions[-1])
-                                logger.warning(f"未找到匹配版本，使用已安装的最新版本: {versions[-1]}")
+                                latest = sorted(versions, reverse=True)[0]
+                                set_solc_version(latest)
+                                logger.warning(f"未找到匹配版本，使用已安装的最新版本: {latest}（可能不兼容）")
+                        else:
+                            # 如果 solcx 没有识别到，尝试直接使用预安装的二进制文件
+                            import os
+                            from pathlib import Path
+                            home_dir = Path.home()
+                            solcx_dir = home_dir / '.solcx'
+                            preinstalled_solc = solcx_dir / f'solc-v{required_version}'
+                            
+                            if preinstalled_solc.exists() and os.access(preinstalled_solc, os.X_OK):
+                                # 直接使用预安装的二进制文件
+                                # 将预安装的 solc 路径存储为实例变量，供编译时使用
+                                self._preinstalled_solc_path = str(preinstalled_solc)
+                                logger.info(f"找到预安装的 Solidity 编译器: {preinstalled_solc}，将在编译时使用")
+                            else:
+                                raise Exception(f"无法安装或找到 Solidity 编译器 {required_version}。请确保 Dockerfile 中已预安装该版本。")
                     except Exception as e2:
                         logger.error(f"无法设置 Solidity 编译器版本: {e2}")
-                        raise
+                        raise Exception(f"无法安装或找到 Solidity 编译器 {required_version}。错误: {e2}")
         except Exception as e:
             logger.error(f"无法设置 Solidity 编译器: {e}")
             raise
@@ -333,11 +382,17 @@ class BatchDepositDeployer:
                 # solcx 的 allow_paths 参数接受字符串（逗号分隔）或列表
                 allow_paths_list = [contract_dir_abs, node_modules_abs]
                 
-                compiled_output = compile_standard(
-                    standard_input,
-                    solc_version=required_version,
-                    allow_paths=allow_paths_list  # 传递列表
-                )
+                # 如果找到了预安装的 solc 路径，直接使用它
+                compile_kwargs = {
+                    'standard_input': standard_input,
+                    'solc_version': required_version,
+                    'allow_paths': allow_paths_list
+                }
+                if self._preinstalled_solc_path:
+                    compile_kwargs['solc_binary'] = self._preinstalled_solc_path
+                    logger.info(f"使用预安装的 solc 二进制文件: {self._preinstalled_solc_path}")
+                
+                compiled_output = compile_standard(**compile_kwargs)
                 
                 # 转换为统一的格式
                 compiled_sol = {}
