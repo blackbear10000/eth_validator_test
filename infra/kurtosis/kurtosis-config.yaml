@@ -85,7 +85,5 @@ additional_services:
 
 blockscout_params:
   image: "ghcr.io/blockscout/blockscout:latest"
-  verif_image: "ghcr.io/blockscout/smart-contract-verifier:latest"
+  verif_image: "ghcr.io/blockscout/smart-contract-verifier:v1.10.1"
   frontend_image: "ghcr.io/blockscout/frontend:latest"
-  env:
-    SMART_CONTRACT_VERIFIER__SOLIDITY__FETCHER__LIST__LIST_URL: "https://binaries.soliditylang.org/linux-amd64/list.json"
