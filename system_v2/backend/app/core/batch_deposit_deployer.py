@@ -442,9 +442,9 @@ class BatchDepositDeployer:
                 # solcx 的 allow_paths 参数接受字符串（逗号分隔）或列表
                 allow_paths_list = [contract_dir_abs, node_modules_abs]
                 
-                # 如果找到了预安装的 solc 路径，直接使用它
+                # compile_standard 的第一个参数是标准输入字典（位置参数）
+                # 其他参数作为关键字参数传递
                 compile_kwargs = {
-                    'standard_input': standard_input,
                     'solc_version': required_version,
                     'allow_paths': allow_paths_list
                 }
@@ -452,7 +452,8 @@ class BatchDepositDeployer:
                     compile_kwargs['solc_binary'] = self._preinstalled_solc_path
                     logger.info(f"使用预安装的 solc 二进制文件: {self._preinstalled_solc_path}")
                 
-                compiled_output = compile_standard(**compile_kwargs)
+                # 第一个参数是标准输入字典（位置参数），其他参数作为关键字参数
+                compiled_output = compile_standard(standard_input, **compile_kwargs)
                 
                 # 转换为统一的格式
                 compiled_sol = {}
