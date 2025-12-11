@@ -62,6 +62,7 @@ network_params:
   capella_fork_epoch: 0
   deneb_fork_epoch: 0
   electra_fork_epoch: 0
+  fulu_fork_epoch: 18446744073709551615
 
   # ===== 资金准备（用于后续批量 deposit 测试）=====
   prefunded_accounts: '{
