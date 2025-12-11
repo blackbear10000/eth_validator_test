@@ -89,4 +89,4 @@ blockscout_params:
   frontend_image: "ghcr.io/blockscout/frontend:latest"
   env:
     SMART_CONTRACT_VERIFIER__SOLIDITY__FETCHER__LIST__LIST_URL: "https://raw.githubusercontent.com/blockscout/solc-bin/main/list.json"
-    SMART_CONTRACT_VERIFIER__ZKSYNC_SOLIDITY__ENABLED: false
+    SMART_CONTRACT_VERIFIER__ZKSYNC_SOLIDITY__ENABLED: "false"
