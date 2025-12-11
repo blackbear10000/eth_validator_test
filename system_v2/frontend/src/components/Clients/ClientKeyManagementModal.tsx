@@ -95,7 +95,7 @@ const ClientKeyManagementModal: React.FC<ClientKeyManagementModalProps> = ({
       })
 
       // 加载可用密钥列表（用于添加）
-      // 使用新的 API，自动排除已被其他运行中客户端使用的密钥
+      // 使用新的 API，自动排除已被其他激活的客户端选中并使用的密钥（不管客户端是否在运行）
       // 不传 status 参数，返回所有已提交状态的密钥（PENDING, DEPOSITED, ACTIVE_ON_CHAIN）
       try {
         const availableResult = await clientsApi.getAvailableKeys(client.id, undefined, 1000) as any
@@ -530,7 +530,7 @@ const ClientKeyManagementModal: React.FC<ClientKeyManagementModalProps> = ({
                 添加密钥 ({selectedKeys.length || batchSelectCount || 0})
               </Button>
               <span style={{ color: '#999', fontSize: '12px' }}>
-                可用密钥: {availableKeys.length} 个（已排除被其他运行中客户端使用的密钥）
+                可用密钥: {availableKeys.length} 个（已排除被其他激活的客户端使用的密钥）
               </span>
             </Space>
           </Space>

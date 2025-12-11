@@ -115,7 +115,7 @@ export const clientsApi = {
   removeOrphanedKeys: (clientId: number, pubkeys?: string[]) =>
     apiClient.post(`/clients/${clientId}/keys/remove-orphaned`, pubkeys ? { pubkeys } : {}),
 
-  // 获取可用密钥列表（排除已被其他运行中客户端使用的密钥）
+  // 获取可用密钥列表（排除已被其他激活的客户端选中并使用的密钥）
   getAvailableKeys: (clientId: number, status?: string, limit?: number) =>
     apiClient.get(`/clients/${clientId}/keys/available`, {
       params: { status, limit }

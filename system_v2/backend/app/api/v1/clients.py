@@ -570,7 +570,7 @@ async def get_available_keys(
     """
     获取可用于分配给该客户端的密钥列表
     只返回已提交的密钥（PENDING, DEPOSITED, ACTIVE_ON_CHAIN）
-    排除已被其他运行中客户端使用的密钥
+    排除已被其他激活的客户端选中并使用的密钥（不管客户端是否在运行）
     """
     try:
         from app.models.database import ClientInstance, ValidatorKey, ValidatorClientKey
@@ -603,14 +603,14 @@ async def get_available_keys(
         ).all()
         current_pubkeys = set([k.pubkey.lower() for k in current_client_keys])
         
-        # 获取已被其他运行中客户端使用的密钥
-        other_running_client_keys = db.query(ValidatorClientKey).join(ClientInstance).filter(
+        # 获取已被其他激活的客户端使用的密钥（排除已被其他客户端选中并运行的密钥）
+        # 只要密钥被其他激活的客户端分配且状态为 active，就不能再被使用
+        other_active_client_keys = db.query(ValidatorClientKey).join(ClientInstance).filter(
             ValidatorClientKey.status == "active",
             ValidatorClientKey.client_id != client_id,
-            ClientInstance.is_active == True,
-            ClientInstance.status == "running"
+            ClientInstance.is_active == True  # 只排除激活的客户端，不管是否在运行
         ).all()
-        other_running_pubkeys = set([k.pubkey.lower() for k in other_running_client_keys])
+        other_active_pubkeys = set([k.pubkey.lower() for k in other_active_client_keys])
         
         # 过滤可用密钥
         available_keys = []
@@ -619,8 +619,8 @@ async def get_available_keys(
             # 排除当前客户端已分配的
             if pubkey_lower in current_pubkeys:
                 continue
-            # 排除已被其他运行中客户端使用的
-            if pubkey_lower in other_running_pubkeys:
+            # 排除已被其他激活的客户端使用的密钥（不管客户端是否在运行）
+            if pubkey_lower in other_active_pubkeys:
                 continue
             available_keys.append({
                 "pubkey": key.pubkey,
