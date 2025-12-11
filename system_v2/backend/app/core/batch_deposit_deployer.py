@@ -123,7 +123,29 @@ class BatchDepositDeployer:
                 except Exception as e_check:
                     logger.debug(f"检查已安装版本时出错: {e_check}")
                 
-                # 如果没有找到已安装的版本，尝试从 solc-bin 安装
+                # 如果没有找到已安装的版本，先检查预安装的版本（在尝试从网络下载之前）
+                import os
+                from pathlib import Path
+                home_dir = Path.home()
+                solcx_dir = home_dir / '.solcx'
+                preinstalled_solc = solcx_dir / f'solc-v{required_version}'
+                
+                logger.info(f"检查预安装的 solc: {preinstalled_solc}")
+                if preinstalled_solc.exists() and os.access(preinstalled_solc, os.X_OK):
+                    # 直接使用预安装的二进制文件
+                    self._preinstalled_solc_path = str(preinstalled_solc)
+                    logger.info(f"✅ 找到预安装的 Solidity 编译器: {preinstalled_solc}，将在编译时使用")
+                    # 验证版本
+                    import subprocess
+                    try:
+                        result = subprocess.run([str(preinstalled_solc), '--version'], 
+                                              capture_output=True, text=True, timeout=5)
+                        logger.info(f"预安装的 solc 版本信息: {result.stdout.strip() if result.returncode == 0 else result.stderr.strip()}")
+                    except Exception as e_verify:
+                        logger.warning(f"验证预安装 solc 版本时出错: {e_verify}")
+                    return  # 找到预安装版本，直接返回
+                
+                # 如果没有预安装的版本，尝试从 solc-bin 安装
                 try:
                     logger.info(f"尝试从 solc-bin 安装 Solidity 编译器 {required_version}...")
                     install_solc(required_version)
@@ -131,46 +153,40 @@ class BatchDepositDeployer:
                     logger.info(f"已从 solc-bin 安装 Solidity 编译器 {required_version}")
                 except Exception as e:
                     logger.warning(f"从 solc-bin 安装 Solidity 编译器 {required_version} 失败: {e}")
-                    logger.info("这可能是由于网络限制（如 Cloudflare）导致的，将尝试使用预安装的版本")
+                    logger.info("这可能是由于网络限制（如 Cloudflare）导致的，将尝试从 GitHub releases 下载")
                     
-                    # 再次检查已安装的版本（可能 solcx 没有正确识别预安装的版本）
+                    # 尝试从 GitHub releases 直接下载（备用方案）
                     try:
-                        from solcx import get_installed_solc_versions
-                        versions = get_installed_solc_versions()
-                        if versions:
-                            # 尝试找到匹配的版本
-                            matching_version = None
-                            major_minor = '.'.join(required_version.split('.')[:2])
-                            for v in sorted(versions, reverse=True):
-                                if v.startswith(major_minor + '.'):
-                                    matching_version = v
-                                    break
-                            
-                            if matching_version:
-                                set_solc_version(matching_version)
-                                logger.info(f"使用已安装的匹配版本: {matching_version}")
+                        self._install_solc_from_github(required_version)
+                        set_solc_version(required_version)
+                        logger.info(f"✅ 已从 GitHub releases 安装 Solidity 编译器 {required_version}")
+                    except Exception as e_github:
+                        logger.warning(f"从 GitHub releases 安装也失败: {e_github}")
+                        
+                        # 最后尝试使用已安装的匹配版本
+                        try:
+                            from solcx import get_installed_solc_versions
+                            versions = get_installed_solc_versions()
+                            if versions:
+                                matching_version = None
+                                major_minor = '.'.join(required_version.split('.')[:2])
+                                for v in sorted(versions, reverse=True):
+                                    if v.startswith(major_minor + '.'):
+                                        matching_version = v
+                                        break
+                                
+                                if matching_version:
+                                    set_solc_version(matching_version)
+                                    logger.info(f"使用已安装的匹配版本: {matching_version}")
+                                else:
+                                    latest = sorted(versions, reverse=True)[0]
+                                    set_solc_version(latest)
+                                    logger.warning(f"未找到匹配版本，使用已安装的最新版本: {latest}（可能不兼容）")
                             else:
-                                latest = sorted(versions, reverse=True)[0]
-                                set_solc_version(latest)
-                                logger.warning(f"未找到匹配版本，使用已安装的最新版本: {latest}（可能不兼容）")
-                        else:
-                            # 如果 solcx 没有识别到，尝试直接使用预安装的二进制文件
-                            import os
-                            from pathlib import Path
-                            home_dir = Path.home()
-                            solcx_dir = home_dir / '.solcx'
-                            preinstalled_solc = solcx_dir / f'solc-v{required_version}'
-                            
-                            if preinstalled_solc.exists() and os.access(preinstalled_solc, os.X_OK):
-                                # 直接使用预安装的二进制文件
-                                # 将预安装的 solc 路径存储为实例变量，供编译时使用
-                                self._preinstalled_solc_path = str(preinstalled_solc)
-                                logger.info(f"找到预安装的 Solidity 编译器: {preinstalled_solc}，将在编译时使用")
-                            else:
-                                raise Exception(f"无法安装或找到 Solidity 编译器 {required_version}。请确保 Dockerfile 中已预安装该版本。")
-                    except Exception as e2:
-                        logger.error(f"无法设置 Solidity 编译器版本: {e2}")
-                        raise Exception(f"无法安装或找到 Solidity 编译器 {required_version}。错误: {e2}")
+                                raise Exception(f"无法安装或找到 Solidity 编译器 {required_version}。所有安装方法都失败了。")
+                        except Exception as e2:
+                            logger.error(f"无法设置 Solidity 编译器版本: {e2}")
+                            raise Exception(f"无法安装或找到 Solidity 编译器 {required_version}。错误: {e2}")
         except Exception as e:
             logger.error(f"无法设置 Solidity 编译器: {e}")
             raise
@@ -243,6 +259,50 @@ class BatchDepositDeployer:
                 except:
                     pass
             raise Exception(f"获取合约源代码失败: {e}")
+    
+    def _install_solc_from_github(self, version: str):
+        """
+        从 GitHub releases 直接下载并安装 solc（备用方案，避免 solc-bin 403 错误）
+        
+        Args:
+            version: Solidity 版本（如 '0.8.29'）
+        """
+        import urllib.request
+        import subprocess
+        from pathlib import Path
+        
+        # solcx 的安装目录
+        home_dir = Path.home()
+        solcx_dir = home_dir / '.solcx'
+        solcx_dir.mkdir(parents=True, exist_ok=True)
+        
+        # 构建下载 URL
+        # GitHub releases URL: https://github.com/ethereum/solidity/releases/download/v{version}/solc-static-linux
+        download_url = f"https://github.com/ethereum/solidity/releases/download/v{version}/solc-static-linux"
+        binary_path = solcx_dir / f"solc-v{version}"
+        
+        logger.info(f"从 GitHub releases 下载 solc {version}: {download_url}")
+        try:
+            urllib.request.urlretrieve(download_url, binary_path)
+            binary_path.chmod(0o755)
+            
+            # 验证安装
+            result = subprocess.run([str(binary_path), '--version'], 
+                                  capture_output=True, text=True, timeout=5)
+            if result.returncode != 0:
+                raise Exception(f"下载的 solc 无法运行: {result.stderr}")
+            
+            logger.info(f"✅ solc {version} 已从 GitHub 下载到: {binary_path}")
+            # 存储路径供编译时使用
+            self._preinstalled_solc_path = str(binary_path)
+        except Exception as e:
+            # 清理失败的文件
+            if binary_path.exists():
+                try:
+                    binary_path.unlink()
+                except:
+                    pass
+            raise Exception(f"从 GitHub releases 下载 solc 失败: {e}")
     
     def _install_openzeppelin_manually(self, temp_dir: str):
         """
