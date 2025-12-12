@@ -261,6 +261,12 @@ class ExitRequest(BaseModel):
     epoch: Optional[int] = None
 
 
+class BatchExitRequest(BaseModel):
+    """批量退出请求"""
+    pubkeys: List[str] = Field(..., description="验证者公钥列表")
+    epoch: Optional[int] = Field(None, description="退出 epoch（可选）")
+
+
 class ExitResponse(BaseModel):
     """退出响应"""
     pubkey: str

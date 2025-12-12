@@ -9,6 +9,7 @@ from typing import List, Optional
 from app.dependencies import get_db
 from app.services.exit_service import ExitService
 from app.models.database import ExitRecord
+from app.models.schemas import BatchExitRequest
 from app.services.key_management import KeyManagementService
 from app.services.client_management import ClientManagementService
 from app.core.exit_generator import ExitGenerator
@@ -99,15 +100,14 @@ async def submit_exit(
 
 @router.post("/exits/batch")
 async def batch_exit(
-    pubkeys: List[str],
-    epoch: Optional[int] = None,
+    request: BatchExitRequest,
     exit_service: ExitService = Depends(get_exit_service)
 ):
     """批量退出验证者"""
     try:
-        results = exit_service.batch_exit_validators(pubkeys, epoch=epoch)
+        results = exit_service.batch_exit_validators(request.pubkeys, epoch=request.epoch)
         return {
-            'total': len(pubkeys),
+            'total': len(request.pubkeys),
             'results': results
         }
     except Exception as e:
