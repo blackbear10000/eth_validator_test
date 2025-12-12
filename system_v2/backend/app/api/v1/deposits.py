@@ -422,25 +422,79 @@ async def list_deposits(
         transactions, total = deposit_service.get_deposit_transactions()
         result = []
         
+        if not transactions:
+            return result
+        
+        # 批量查询优化：一次性获取所有需要的数据
+        from app.models.database import ValidatorKey, WithdrawalEvent
+        
+        # 1. 批量查询 ValidatorKey（避免 N+1 查询）
+        pubkeys = [t.pubkey.lower() for t in transactions]
+        validator_keys = db.query(ValidatorKey).filter(
+            ValidatorKey.pubkey.in_(pubkeys)
+        ).all()
+        validator_key_map = {vk.pubkey.lower(): vk for vk in validator_keys}
+        
+        # 2. 批量查询 WithdrawalEvent（如果包含余额信息）
+        withdrawal_map = {}
+        if include_balance:
+            withdrawal_totals = db.query(
+                WithdrawalEvent.pubkey,
+                func.sum(WithdrawalEvent.amount_eth).label('total_withdrawn')
+            ).filter(
+                WithdrawalEvent.pubkey.in_(pubkeys)
+            ).group_by(WithdrawalEvent.pubkey).all()
+            withdrawal_map = {w.pubkey.lower(): float(w.total_withdrawn or 0.0) for w in withdrawal_totals}
+        
+        # 3. 批量查询验证者余额信息（如果包含余额信息）
+        validator_data_map = {}
+        if include_balance:
+            try:
+                from app.core.beacon_api import BeaconAPIClient
+                beacon_api = BeaconAPIClient()
+                
+                # 只查询有 validator_index 的交易（已注册的验证者）
+                pubkeys_to_query = [
+                    t.pubkey for t in transactions 
+                    if t.validator_index is not None
+                ]
+                
+                if pubkeys_to_query:
+                    # 使用批量查询，而不是循环单个查询
+                    # 注意：Beacon API 可能对批量查询有数量限制，需要分批处理
+                    batch_size = 50  # 每批查询 50 个
+                    for i in range(0, len(pubkeys_to_query), batch_size):
+                        batch_pubkeys = pubkeys_to_query[i:i + batch_size]
+                        try:
+                            batch_validators = beacon_api.get_validators(batch_pubkeys)
+                            validator_data_map.update(batch_validators)
+                        except Exception as e:
+                            logger.warning(f"批量查询验证者信息失败（批次 {i//batch_size + 1}）: {e}")
+                            # 继续处理其他批次，不中断整个请求
+            except Exception as e:
+                logger.error(f"批量查询验证者信息失败: {e}", exc_info=True)
+                # 即使批量查询失败，也继续返回基本数据
+        
+        # 4. 构建结果
         for t in transactions:
             tx_dict = DepositTransactionResponse.model_validate(t).model_dump()
             
-            # 获取 withdrawal_address（从 ValidatorKey）
-            from app.models.database import ValidatorKey
-            validator_key = db.query(ValidatorKey).filter(
-                ValidatorKey.pubkey == t.pubkey
-            ).first()
+            # 设置 withdrawal_address（从批量查询的 map 中获取）
+            validator_key = validator_key_map.get(t.pubkey.lower())
             if validator_key:
                 tx_dict['withdrawal_address'] = validator_key.withdrawal_address
             
             # 如果请求包含余额信息，且验证者已注册（有 validator_index）
             if include_balance and t.validator_index is not None:
-                try:
-                    from app.core.beacon_api import BeaconAPIClient
-                    beacon_api = BeaconAPIClient()
-                    validator_data = beacon_api.get_validator(t.pubkey)
-                    
-                    if validator_data:
+                # 规范化 pubkey（确保有 0x 前缀，小写）
+                pubkey_normalized = t.pubkey.lower().strip()
+                if not pubkey_normalized.startswith('0x'):
+                    pubkey_normalized = f"0x{pubkey_normalized}"
+                
+                validator_data = validator_data_map.get(pubkey_normalized)
+                
+                if validator_data:
+                    try:
                         # 提取余额信息
                         # Beacon API 返回格式: {'index': ..., 'balance': '...', 'status': '...', 'validator': {...}}
                         # balance 在顶层，单位是 gwei（字符串格式）
@@ -463,15 +517,8 @@ async def list_deposits(
                             # 计算总收益：当前余额 - 32 ETH + 已取款金额累计
                             initial_deposit = 32.0
                             
-                            # 查询已取款金额累计
-                            from app.models.database import WithdrawalEvent
-                            total_withdrawn = db.query(
-                                func.sum(WithdrawalEvent.amount_eth)
-                            ).filter(
-                                WithdrawalEvent.pubkey == t.pubkey
-                            ).scalar() or 0.0
-                            
-                            total_withdrawn_eth = float(total_withdrawn)
+                            # 从批量查询的 map 中获取已取款金额
+                            total_withdrawn_eth = withdrawal_map.get(t.pubkey.lower(), 0.0)
                             
                             # 综合收益计算：当前余额 - 32 + 已取款金额
                             earnings = balance_eth - initial_deposit + total_withdrawn_eth
@@ -485,8 +532,13 @@ async def list_deposits(
                             tx_dict['balance_eth'] = None
                             tx_dict['effective_balance_eth'] = None
                             tx_dict['earnings_eth'] = None
-                except Exception as e:
-                    logger.warning(f"获取验证者余额失败 {t.pubkey[:10]}...: {e}")
+                    except Exception as e:
+                        logger.warning(f"处理验证者余额失败 {t.pubkey[:10]}...: {e}")
+                        tx_dict['balance_eth'] = None
+                        tx_dict['effective_balance_eth'] = None
+                        tx_dict['earnings_eth'] = None
+                else:
+                    # 验证者数据不存在，设置为 None
                     tx_dict['balance_eth'] = None
                     tx_dict['effective_balance_eth'] = None
                     tx_dict['earnings_eth'] = None
