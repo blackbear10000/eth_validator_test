@@ -194,7 +194,7 @@ services:
       dockerfile: Dockerfile
     container_name: backend
     ports:
-      - "8001:8000"
+      - "8001:8001"
     env_file:
       - .env
     environment:
@@ -232,9 +232,9 @@ services:
         condition: service_healthy
       vault-1:
         condition: service_healthy
-    command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8001 --reload
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      test: ["CMD", "curl", "-f", "http://localhost:8001/health"]
       interval: 10s
       timeout: 3s
       retries: 3
@@ -280,7 +280,7 @@ services:
     ports:
       - "3001:80"
     environment:
-      - REACT_APP_API_URL=http://backend:8000
+      - REACT_APP_API_URL=http://backend:8001
     networks:
       - validator_network
     depends_on:
